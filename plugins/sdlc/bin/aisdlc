@@ -108,19 +108,36 @@ init_state() {
     mkdir -p "$gitdir/info"
     grep -qxF '/.aisdlc/' "$exclude" 2>/dev/null || echo '/.aisdlc/' >> "$exclude"
 
-    # Deny list handed to every headless run. bypassPermissions skips the *prompts*;
-    # these rules are the hard floor that stays enforced. The guard hook is the primary
-    # defence — this is the belt to its braces.
+    # Permissions handed to every headless run.
+    #
+    # The allow list exists because an unattended phase that stops to ask is a stalled task
+    # that looks like a slow one. Editing files and using git is the entire job here, and it
+    # happens inside a throwaway worktree, so granting it is bounded rather than reckless.
+    # Do not rely on the developer's personal allow list: it varies, and a phase that commits
+    # with double quotes where their rule expected single ones fails for no defensible reason.
+    #
+    # The deny list is the floor and takes precedence over the allow list. The guard hook is
+    # the primary defence; this is the belt to its braces.
+    #
+    # Written once, then yours to edit. If a phase stalls asking to run this project's test
+    # command, add it here — e.g. "Bash(make:*)", "Bash(npm:*)", "Bash(go:*)".
     if [ ! -f "$dir/settings.json" ]; then
         cat > "$dir/settings.json" <<'JSON'
 {
   "permissions": {
+    "allow": [
+      "Write",
+      "Edit",
+      "Bash(git:*)"
+    ],
     "deny": [
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git commit --no-verify:*)",
       "Bash(git commit -n:*)",
       "Bash(git reset --hard origin/*)",
+      "Write(.claude/**)",
+      "Edit(.claude/**)",
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(**/*.pem)",
@@ -704,6 +721,12 @@ config with /$PLUGIN_NAME:init, or by hand:
 
 Environment overrides: AISDLC_MODEL, AISDLC_BUDGET, AISDLC_BASE, AISDLC_WORKERS,
 AISDLC_LABEL, AISDLC_SPECS_DIR.
+
+.aisdlc/settings.json is the permission set each headless phase runs under: editing files
+and using git are allowed because that is the job, force pushes and secrets are denied,
+and .claude/** is denied because a queued task has no business rewriting your agent
+configuration. Written once, then yours. If a phase stalls asking to run this project's
+test command, add it — e.g. "Bash(make:*)".
 USAGE
 }
 
