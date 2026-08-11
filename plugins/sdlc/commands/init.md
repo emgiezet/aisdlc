@@ -10,7 +10,10 @@ playbook, **rules** that attach by path, and a **profile** recording what this r
 This command produces them by reading *this* repository — not by copying someone else's
 conventions, which is the failure mode that makes generic harnesses useless.
 
-`$ARGUMENTS` is optional: a hint about what this repo is, if the code makes it ambiguous.
+`$ARGUMENTS` is optional: a hint about what this repo is, if the code makes it ambiguous. Pass
+`--yes` to skip the approval gate and write the files directly — for bootstrapping repositories in
+bulk or from a script. It does not lower the bar for anything else, and you still have to read what
+it produced: an unreviewed router quietly misroutes every task that follows.
 
 **Load the `task-router` skill** — it holds the three-tier model, the line budgets this command
 must respect, and the rules for writing a router row that a weak model matches correctly.
@@ -80,6 +83,9 @@ Reply 'yes' to write these files, or describe what to change.
 
 **Write nothing before the reply.** A wrong router is worse than no router: it sends every future
 task to the wrong instructions, and nobody notices for weeks.
+
+With `--yes`, print the same proposal, note that it was auto-approved, and continue. Print it
+either way — it is the record of what the setup is based on.
 
 ---
 
