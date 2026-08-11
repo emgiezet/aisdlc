@@ -88,24 +88,30 @@ a UC with nothing observable to assert. Fixing those makes the expensive model b
 
 Acceptance bar for a harness change: Sonnet passes every scenario, Haiku passes all but one.
 
-**Measured baseline** — `go-endpoint` (3 UCs, Go, contract change) on Haiku, first real run:
+**Measured baseline** — `go-endpoint` (3 use cases, Go, contract change) on Haiku:
 
 | | turns | cost | wall clock |
 |---|---|---|---|
-| `/sdlc:implement` | 28 | $0.25 | 117 s |
-| `/sdlc:qa` | 12 | $1.29 | 598 s |
-| **total** | | **$1.53** | **12 min** |
+| `/sdlc:implement` | 29 | $0.22 | 154 s |
+| `/sdlc:qa` | 6 | $0.37 | 164 s |
+| **total** | | **$0.59** | **5.4 min** |
 
-10/10 assertions: a test per UC carrying its id, contract updated in the same commit, integer
-serialisation preserved, zero skips. QA earned its place by finding a gap `implement` missed —
-the non-functional requirement had no test — writing one, and committing it separately from the
-report.
+10/10 assertions: a test per use case carrying its id, the contract updated in the same commit,
+integer serialisation preserved, zero skips, QA verdict `PASS` and committed. QA earned its place —
+it started the service and confirmed each result against the running instance with `curl`, rather
+than trusting the tests it had just read.
 
-The uncomfortable number is QA taking 84% of the cost and 83% of the wall clock on a three-UC
-change. That is the first thing to tune: QA re-reads the spec, the diff, and the tests, then runs
-the suites again. Options worth measuring before picking one — scope `auto-qa`'s reading to the
-diff plus the spec, skip the independent re-derivation for specs under some size, or run QA on a
-cheaper effort setting than implement. Do not tune it by weakening what QA checks.
+Two things this number is worth reading for. QA is 63% of the cost for a three-use-case change,
+which makes it the first candidate for tuning: it re-reads the spec, the diff and the tests, then
+runs the suites again. Measure before picking a fix — scope `auto-qa`'s reading to the diff plus the
+spec, or run QA at a lower effort setting than implement — and never tune it by weakening what QA
+checks.
+
+The second is what changed between an earlier run of the same scenario ($1.53, 12 minutes, QA at 12
+turns) and this one ($0.59, 5.4 minutes, QA at 6 turns). Nothing about the model changed. Two
+instructions did: the commands got an unmissable first-action file check instead of a gate buried
+mid-document, and the queue stopped inheriting whatever permission rules the developer happened to
+have. Both of those were wandering, and wandering is what agent work actually costs.
 
 ## Definition of done for a queued task
 

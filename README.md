@@ -14,9 +14,11 @@ Concretely, it gives you five things a bare `claude -p` does not have:
 5. An **eval harness** that measures whether all of this works on a cheap model, because if it only
    works on the expensive one, the harness is carrying none of the weight.
 
-Status: **0.1.0.** The pipeline has been run end to end on Haiku against the bundled sandbox — 10/10
-assertions, $1.53, 12 minutes. The numbers and their uncomfortable parts are in
-[`docs/ai-sdlc.md`](docs/ai-sdlc.md).
+Status: **0.1.0.** The pipeline runs end to end on Haiku against the bundled sandbox: 10/10
+assertions, $0.59, 5.4 minutes — a test per use case carrying its id, the API contract updated in
+the same commit, zero skipped tests, and a QA verdict that was reached by starting the service and
+checking it with `curl` rather than by trusting the tests. The full numbers, including which part
+costs too much, are in [`docs/ai-sdlc.md`](docs/ai-sdlc.md).
 
 ## Install
 
