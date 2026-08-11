@@ -1,0 +1,9 @@
+[
+  {"query": "This task only works on Opus — how do I make it work on a cheaper model?", "should_trigger": true, "note": "core use case: harness explicitness, not model tier"},
+  {"query": "Run the harness evals against haiku and tell me what broke", "should_trigger": true, "note": "direct invocation of the eval loop"},
+  {"query": "Add an eval scenario covering a migration that breaks existing tests", "should_trigger": true, "note": "scenario authoring lives in this skill"},
+  {"query": "Our cost per generated pull request keeps climbing — what should I tune?", "should_trigger": true, "note": "cost and model tuning of the harness"},
+  {"query": "Restructure our oversized CLAUDE.md into playbooks and rules", "should_trigger": false, "note": "task-router owns the hierarchy itself"},
+  {"query": "How many tests does this endpoint need?", "should_trigger": false, "note": "dense-testing owns density floors"},
+  {"query": "Which model should we use for the chatbot we are building?", "should_trigger": false, "note": "product model selection, unrelated to the harness"}
+]

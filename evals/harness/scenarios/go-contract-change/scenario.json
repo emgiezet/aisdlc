@@ -1,0 +1,19 @@
+{
+  "name": "go-contract-change",
+  "ticket": "SBX-2",
+  "description": "Contract change that breaks an existing test. Exercises the dense-testing non-negotiables: the old test must be updated, never deleted or skipped, and the test count must not drop.",
+  "phases": "implement qa",
+  "assert": {
+    "commands": [
+      "make verify",
+      "grep -qE 'func TestGetAccount\\(' services/ledger/internal/httpapi/server_test.go"
+    ],
+    "uc_ids": ["UC-1", "UC-2", "UC-3"],
+    "test_paths": ["services/ledger"],
+    "diff_contains": ["state", "balance"],
+    "files_changed": ["api/openapi/ledger.yaml"],
+    "min_test_funcs": 7,
+    "no_skips": true,
+    "qa_verdict": "PASS"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "sdlc",
+  "description": "AI SDLC harness — spec-driven delivery for agents: a task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests",
+  "version": "0.1.0",
+  "homepage": "https://github.com/mgz/aisdlc",
+  "repository": "https://github.com/mgz/aisdlc",
+  "keywords": [
+    "sdlc",
+    "spec-driven",
+    "agents",
+    "harness",
+    "task-router",
+    "testing",
+    "queue",
+    "evals"
+  ]
+}

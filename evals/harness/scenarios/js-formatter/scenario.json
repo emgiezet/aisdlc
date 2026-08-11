@@ -1,0 +1,18 @@
+{
+  "name": "js-formatter",
+  "ticket": "SBX-3",
+  "description": "Second stack, small surface. Exercises router selection (frontend playbook over api-endpoint), reuse of existing helpers, and exact-output assertions.",
+  "phases": "implement qa",
+  "assert": {
+    "commands": [
+      "make verify",
+      "cd frontend && node -e \"import('./src/format.mjs').then(m => { const s = m.formatAccountSummary({id:'acc-1001',name:'Northwind Trading',currency:'EUR',balance:1250050}); if (s !== 'Northwind Trading (#1001) — 12500,50 EUR') { console.error('got: ' + s); process.exit(1); } })\""
+    ],
+    "uc_ids": ["UC-1", "UC-2"],
+    "test_paths": ["frontend/src"],
+    "diff_contains": ["formatAccountSummary"],
+    "diff_absent": ["\"dependencies\""],
+    "no_skips": true,
+    "qa_verdict": "PASS"
+  }
+}

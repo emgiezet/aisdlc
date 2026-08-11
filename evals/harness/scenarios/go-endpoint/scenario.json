@@ -1,0 +1,23 @@
+{
+  "name": "go-endpoint",
+  "ticket": "SBX-1",
+  "description": "New Go endpoint from a 3-UC spec. Exercises router selection (api-endpoint playbook), contract-first, TDD, and the error envelope.",
+  "phases": "implement qa",
+  "assert": {
+    "commands": [
+      "make verify"
+    ],
+    "uc_ids": ["UC-1", "UC-2", "UC-3"],
+    "test_paths": ["services/ledger"],
+    "diff_contains": [
+      "/v1/accounts/\\{id\\}/balance",
+      "getAccountBalance"
+    ],
+    "diff_absent": [
+      "float64\\(.*Balance"
+    ],
+    "files_changed": ["api/openapi/ledger.yaml"],
+    "no_skips": true,
+    "qa_verdict": "PASS"
+  }
+}

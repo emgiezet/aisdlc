@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# SessionStart hook — announces the AI SDLC pipeline and the rules it enforces.
+set -euo pipefail
+
+MANIFEST="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)/.claude-plugin/plugin.json"
+field() { sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$MANIFEST" 2>/dev/null | head -1; }
+VERSION="$(field version)"; [ -n "$VERSION" ] || VERSION="unknown"
+NAME="$(field name)";       [ -n "$NAME" ] || NAME="sdlc"
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+context_raw="AI SDLC harness active (${NAME} v${VERSION}).
+
+The pipeline. A spec is the only approval point; everything after it runs unattended:
+  /${NAME}:init             → generate this repo's task router, playbooks, and rules (run once)
+  /${NAME}:spec <TICKET>    → specs/<TICKET>/spec.md with a UC table (starts as status: draft)
+  /${NAME}:mockup <TICKET>  → clickable single-file mockup for business validation
+  <a human flips status: approved and commits it>
+  /${NAME}:implement <TICKET> → no-gate TDD build, one test per UC, full CI matrix
+  /${NAME}:qa <TICKET>      → independent verification, UC×test matrix, PASS/GAPS verdict
+  /${NAME}:ship <TICKET>    → draft PR with the verdict up front, QA report as a comment
+  aisdlc add <TICKET>       → queue it instead: worktree per task, PRs are the review inbox
+
+Skills (load with the Skill tool):
+- spec-authoring — the UC table format: atomic, observable, stably-numbered criteria
+- task-router    — keeping CLAUDE.md small: router table, playbooks, path-scoped rules
+- dense-testing  — density floors, UC ids in test names, and what must never be weakened
+- harness-eval   — measuring the harness on a cheap model, and fixing instructions not tiers
+
+Agent: auto-qa — verifies an implementation against its spec before a human reads it.
+
+Enforced by hooks, not by good intentions: force pushes and --no-verify are blocked, and a
+session that deletes or skips a test is blocked from finishing. If a test contradicts the
+spec, that is a contradiction to report, not a test to remove.
+
+If this repo has no CLAUDE.md task router yet, run /${NAME}:init before anything else."
+
+context_escaped=$(escape_for_json "$context_raw")
+
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  cat <<EOF
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "${context_escaped}"
+  }
+}
+EOF
+else
+  cat <<EOF
+{
+  "additional_context": "${context_escaped}"
+}
+EOF
+fi
+
+exit 0

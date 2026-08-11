@@ -1,0 +1,11 @@
+{
+  "name": "sandbox-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Sandbox frontend fixture. Deliberately dependency-free: the harness eval must run offline, so tests use node:test instead of Vitest. The real frontend uses Vitest + React Testing Library.",
+  "scripts": {
+    "test": "node --test 'src/**/*.test.mjs'",
+    "lint": "node --check src/format.mjs",
+    "type-check": "echo 'no type-checker in the fixture'"
+  }
+}

@@ -1,0 +1,9 @@
+[
+  {"query": "How many tests does this new endpoint need before I can trust it?", "should_trigger": true, "note": "density floors are this skill's core"},
+  {"query": "Wire the acceptance criteria ids from the spec into the test names", "should_trigger": true, "note": "UC traceability convention"},
+  {"query": "The suite is green but I don't trust it — the agent wrote all of it", "should_trigger": true, "note": "the exact problem this grid addresses"},
+  {"query": "Can I skip this failing test for now to unblock the pull request?", "should_trigger": true, "note": "hits the non-negotiables directly"},
+  {"query": "Write the use-case table for ABC-204", "should_trigger": false, "note": "spec-authoring owns spec format"},
+  {"query": "Why is this test failing with a nil pointer dereference?", "should_trigger": false, "note": "debugging, not test design"},
+  {"query": "Set up a GitHub Actions workflow for this repo", "should_trigger": false, "note": "CI authoring, not test density"}
+]

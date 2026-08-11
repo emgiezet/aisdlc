@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# stub-claude — a fake `claude` for exercising the aisdlc runner without API calls.
+#
+# Put this directory first on PATH and the queue runs end to end offline. It mimics the real
+# CLI in the ways that have actually broken the runner:
+#
+#   - it consumes stdin (which once ate the phase loop's own input, so only the first phase ran)
+#   - it accepts both the namespaced /sdlc:<command> and the bare /<command> form
+#   - it reports num_turns and total_cost_usd in the real result shape
+#
+# Behaviour is chosen by AISDLC_STUB:
+#   ok        (default) implement + qa succeed and commit
+#   noop      returns "Unknown command" with 0 turns — the silent no-op the runner must catch
+#   blocked   implement writes BLOCKED.md and exits non-zero
+set -uo pipefail
+
+cat > /dev/null   # consume stdin, exactly as the real CLI does
+
+prompt=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -p) prompt="$2"; shift 2 ;;
+        *)  shift ;;
+    esac
+done
+prompt="${prompt/sdlc:/}"
+ticket="${prompt##* }"
+
+result() {
+    printf '{"type":"result","subtype":"success","is_error":%s,"num_turns":%s,' "$1" "$2"
+    printf '"result":"%s","session_id":"stub","total_cost_usd":%s}\n' "$3" "$4"
+}
+
+commit() { git add -A >/dev/null 2>&1; git -c user.name=stub -c user.email=stub@localhost commit -qm "$1" >/dev/null 2>&1; }
+
+case "${AISDLC_STUB:-ok}" in
+    noop)
+        result false 0 "Unknown command: ${prompt%% *}" 0
+        exit 0
+        ;;
+    blocked)
+        case "$prompt" in
+            /implement*)
+                mkdir -p "specs/$ticket"
+                printf '# BLOCKED — %s\n**Stopped at:** UC-2\n\n## What I need from a human\nWhich rounding mode?\n' "$ticket" \
+                    > "specs/$ticket/BLOCKED.md"
+                result true 3 "blocked on UC-2" 0.04
+                exit 1
+                ;;
+        esac
+        ;;
+esac
+
+case "$prompt" in
+    /implement*)
+        mkdir -p pkg
+        printf 'package pkg\n\n// Stub implementation for %s.\nfunc Stub() string { return "%s" }\n' "$ticket" "$ticket" > "pkg/stub.go"
+        printf 'package pkg\n\nimport "testing"\n\nfunc TestStub_UC1(t *testing.T) {\n\tif Stub() == "" {\n\t\tt.Fatal("empty")\n\t}\n}\n' > "pkg/stub_test.go"
+        commit "feat(pkg): stub implementation for UC-1 ($ticket)"
+        ;;
+    /qa*)
+        mkdir -p "specs/$ticket"
+        printf '# QA report — %s\n**Verdict: PASS**\n\n## UC coverage\n| UC | test | verified |\n|----|------|----------|\n| UC-1 | TestStub_UC1 | automated |\n\nCovered: 1/1\n' \
+            "$ticket" > "specs/$ticket/qa-report.md"
+        commit "test(pkg): QA report ($ticket)"
+        ;;
+    /ship*)
+        printf 'stub PR body\n' > "specs/$ticket/pr-body.md"
+        commit "docs: PR body ($ticket)"
+        echo "would open https://example.com/stub/pull/1" >&2
+        ;;
+esac
+
+result false 6 "stub phase complete" 0.05

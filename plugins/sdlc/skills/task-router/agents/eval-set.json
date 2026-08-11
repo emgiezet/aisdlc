@@ -1,0 +1,9 @@
+[
+  {"query": "Our CLAUDE.md is 600 lines and Claude keeps ignoring half of it — how do I restructure it?", "should_trigger": true, "note": "core use case — instruction hierarchy refactor"},
+  {"query": "Add a playbook for cache invalidation work and wire it into the router table", "should_trigger": true, "note": "adding a tier-2 file plus a router row"},
+  {"query": "Should this go in .claude/rules or .claude/playbooks?", "should_trigger": true, "note": "tier selection is this skill's decision table"},
+  {"query": "Token cost per task keeps climbing because every session loads all our conventions", "should_trigger": false, "note": "harness-eval owns cost and model tuning"},
+  {"query": "Write the acceptance criteria for ABC-77 as a use-case table", "should_trigger": false, "note": "spec-authoring owns spec format"},
+  {"query": "What are the error handling conventions in this repo?", "should_trigger": false, "note": "the project's own rules files own stack conventions"},
+  {"query": "Generate a map of this codebase so I can understand the architecture", "should_trigger": false, "note": "codebase mapping, not instruction routing"}
+]

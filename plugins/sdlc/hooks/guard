@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# guard — enforces the dense-testing non-negotiables and blocks irreversible git commands.
+#
+# Usage (from hooks.json, via run-hook.cmd):
+#   guard pre-bash   — PreToolUse on Bash: deny force pushes, --no-verify, dangerous rm
+#   guard stop       — Stop: deny finishing a session that deleted or skipped tests
+#
+# Contract: exit 0 = allow. exit 2 = block, with the reason on stderr (Claude reads it).
+# Any other failure mode must allow: a broken guard that blocks every session is worse
+# than no guard.
+set -uo pipefail
+
+MODE="${1:-}"
+
+# Degrade to allow if we cannot parse the event.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "guard: jq not found — skipping checks (install jq to enable them)" >&2
+    exit 0
+fi
+
+INPUT="$(cat 2>/dev/null || true)"
+[ -n "$INPUT" ] || exit 0
+
+deny() {
+    printf '%s\n' "$1" >&2
+    exit 2
+}
+
+# --------------------------------------------------------------------------- #
+# pre-bash — block commands whose damage cannot be reviewed after the fact
+# --------------------------------------------------------------------------- #
+pre_bash() {
+    local cmd
+    cmd="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')"
+    [ -n "$cmd" ] || exit 0
+
+    # Force push: rewrites shared history. --force-with-lease is fine.
+    if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+push([[:space:]]+[^|;&]*)?[[:space:]](--force([[:space:]]|$)|-f([[:space:]]|$))'; then
+        deny "guard: force push blocked — it rewrites history others may have pulled.
+Use 'git push --force-with-lease' if you must overwrite your own remote branch, or push a new branch."
+    fi
+
+    # --no-verify: skips the hooks that catch bad commits.
+    if printf '%s' "$cmd" | grep -Eq 'git[[:space:]]+(commit|push)([[:space:]]+[^|;&]*)?[[:space:]](--no-verify([[:space:]]|$)|-n([[:space:]]|$))'; then
+        deny "guard: --no-verify blocked — pre-commit hooks exist to catch exactly what this bypasses.
+Fix what the hook reports instead of skipping it."
+    fi
+
+    # rm -rf against a root, a home dir, or an absolute path outside the working tree.
+    if printf '%s' "$cmd" | grep -Eq 'rm[[:space:]]+(-[a-zA-Z]*[rR][a-zA-Z]*[fF][a-zA-Z]*|-[a-zA-Z]*[fF][a-zA-Z]*[rR][a-zA-Z]*)[[:space:]]'; then
+        # Inspect whole tokens only — './node_modules' must not match on its '/node_modules'.
+        # Globbing off: a literal '*' in the command must not expand against the real cwd.
+        local t
+        set -f
+        for t in $(printf '%s' "$cmd" | tr ';|&' '\n\n\n'); do
+            # These patterns match the literal text an agent typed, before any shell
+            # expansion — a bare ~ here is a token to compare, not a path to resolve.
+            # shellcheck disable=SC2088
+            case "$t" in
+                -*|rm) continue ;;
+                /|"~"|"~/"|'$HOME'|'$HOME/'|/'*')
+                    deny "guard: 'rm -rf $t' blocked — that target is not recoverable." ;;
+            esac
+            # Absolute path outside the current working tree.
+            case "$t" in
+                "$PWD"|"$PWD"/*) ;;
+                "$HOME") deny "guard: 'rm -rf $t' blocked — that target is not recoverable." ;;
+                /*) deny "guard: 'rm -rf $t' blocked — it points outside the working tree ($PWD)." ;;
+            esac
+        done
+        set +f
+    fi
+
+    exit 0
+}
+
+# --------------------------------------------------------------------------- #
+# stop — block a session that made the suite green by removing its teeth
+# --------------------------------------------------------------------------- #
+TEST_PATH_RE='(_test\.(go|py|rb)|test_[^/]*\.py|\.(test|spec)\.(ts|tsx|js|jsx|mjs)$|Test\.php$|/tests?/|/Tests/|/__tests__/|/e2e/)'
+
+SKIP_ADD_RE='(t\.Skip\(|t\.Skipf\(|testing\.Short\(\)|\.skip\(|\.only\(|it\.skip|describe\.skip|xit\(|xdescribe\(|fdescribe\(|fit\(|markTestSkipped|@pytest\.mark\.skip|@unittest\.skip|@Ignore|->skip\(|Skip::)'
+
+stop_check() {
+    # Already re-entered from a previous block: warn once more, then let it finish.
+    # Blocking forever would trap the session in a loop it cannot exit.
+    local reentered
+    reentered="$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false')"
+
+    git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+
+    # Diff base: the fork point from the default branch, so committed work in this
+    # session counts. Fall back to the working tree alone.
+    local base="" ref
+    for ref in origin/master origin/main master main; do
+        if git rev-parse --verify --quiet "$ref" >/dev/null 2>&1; then
+            base="$(git merge-base HEAD "$ref" 2>/dev/null || true)"
+            [ -n "$base" ] && break
+        fi
+    done
+
+    local diff="" names=""
+    if [ -n "$base" ] && [ "$base" != "$(git rev-parse HEAD 2>/dev/null)" ]; then
+        diff="$(git diff "$base" 2>/dev/null; git diff 2>/dev/null)"
+        names="$(git diff --name-status "$base" 2>/dev/null; git diff --name-status 2>/dev/null)"
+    else
+        diff="$(git diff HEAD 2>/dev/null; git diff 2>/dev/null)"
+        names="$(git diff --name-status HEAD 2>/dev/null; git diff --name-status 2>/dev/null)"
+    fi
+    [ -n "$diff" ] && [ -n "$names" ] || exit 0
+
+    local findings=""
+
+    local deleted
+    deleted="$(printf '%s\n' "$names" | awk '$1 ~ /^D/ {print $2}' | grep -E "$TEST_PATH_RE" | sort -u || true)"
+    if [ -n "$deleted" ]; then
+        findings="${findings}Deleted test files:
+$(printf '%s\n' "$deleted" | sed 's/^/  - /')
+"
+    fi
+
+    local skips
+    skips="$(printf '%s\n' "$diff" | grep -E '^\+' | grep -v '^+++' | grep -E "$SKIP_ADD_RE" | sed 's/^+[[:space:]]*//' | sort -u | head -20 || true)"
+    if [ -n "$skips" ]; then
+        findings="${findings}Added skipped or focused tests:
+$(printf '%s\n' "$skips" | sed 's/^/  + /')
+"
+    fi
+
+    [ -n "$findings" ] || exit 0
+
+    if [ "$reentered" = "true" ]; then
+        printf 'guard: test-weakening findings are still present:\n%s\nRecord them in the PR body or BLOCKED.md — they will not pass review.\n' "$findings" >&2
+        exit 0
+    fi
+
+    deny "guard: this session weakened the test suite.
+
+${findings}
+The dense-testing non-negotiables: never delete a test, skip a test, or loosen an assertion to
+get a green run. Restore them and make them pass.
+
+If a test genuinely contradicts the spec, that is a decision for a human — stop and report the
+contradiction (unattended runs: write specs/<TICKET>/BLOCKED.md and exit non-zero) instead of
+removing the test."
+}
+
+case "$MODE" in
+    pre-bash) pre_bash ;;
+    stop)     stop_check ;;
+    *)        echo "guard: unknown mode '${MODE}' — allowing" >&2; exit 0 ;;
+esac
+
+exit 0

@@ -1,0 +1,92 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version consistency
+        run: |
+          P=$(jq -r '.version' plugins/sdlc/.claude-plugin/plugin.json)
+          M=$(jq -r '.plugins[] | select(.name == "sdlc") | .version' .claude-plugin/marketplace.json)
+          [ "$P" = "$M" ] || (echo "Version mismatch: plugin=$P marketplace=$M" && exit 1)
+          echo "✓ $P"
+
+      - name: Skill frontmatter and trigger sets
+        run: |
+          for f in plugins/sdlc/skills/*/SKILL.md; do
+            head -1 "$f" | grep -q '^---' || (echo "Missing frontmatter in $f" && exit 1)
+            grep -qi 'use when' "$f" || (echo "Description has no 'Use when' sentence: $f" && exit 1)
+            echo "✓ $f"
+          done
+          for f in plugins/sdlc/skills/*/agents/eval-set.json; do
+            jq . "$f" > /dev/null || (echo "Invalid JSON: $f" && exit 1)
+            bad=$(jq '[.[] | select(.query == null or .should_trigger == null)] | length' "$f")
+            [ "$bad" -eq 0 ] || (echo "Missing required fields in $f" && exit 1)
+            neg=$(jq '[.[] | select(.should_trigger == false)] | length' "$f")
+            [ "$neg" -ge 1 ] || (echo "No negative trigger cases in $f" && exit 1)
+            echo "✓ $f"
+          done
+
+      - name: Lint shell scripts
+        run: |
+          shellcheck --version
+          shellcheck -S warning \
+            plugins/sdlc/hooks/guard \
+            plugins/sdlc/hooks/session-start \
+            plugins/sdlc/bin/aisdlc \
+            evals/harness/run.sh \
+            evals/harness/selftest.sh \
+            evals/harness/stub-claude
+
+      # No project-specific vocabulary may leak into a framework meant for any repository.
+      # The bracket in each word keeps this pattern from matching its own source line.
+      - name: Framework stays project-agnostic
+        run: |
+          if grep -rniE '\b(insl[y]|acme-cor[p])\b' --exclude-dir=.git .; then
+            echo "Found project-specific references in a framework meant for any repository"
+            exit 1
+          fi
+          echo "✓ no project-specific references"
+
+      # Owns the required-file lists and the instruction budgets.
+      - name: make validate
+        run: make validate
+
+  runner-and-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: evals/fixtures/sandbox/services/ledger/go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Runner selftest (stub claude, no API calls)
+        run: make selftest
+
+      - name: Sandbox fixture must be green
+        working-directory: evals/fixtures/sandbox
+        run: make verify
+
+      - name: Scenario specs must be approved and consistent
+        run: |
+          for d in evals/harness/scenarios/*/; do
+            spec="$d/spec.md"
+            grep -q '^status: approved' "$spec" || (echo "$spec is not approved" && exit 1)
+            grep -qE '^\| UC-[0-9]+ \|' "$spec" || (echo "$spec has no use-case rows" && exit 1)
+            t=$(jq -r '.ticket' "$d/scenario.json")
+            grep -q "^ticket: $t$" "$spec" || (echo "$spec ticket != scenario.json ($t)" && exit 1)
+            echo "✓ $d"
+          done

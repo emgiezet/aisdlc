@@ -1,0 +1,6 @@
+/.idea
+/.vscode
+.DS_Store
+
+# Queue state is per-checkout, never shared
+/.aisdlc/
