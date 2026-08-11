@@ -163,17 +163,30 @@ score() {
         fi
     fi
 
-    # qa_verdict
+    # qa_verdict. Accept the report from the branch or from the task directory: the runner copies
+    # it out before releasing the worktree, so an uncommitted report is still evidence the phase
+    # ran. Whether it was committed is a separate assertion — conflating the two makes a missing
+    # commit look like a QA phase that produced nothing.
     local want_verdict
     want_verdict="$(jq -r '.assert.qa_verdict // empty' "$scenario_json")"
     if [ -n "$want_verdict" ]; then
-        local report="$sandbox/specs/$ticket/qa-report.md"
-        if [ ! -f "$report" ]; then
-            assert_fail "qa verdict" "no qa-report.md — the QA phase produced nothing"
-        elif grep -qi "Verdict:[^A-Za-z]*$want_verdict" "$report"; then
-            assert_ok "qa verdict: $want_verdict"
-        else
+        local report="" committed="no" candidate
+        for candidate in "$sandbox/specs/$ticket/qa-report.md" \
+                         "$sandbox"/.aisdlc/tasks/*/qa-report.md; do
+            [ -f "$candidate" ] || continue
+            report="$candidate"; break
+        done
+        git -C "$sandbox" ls-tree -r --name-only HEAD 2>/dev/null \
+            | grep -qx "specs/$ticket/qa-report.md" && committed="yes"
+
+        if [ -z "$report" ]; then
+            assert_fail "qa verdict" "no qa-report.md anywhere — the QA phase produced nothing"
+        elif ! grep -qi "Verdict:[^A-Za-z]*$want_verdict" "$report"; then
             assert_fail "qa verdict" "expected $want_verdict, report says: $(grep -io 'verdict.*' "$report" | head -1)"
+        elif [ "$committed" = "no" ]; then
+            assert_fail "qa report committed" "verdict is $want_verdict but the report was never committed — it would vanish with the worktree"
+        else
+            assert_ok "qa verdict: $want_verdict (committed)"
         fi
     fi
 }

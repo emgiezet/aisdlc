@@ -51,6 +51,10 @@ of change the git history actually contains — proposes a router table for your
 writes `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md` and
 `.aisdlc/config.json` calibrated to *this* repository.
 
+Run it in an interactive session. Claude Code will ask before writing under `.claude/` and will not
+grant that to an unattended run — deliberately, since agent configuration is the last thing you want
+rewritten silently. `--yes` skips this command's own review gate; it does not skip that approval.
+
 That last point is the whole design: this framework deliberately ships **no** ready-made
 conventions for your stack. Copying someone else's playbooks is what makes generic harnesses
 useless. `make templates TARGET=…` will drop the raw templates in if you would rather fill them in

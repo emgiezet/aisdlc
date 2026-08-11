@@ -10,10 +10,26 @@ playbook, **rules** that attach by path, and a **profile** recording what this r
 This command produces them by reading *this* repository — not by copying someone else's
 conventions, which is the failure mode that makes generic harnesses useless.
 
-`$ARGUMENTS` is optional: a hint about what this repo is, if the code makes it ambiguous. Pass
-`--yes` to skip the approval gate and write the files directly — for bootstrapping repositories in
-bulk or from a script. It does not lower the bar for anything else, and you still have to read what
-it produced: an unreviewed router quietly misroutes every task that follows.
+## Arguments
+
+`$ARGUMENTS` may contain a hint about what this repo is, if the code makes it ambiguous, and may
+contain the flag `--yes`.
+
+**Check for `--yes` before you start, and decide now which mode you are in:**
+
+- **`--yes` present** → skip the Phase 2 review gate. Print the proposal, state that it was
+  auto-approved, and **continue straight into Phase 3 and Phase 4 in the same run.** Stopping after
+  the proposal in this mode is a failed run: it produced advice and no files.
+- **`--yes` absent** → stop at the Phase 2 gate and wait for a reply.
+
+Either way you still have to read what came out. An unreviewed router quietly misroutes every task
+that follows.
+
+**This command needs an interactive session.** Writing under `.claude/` requires approval that
+Claude Code will not grant to an unattended run — deliberately, because agent configuration is
+exactly what you do not want rewritten silently. `--yes` skips *this command's* review gate, not
+that approval. In a fully headless run, expect the files outside `.claude/` to land and the
+playbooks and rules to be refused; Phase 4 will tell you so rather than claiming success.
 
 **Load the `task-router` skill** — it holds the three-tier model, the line budgets this command
 must respect, and the rules for writing a router row that a weak model matches correctly.
@@ -71,10 +87,13 @@ Present, for approval, before writing anything:
 3. **The invariants** — six to eight, drawn from what this repo evidently already believes (its
    commit message style, its branch protection, its error conventions). Do not invent rules nobody
    here follows.
-4. **The profile answers** — tracker, contracts, decisions, glossary, specs directory. Show the
-   `none` values explicitly; they are the ones most worth correcting.
+4. **The profile answers** — tracker, contracts, decisions, glossary. Show the `none` values
+   explicitly; they are the ones most worth correcting. The specs directory is not one of these: it
+   is where the pipeline writes, it defaults to `specs/`, and it is never `none`.
 5. **What you will not create** and why — a playbook for work this repo does not do is noise that
    makes the router worse.
+
+**Interactive mode** — stop here:
 
 ```
 ⏸ SETUP REVIEW
@@ -84,16 +103,20 @@ Reply 'yes' to write these files, or describe what to change.
 **Write nothing before the reply.** A wrong router is worse than no router: it sends every future
 task to the wrong instructions, and nobody notices for weeks.
 
-With `--yes`, print the same proposal, note that it was auto-approved, and continue. Print it
-either way — it is the record of what the setup is based on.
+**Non-interactive mode (`--yes`)** — print `✓ auto-approved (--yes)` and continue immediately to
+Phase 3. Do not stop, do not ask, do not end the turn here.
 
 ---
 
 ## Phase 3: Write
 
-For each file: if it does not exist, write it. If it exists, **show the diff and ask** — never
-overwrite silently. `CLAUDE.md` is merged, not replaced: keep the project's own sections, insert
-the Task Router near the top, and leave the rest alone.
+Write the files **one at a time, in this order**, and confirm each one landed before starting the
+next. Do not batch them into a plan and announce them as done — a listed file is not a written file,
+and writes under `.claude/` can be refused by the runtime.
+
+For each: if it does not exist, write it. If it exists, **show the diff and ask** — never overwrite
+silently. `CLAUDE.md` is merged, not replaced: keep the project's own sections, insert the Task
+Router near the top, and leave the rest alone.
 
 - `CLAUDE.md` — from `templates/CLAUDE.md`. ≤ 90 lines. No stack conventions here; they belong in
   the rules files.
@@ -116,11 +139,19 @@ because a duplicated instruction that drifts is worse than a missing one.
 
 ## Phase 4: Verify and hand over
 
-1. **Run the verification commands you recorded.** If one fails on a clean checkout, the profile is
+1. **List what actually exists on disk.** `ls CLAUDE.md .claude/playbooks/ .claude/rules/
+   .claude/sdlc.md .aisdlc/config.json specs/`. Count the playbooks against the number of router
+   rows. **If any file is missing, this run failed** — say which files are missing and why (a
+   refused write, a tool error), and do not describe the setup as ready. A router pointing at
+   playbooks that do not exist is worse than no router: every task follows a dangling reference.
+2. **Run the verification commands you recorded.** If one fails on a clean checkout, the profile is
    wrong or the repo is red — say which, and do not paper over it.
-2. **Check the budgets** — report the line count of every file you wrote against its limit.
-3. **Check the routing works.** State which single row a sample task from this repo would match. If
+3. **Check the budgets** — report the line count of every file you wrote against its limit.
+4. **Check the routing works.** State which single row a sample task from this repo would match. If
    two rows both plausibly match it, the wording is wrong: fix it now.
+
+Report the outcome as `COMPLETE` only when step 1 finds every file. Otherwise report `INCOMPLETE`
+with the exact list of what is missing and the one command the developer should run to finish it.
 
 ```
 ## Set up for AI SDLC

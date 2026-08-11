@@ -77,16 +77,33 @@ Never round up to PASS. The queue's value depends on this verdict being trustwor
 who learns that PASS sometimes means "nearly" has to read every diff again, and the whole
 pipeline collapses back to manual review.
 
-**Then commit — the report is an artefact, not a scratch file.** `git add` the report plus any
-tests written in Phase 2, and commit as `test(<scope>): QA report and coverage gaps (<TICKET>)`.
-Leaving them uncommitted strands the evidence in a worktree, and `/sdlc:ship` refuses to run on
-a dirty tree, so an unattended task would stall here with the work already done.
+---
+
+## Phase 4: Commit the evidence [REQUIRED]
+
+The report is an artefact, not a scratch file. **This phase is not optional and the run is not
+finished without it.**
+
+```bash
+git add specs/<TICKET>/qa-report.md <any test files written in Phase 2>
+git commit -m "test(<scope>): QA report and coverage gaps (<TICKET>)"
+git status --porcelain     # must print nothing
+```
+
+An uncommitted report is a report that does not exist: the queue runs in a throwaway worktree, so
+the file disappears with it, and `/sdlc:ship` refuses to run on a dirty tree — an unattended task
+stalls here with all the work already done. Verify with `git status` before you report success; if
+it prints anything, you are not done.
+
+---
+
+## Phase 5: Hand off
 
 ```
 ## QA complete — <TICKET>
 Verdict: PASS | GAPS (<n> findings, <n> blocking)
 UC coverage: <n>/<n> automated · Tests: <before> → <after> · Skipped: 0
-Report: specs/<TICKET>/qa-report.md
+Report: specs/<TICKET>/qa-report.md (committed as <sha>)
 
 ## Next
 PASS → /sdlc:ship <TICKET>
