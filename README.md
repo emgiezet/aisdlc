@@ -23,7 +23,7 @@ costs too much, are in [`docs/ai-sdlc.md`](docs/ai-sdlc.md).
 ## Install
 
 ```bash
-git clone <this repo> ~/.local/share/aisdlc
+git clone git@github.com:emgiezet/aisdlc.git ~/.local/share/aisdlc
 ```
 
 In Claude Code:
