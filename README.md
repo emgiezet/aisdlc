@@ -156,4 +156,5 @@ no amount of reading catches.
 
 ## Licence
 
-None yet. If this is going anywhere beyond your own machine, add one before publishing.
+Proprietary — copyright © 2026 Maksymilian Małecki, all rights reserved. Using, copying,
+modifying or redistributing any part of this requires written consent. See [`LICENSE`](LICENSE).

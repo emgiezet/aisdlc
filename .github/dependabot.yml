@@ -1,0 +1,17 @@
+version: 2
+
+# Only the actions used by .github/workflows/validate.yml. They are pinned to a major
+# tag, so a bump is a real change worth a pull request.
+#
+# The sandbox under evals/fixtures/ has a go.mod and a package.json, and they are left
+# out on purpose: CI requires that fixture to be green (`make verify`) and the recorded
+# baseline in docs/ai-sdlc.md — 10/10 assertions, $0.59, 5.4 minutes — is only a baseline
+# because the fixture holds still. Bumping its dependencies on a schedule would move the
+# thing the evals measure against. Do not "fix" this by adding gomod and npm.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
