@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# hooks/session-start — SessionStart hook: stack detection + always-on agent rules.
+#
+# SessionStart plain-text stdout is injected into every new session's context (§3.2).
+# No JSON decision output — SessionStart does not gate tool calls.
+#
+# Outputs (plain text, ≤ 15 digest lines, < 1500 chars per §8.8):
+#   1. Detected stacks (one line)
+#   2. Missing tools warning (one line, §Z6 — once per session)
+#   3. AP-AGENT-* digest with reference to the agent-discipline skill
+
+set -uo pipefail
+
+HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PLUGIN_ROOT="$(cd "${HOOKS_DIR}/.." && pwd)"
+: "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
+: "${CLAUDE_PLUGIN_DATA:=${XDG_DATA_HOME:-$HOME/.local/share}/claude/plugins/slop-guard}"
+: "${CLAUDE_PROJECT_DIR:=${PWD}}"
+
+# shellcheck source=../lib/hook.sh
+. "${CLAUDE_PLUGIN_ROOT}/lib/hook.sh"
+# shellcheck source=../lib/state.sh
+. "${CLAUDE_PLUGIN_ROOT}/lib/state.sh"
+# shellcheck source=../lib/tools.sh
+. "${CLAUDE_PLUGIN_ROOT}/lib/tools.sh"
+
+# Read and cache stdin (hook JSON payload — one shot per §3.2).
+hook_input
+SESSION_ID="$(hook_field .session_id)"
+AGENT_ID="$(hook_field .agent_id)"
+: "${SESSION_ID:="unknown-$$"}"
+
+# --------------------------------------------------------------------------- #
+# Session lifecycle
+# --------------------------------------------------------------------------- #
+
+state_init "$SESSION_ID" "${AGENT_ID:-}"
+state_prune
+
+# --------------------------------------------------------------------------- #
+# Stack detection (§6.1–§6.9)
+# --------------------------------------------------------------------------- #
+
+_stacks=""
+_add_stack() { _stacks="${_stacks:+${_stacks} }$1"; }
+
+_d="${CLAUDE_PROJECT_DIR}"
+
+# PHP (§6.1)
+if [ -f "${_d}/composer.json" ]; then
+    _add_stack "php"
+    if [ -f "${_d}/artisan" ] || \
+       grep -qF '"laravel/framework"' "${_d}/composer.json" 2>/dev/null; then
+        _add_stack "laravel"
+    elif grep -qF '"symfony/framework-bundle"' "${_d}/composer.json" 2>/dev/null; then
+        _add_stack "symfony"
+    fi
+    grep -qF '"doctrine/orm"' "${_d}/composer.json" 2>/dev/null && _add_stack "doctrine"
+fi
+
+# Go (§6.2)
+[ -f "${_d}/go.mod" ] && _add_stack "go"
+
+# Python (§6.3)
+{ [ -f "${_d}/pyproject.toml" ] || [ -f "${_d}/uv.lock" ] || \
+  [ -f "${_d}/poetry.lock" ]    || [ -f "${_d}/setup.cfg" ] || \
+  ls "${_d}"/requirements*.txt >/dev/null 2>&1; } && _add_stack "python"
+
+# TypeScript / React / Node (§6.4–§6.5)
+if [ -f "${_d}/package.json" ]; then
+    _add_stack "node"
+    { [ -f "${_d}/tsconfig.json" ] || \
+      grep -qF '"typescript"' "${_d}/package.json" 2>/dev/null; } && _add_stack "typescript"
+    grep -qF '"react"' "${_d}/package.json" 2>/dev/null && _add_stack "react"
+fi
+
+# Terraform (§6.6)
+ls "${_d}"/*.tf >/dev/null 2>&1 && _add_stack "terraform"
+
+# Kubernetes / Helm (§6.7)
+[ -f "${_d}/Chart.yaml" ] && _add_stack "helm"
+
+# Docker (§6.8)
+[ -f "${_d}/Dockerfile" ] && _add_stack "docker"
+
+# CI — GitHub Actions / GitLab CI (§6.9)
+{ [ -d "${_d}/.github/workflows" ] || [ -f "${_d}/.gitlab-ci.yml" ]; } && _add_stack "ci"
+
+# --------------------------------------------------------------------------- #
+# Write profile.json
+# --------------------------------------------------------------------------- #
+
+_sdir="$(state_dir "$SESSION_ID" "${AGENT_ID:-}")"
+_stacks_json="$(printf '%s' "${_stacks:-}" | \
+    jq -Rcs 'split(" ") | map(select(length > 0))')"
+jq --argjson stacks "${_stacks_json}" '.stacks = $stacks' \
+    "${_sdir}/profile.json" > "${_sdir}/profile.json.tmp" \
+    && mv "${_sdir}/profile.json.tmp" "${_sdir}/profile.json"
+
+printf 'slop-guard: stacks detected: %s\n' "${_stacks:-none}"
+
+# --------------------------------------------------------------------------- #
+# Missing-tool report (§Z6 — listed once per session)
+# --------------------------------------------------------------------------- #
+
+_missing=""
+_lock_path="$(_tools_lock 2>/dev/null)" || _lock_path=""
+if [ -f "${_lock_path:-}" ]; then
+    while IFS= read -r _tool; do
+        [ -n "$_tool" ] || continue
+        _resolved="$(resolve_tool "$_tool" 2>/dev/null)" || _resolved=""
+        [ -z "$_resolved" ] && _missing="${_missing:+${_missing}, }${_tool}"
+    done <<< "$(lock_tools 2>/dev/null || true)"
+fi
+[ -n "$_missing" ] && \
+    printf 'slop-guard: tools unavailable: %s — run: slopguard doctor --install\n' \
+        "$_missing"
+
+# --------------------------------------------------------------------------- #
+# AP-AGENT-* digest (§8.8) — ≤ 15 lines, < 1500 chars
+#
+# Written as statements of fact (§3.2 — imperative text can trigger
+# prompt-injection defences). Full rules in skill agent-discipline.
+# --------------------------------------------------------------------------- #
+
+cat <<'DIGEST'
+slop-guard active — always-on rules (full text: skill agent-discipline)
+AP-AGENT-001: linter suppressions without a reason (≥10 chars) are blocked.
+AP-AGENT-002: lowering tool thresholds or growing lint baselines requires human review.
+AP-AGENT-003: skipping or deleting tests to make CI green requires confirmation.
+AP-AGENT-004: new dependency installs need confirmation; curl|sh is always blocked.
+AP-AGENT-005: .env*, private keys, and credential files are denied for reading.
+AP-AGENT-006: hard-coded credentials in written files are detected and blocked.
+AP-AGENT-007: edits outside the targeted diff scope are flagged at turn end.
+DIGEST
