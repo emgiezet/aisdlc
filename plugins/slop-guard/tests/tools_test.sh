@@ -268,3 +268,122 @@ expected_after="${FAKE_DATA_MM}/tools/fake-tool/current/fake-tool"
 [ "$resolved_after" = "$expected_after" ] \
     && ok "resolve_tool finds 9.9.9 after repair install" \
     || bad "repair install" "got '${resolved_after}'"
+
+# --------------------------------------------------------------------------- #
+printf '\ninstaller: mv failure on same-version reinstall preserves live install\n'
+# --------------------------------------------------------------------------- #
+
+# Pre-install 9.9.9 — this becomes the live install that must survive.
+FAKE_DATA_REINST="${TEST_WORK}/plugin-data-reinst"
+(
+    TMPDIR="${TEST_WORK}/tmpdir-reinst1"; mkdir -p "$TMPDIR"
+    TOOLS_LOCK="$FAKE_LOCK"
+    CLAUDE_PLUGIN_DATA="$FAKE_DATA_REINST"
+    install_tool "fake-tool" >/dev/null 2>&1
+)
+
+reinst_version_dir="${FAKE_DATA_REINST}/tools/fake-tool/9.9.9"
+reinst_current="${FAKE_DATA_REINST}/tools/fake-tool/current"
+
+# Simulate a same-version reinstall where the atomic mv fails.
+# Override _mv_atomic_symlink in the subshell — both install_tool and the
+# helper are bash functions, so the subshell inherits and can override them.
+(
+    _mv_atomic_symlink() { return 1; }
+    TMPDIR="${TEST_WORK}/tmpdir-reinst2"; mkdir -p "$TMPDIR"
+    TOOLS_LOCK="$FAKE_LOCK"
+    CLAUDE_PLUGIN_DATA="$FAKE_DATA_REINST"
+    install_tool "fake-tool" >/dev/null 2>&1
+); rc_reinst=$?
+
+[ "$rc_reinst" -ne 0 ] \
+    && ok "mv-failure reinstall: install_tool returns non-zero" \
+    || bad "mv-failure reinstall exit" "expected non-zero, got $rc_reinst"
+
+reinst_target="$(readlink "$reinst_current" 2>/dev/null)"
+[ "$reinst_target" = "$reinst_version_dir" ] \
+    && ok "mv-failure reinstall: current still resolves to live version dir" \
+    || bad "mv-failure reinstall symlink" "got '${reinst_target}', want '${reinst_version_dir}'"
+
+[ -x "${reinst_version_dir}/fake-tool" ] \
+    && ok "mv-failure reinstall: binary still executable" \
+    || bad "mv-failure reinstall binary" "not executable: ${reinst_version_dir}/fake-tool"
+
+# --------------------------------------------------------------------------- #
+printf '\ninstaller: zip with hidden top-level sibling is not silently discarded\n'
+# --------------------------------------------------------------------------- #
+
+# Build a zip whose top level is one directory (fake-tool-9.9.9/) plus one
+# dotfile (.config).  ls -1 counts only the visible directory (count=1), so
+# the strip branch runs and cp silently drops .config.  ls -1A (the fix)
+# counts 2 and takes the flat-copy path, preserving both entries.
+#
+# The lockfile's bin field is "fake-tool-9.9.9/fake-tool": after a flat copy
+# the binary lives at that sub-path inside version_dir, so the binary check
+# passes with the fix and fails with the old code (strip moves the binary up
+# one level, but the check looks in the wrong place).
+DOTZIP_BUILD="${TEST_WORK}/dotzip-build"
+DOTZIP_SUBDIR="${DOTZIP_BUILD}/fake-tool-9.9.9"
+mkdir -p "$DOTZIP_SUBDIR"
+printf '#!/bin/sh\nprintf "fake-tool 9.9.9\\n"\n' > "${DOTZIP_SUBDIR}/fake-tool"
+chmod +x "${DOTZIP_SUBDIR}/fake-tool"
+printf 'hidden config\n' > "${DOTZIP_BUILD}/.config"
+DOTZIP="${TEST_WORK}/fake-dotfile.zip"
+( cd "$DOTZIP_BUILD" && zip -q "$DOTZIP" fake-tool-9.9.9/fake-tool .config )
+DOTZIP_HASH="$(_sha256 "$DOTZIP")"
+
+DOTZIP_LOCK="${TEST_WORK}/dotzip.lock.json"
+jq -n \
+    --arg url "file://${DOTZIP}" \
+    --arg hash "$DOTZIP_HASH" \
+    '{schema:1, tools:{"fake-tool":{version:"9.9.9",
+        assets:{"linux-amd64":{url:$url,sha256:$hash},
+                "linux-arm64":{url:$url,sha256:$hash},
+                "darwin-arm64":{url:$url,sha256:$hash}},
+        bin:"fake-tool-9.9.9/fake-tool"}}}' > "$DOTZIP_LOCK"
+
+FAKE_DATA_DOTZIP="${TEST_WORK}/plugin-data-dotzip"
+(
+    TMPDIR="${TEST_WORK}/tmpdir-dotzip"; mkdir -p "$TMPDIR"
+    TOOLS_LOCK="$DOTZIP_LOCK"
+    CLAUDE_PLUGIN_DATA="$FAKE_DATA_DOTZIP"
+    install_tool "fake-tool" >/dev/null 2>&1
+); rc_dotzip=$?
+
+[ "$rc_dotzip" -eq 0 ] \
+    && ok "zip-dotfile: install exits zero" \
+    || bad "zip-dotfile install" "expected 0, got $rc_dotzip"
+
+dotzip_version_dir="${FAKE_DATA_DOTZIP}/tools/fake-tool/9.9.9"
+[ -f "${dotzip_version_dir}/.config" ] \
+    && ok "zip-dotfile: .config survives in version dir" \
+    || bad "zip-dotfile .config" "missing: ${dotzip_version_dir}/.config"
+
+# --------------------------------------------------------------------------- #
+printf '\ndoctor: empty-resolution after install does not blame precedence\n'
+# --------------------------------------------------------------------------- #
+
+# project-only source mode: step 2 (plugin binary) is always skipped, so a
+# tool installed to the plugin data dir cannot be resolved.  The post-install
+# message must say the binary is unreachable in the current source mode, not
+# that a higher-priority binary is competing (none is).
+FAKE_DATA_PO2="${TEST_WORK}/plugin-data-po2"
+po2_out="${TEST_WORK}/po2-output.txt"
+(
+    export TMPDIR="${TEST_WORK}/tmpdir-po2"; mkdir -p "$TMPDIR"
+    export TOOLS_LOCK="$FAKE_LOCK"
+    export CLAUDE_PLUGIN_DATA="$FAKE_DATA_PO2"
+    export CLAUDE_PROJECT_DIR="$EMPTY_PROJECT_DIR"
+    export CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="project-only"
+    export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+    "${PLUGIN_ROOT}/bin/slopguard" doctor --install 2>/dev/null
+) > "$po2_out" 2>&1
+
+if grep -qF "higher-priority binary" "$po2_out"; then
+    bad "project-only post-install message" "blamed precedence; want 'not reachable' message"
+elif grep -q "not reachable in the current source mode" "$po2_out"; then
+    ok "project-only: empty-resolution does not blame precedence"
+else
+    bad "project-only post-install message" \
+        "neither expected phrase; output: $(cat "$po2_out")"
+fi

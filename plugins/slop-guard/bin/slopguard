@@ -119,12 +119,16 @@ cmd_doctor() {
                 if install_tool "$tool"; then
                     # Re-resolve: a higher-priority binary (e.g. a project binary at the wrong
                     # version) can still win after install, making the tool effectively absent.
+                    # Also: source mode project-only skips the plugin dir entirely, so the
+                    # installed binary is unreachable even though no competing binary exists.
                     local re_resolved; re_resolved="$(resolve_tool "$tool")"
                     if [ -n "$re_resolved" ] && tool_version_matches "$tool" "$re_resolved"; then
                         say "    → installed ${tool} ${expected_version}"
                         fail_count=$((fail_count - 1))
-                    else
+                    elif [ -n "$re_resolved" ]; then
                         say "    → installed ${tool} ${expected_version} but a higher-priority binary still wins — see above"
+                    else
+                        say "    → installed ${tool} ${expected_version} but the binary is not reachable in the current source mode"
                     fi
                 else
                     say "    → install FAILED"
