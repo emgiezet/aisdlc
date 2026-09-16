@@ -3,11 +3,12 @@
 # Output format: DENY_PATTERNS=( "pat1" "pat2" ) ASK_PATTERNS=( "pat1" )
 
 printf 'DENY_PATTERNS=('
-# Extract only 'pattern:' fields in deny: block, excluding src_pattern/sink_pattern
+# Extract only lines that match 'pattern: ' (with optional whitespace)
+# and ignore lines that start with 'src_pattern:' or 'sink_pattern:'
 sed -n '/deny:/,/ask:/p' "$1" | grep -E '^[[:space:]]*pattern:' | sed "s/.*pattern: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
 printf ')\n'
 
 printf 'ASK_PATTERNS=('
-# Extract only 'pattern:' fields in ask: block
+# Extract only lines that match 'pattern: ' (with optional whitespace)
 sed -n '/ask:/,$p' "$1" | grep -E '^[[:space:]]*pattern:' | sed "s/.*pattern: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
 printf ')\n'
