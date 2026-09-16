@@ -1,8 +1,8 @@
 ---
 name: qa
 description: >
-  Use after /sdlc:implement to independently verify an implementation against its spec and
-  obtain a PASS/GAPS verdict before opening a PR or reviewing agent-written code.
+  Use when an implementation is ready for independent verification against its spec, after
+  /sdlc:implement and before opening a PR or reviewing agent-written code.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 

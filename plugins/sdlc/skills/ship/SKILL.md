@@ -1,8 +1,8 @@
 ---
 name: ship
 description: >
-  Use after /sdlc:qa passes to push the implementation branch and open a draft PR with the
-  spec and QA verdict attached, or from the aisdlc queue as the final delivery step.
+  Use when /sdlc:qa has passed and the implementation branch is ready to be pushed as a draft
+  PR with the spec and QA verdict attached, or from the aisdlc queue as the final delivery step.
 allowed-tools: Bash(git:*), Bash(gh:*), Read, Write, Grep, Glob
 ---
 
