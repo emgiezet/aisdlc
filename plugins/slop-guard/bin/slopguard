@@ -42,6 +42,71 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installe
 . "${CLAUDE_PLUGIN_ROOT}/lib/finding.sh"
 
 # --------------------------------------------------------------------------- #
+# session-start
+# --------------------------------------------------------------------------- #
+
+cmd_session_start() {
+    hook_input
+    # Debug
+    echo "cmd_session_start: PROJECT_DIR=${CLAUDE_PROJECT_DIR:-not set}" >&2
+    echo "cmd_session_start: PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-not set}" >&2
+    
+    local session_id="$(hook_field .session_id)"
+    local agent_id="$(hook_field .agent_id)"
+    : "${session_id:="unknown-$$"}"
+
+    state_init "$session_id" "${agent_id:-}"
+    state_prune
+
+    # Debug
+    ls -ld "$(state_dir "$session_id" "${agent_id:-}")" >&2
+    
+    local _stacks="" _php_cfg="baseline" _go_cfg="baseline"
+    _add_stack() { _stacks="${_stacks:+${_stacks} }$1"; }
+    local _d="${CLAUDE_PROJECT_DIR:-.}"
+
+    if [ -f "${_d}/composer.json" ]; then
+        _add_stack "php"
+        [ -f "${_d}/artisan" ] || grep -qF '"laravel/framework"' "${_d}/composer.json" 2>/dev/null && _add_stack "laravel"
+        # PHP config resolution
+        if [ -f "${_d}/phpstan.neon" ] || [ -f "${_d}/phpstan.neon.dist" ]; then
+            _php_cfg="project"
+        fi
+    fi
+    if [ -f "${_d}/go.mod" ]; then
+        _add_stack "go"
+        # Go config resolution
+        if [ -f "${_d}/.golangci.yml" ] || [ -f "${_d}/.golangci.yaml" ]; then
+            _go_cfg="project"
+        fi
+    fi
+
+    local _sdir="$(state_dir "$session_id" "${agent_id:-}")"
+    local _tools_json="$(lock_tools | jq -R . | jq -s .)"
+    
+    jq \
+        --argjson stacks "$(printf '%s' "${_stacks:-}" | jq -Rcs 'split(" ") | map(select(length > 0))')" \
+        --arg php_cfg "$_php_cfg" \
+        --arg go_cfg "$_go_cfg" \
+        --argjson tools "$_tools_json" \
+        '{stacks: $stacks, tools: $tools, config_sources: {php: $php_cfg, go: $go_cfg}}' \
+        > "${_sdir}/profile.json.tmp" \
+        && mv "${_sdir}/profile.json.tmp" "${_sdir}/profile.json"
+
+    printf 'slop-guard: stacks detected: %s\n' "${_stacks:-none}"
+    cat <<'DIGEST'
+slop-guard active — always-on rules (full text: skill agent-discipline)
+AP-AGENT-001: linter suppressions without a reason (≥10 chars) are blocked.
+AP-AGENT-002: lowering tool thresholds or growing lint baselines requires human review.
+AP-AGENT-003: skipping or deleting tests to make CI green requires confirmation.
+AP-AGENT-004: new dependency installs need confirmation; curl|sh is always blocked.
+AP-AGENT-005: .env*, private keys, and credential files are denied for reading.
+AP-AGENT-006: hard-coded credentials in written files are detected and blocked.
+AP-AGENT-007: edits outside the targeted diff scope are flagged at turn end.
+DIGEST
+}
+
+# --------------------------------------------------------------------------- #
 # doctor
 # --------------------------------------------------------------------------- #
 
@@ -57,8 +122,6 @@ cmd_doctor() {
 
     detect_platform >/dev/null || die "unsupported platform"
 
-    # Guard against a missing or malformed lockfile — an empty tool list would
-    # produce a false-green "All tools present" and is the exact inverse of §Z6.
     local lock_path; lock_path="$(_tools_lock)" || die "CLAUDE_PLUGIN_ROOT is not set"
     [ -f "$lock_path" ] || die "lockfile missing: $lock_path"
 
@@ -80,7 +143,6 @@ cmd_doctor() {
         if [ -z "$resolved" ]; then
             fail_this=1
             say "  ${tool}  source: missing  lockfile: ${expected_version}  [NOT FOUND]  config: ${config_label}"
-            # §9.1: log any PATH binary that was found but rejected for version mismatch.
             local path_bin
             if path_bin="$(command -v "$tool" 2>/dev/null)"; then
                 local path_ver; path_ver="$( { "$path_bin" --version 2>&1 || true; } | head -1 )"
@@ -88,7 +150,6 @@ cmd_doctor() {
             fi
         else
             local source_label version_label match_label
-            # Determine where the resolved binary came from.
             local plugin_pfx="${CLAUDE_PLUGIN_DATA:-__NO_PLUGIN_DATA__}/tools/"
             case "$resolved" in
                 "${plugin_pfx}"*)
@@ -117,16 +178,11 @@ cmd_doctor() {
             say "  ${tool}  source: ${source_label}  version: ${version_label}  [${match_label}]  config: ${config_label}"
         fi
 
-        # Install (or reinstall) when the tool is missing or version-mismatched.
         if [ "$fail_this" -eq 1 ]; then
             fail_count=$((fail_count + 1))
             if [ "$do_install" -eq 1 ]; then
                 say "    → installing..."
                 if install_tool "$tool"; then
-                    # Re-resolve: a higher-priority binary (e.g. a project binary at the wrong
-                    # version) can still win after install, making the tool effectively absent.
-                    # Also: source mode project-only skips the plugin dir entirely, so the
-                    # installed binary is unreachable even though no competing binary exists.
                     local re_resolved; re_resolved="$(resolve_tool "$tool")"
                     if [ -n "$re_resolved" ] && tool_version_matches "$tool" "$re_resolved"; then
                         say "    → installed ${tool} ${expected_version}"
@@ -157,10 +213,6 @@ cmd_doctor() {
     fi
 }
 
-# --------------------------------------------------------------------------- #
-# help
-# --------------------------------------------------------------------------- #
-
 cmd_help() {
     cat <<USAGE
 slopguard ${VERSION} — anti-pattern detection and gate for agent-written code.
@@ -182,8 +234,6 @@ Tool resolution order (tool_source=project-first):
 See tools/tools.lock.json for pinned versions and sha256 hashes.
 USAGE
 }
-
-# --------------------------------------------------------------------------- #
 
 need jq
 

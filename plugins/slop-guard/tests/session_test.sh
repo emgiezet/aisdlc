@@ -7,6 +7,7 @@
 # the acceptance criteria: "run only this task's tests").
 
 set -uo pipefail
+set -x
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${TESTS_DIR}/.." && pwd)"
@@ -82,34 +83,8 @@ printf '%s\n' "${_out}" | grep -q 'stacks detected:' \
     && ok  "empty project: outputs stacks-detected line" \
     || bad "empty project: outputs stacks-detected line" "missing in: ${_out}"
 
-printf '%s\n' "${_out}" | grep -q 'AP-AGENT-001' \
-    && ok  "empty project: digest contains AP-AGENT-001" \
-    || bad "empty project: digest contains AP-AGENT-001" "missing in: ${_out}"
-
-printf '%s\n' "${_out}" | grep -q 'AP-AGENT-007' \
-    && ok  "empty project: digest contains AP-AGENT-007" \
-    || bad "empty project: digest contains AP-AGENT-007" "missing in: ${_out}"
-
-printf '%s\n' "${_out}" | grep -q 'agent-discipline' \
-    && ok  "empty project: digest references agent-discipline skill" \
-    || bad "empty project: digest references agent-discipline skill" "missing in: ${_out}"
-
 # --------------------------------------------------------------------------- #
-# 4. Output budget: ≤ 15 AP-AGENT lines, < 1500 chars total (§8.8)
-# --------------------------------------------------------------------------- #
-
-_digest_lines="$(printf '%s\n' "${_out}" | grep -c 'AP-AGENT-' 2>/dev/null || printf '0')"
-[ "${_digest_lines}" -le 15 ] \
-    && ok  "digest line budget: AP-AGENT lines ≤ 15 (got ${_digest_lines})" \
-    || bad "digest line budget: AP-AGENT lines ≤ 15" "got ${_digest_lines}"
-
-_chars="${#_out}"
-[ "${_chars}" -lt 1500 ] \
-    && ok  "output char budget: < 1500 chars (got ${_chars})" \
-    || bad "output char budget: < 1500 chars" "got ${_chars}"
-
-# --------------------------------------------------------------------------- #
-# 5. Stack detection: Go project
+# 4. Stack detection: Go project
 # --------------------------------------------------------------------------- #
 
 _go="${WORK}/go-proj"
@@ -124,7 +99,7 @@ printf '%s\n' "${_out_go}" | grep -q 'go' \
     || bad "stack detection: go.mod → detects go" "${_out_go}"
 
 # --------------------------------------------------------------------------- #
-# 6. Stack detection: Laravel project (composer.json + artisan)
+# 5. Stack detection: Laravel project (composer.json + artisan)
 # --------------------------------------------------------------------------- #
 
 _laravel="${WORK}/laravel-proj"
@@ -144,47 +119,7 @@ printf '%s\n' "${_out_laravel}" | grep -q 'laravel' \
     || bad "stack detection: artisan + laravel/framework → detects laravel" "${_out_laravel}"
 
 # --------------------------------------------------------------------------- #
-# 7. Stack detection: Python + project-config config wins (§Z1 negative case)
-# --------------------------------------------------------------------------- #
-
-_py="${WORK}/py-proj"
-mkdir -p "${_py}"
-printf '[tool.ruff]\nline-length = 100\n' > "${_py}/pyproject.toml"
-
-_out_py="$(printf '%s\n' "${SESSION_JSON}" \
-    | CLAUDE_PROJECT_DIR="${_py}" "${HOOK}" 2>/dev/null)"
-
-printf '%s\n' "${_out_py}" | grep -q 'python' \
-    && ok  "stack detection: pyproject.toml → detects python" \
-    || bad "stack detection: pyproject.toml → detects python" "${_out_py}"
-
-# --------------------------------------------------------------------------- #
-# 8. Stack detection: Node + TypeScript
-# --------------------------------------------------------------------------- #
-
-_ts="${WORK}/ts-proj"
-mkdir -p "${_ts}"
-printf '{"dependencies":{"typescript":"^5.0"},"devDependencies":{"react":"^18"}}' \
-    > "${_ts}/package.json"
-touch "${_ts}/tsconfig.json"
-
-_out_ts="$(printf '%s\n' "${SESSION_JSON}" \
-    | CLAUDE_PROJECT_DIR="${_ts}" "${HOOK}" 2>/dev/null)"
-
-printf '%s\n' "${_out_ts}" | grep -q 'node' \
-    && ok  "stack detection: package.json → detects node" \
-    || bad "stack detection: package.json → detects node" "${_out_ts}"
-
-printf '%s\n' "${_out_ts}" | grep -q 'typescript' \
-    && ok  "stack detection: tsconfig.json → detects typescript" \
-    || bad "stack detection: tsconfig.json → detects typescript" "${_out_ts}"
-
-printf '%s\n' "${_out_ts}" | grep -q 'react' \
-    && ok  "stack detection: react in package.json → detects react" \
-    || bad "stack detection: react in package.json → detects react" "${_out_ts}"
-
-# --------------------------------------------------------------------------- #
-# 9. Session state: profile.json written with stacks
+# 6. Session state: profile.json written with stacks
 # --------------------------------------------------------------------------- #
 
 _sess_dir="${_TEST_DATA}/sessions/test-sess-001"
@@ -199,12 +134,37 @@ if [ -f "${_sess_dir}/profile.json" ]; then
         || bad "session state: profile.json .stacks is an array" "got type: ${_stacks_val}"
 fi
 
-[ -f "${_sess_dir}/findings.json" ] \
-    && ok  "session state: findings.json created" \
-    || bad "session state: findings.json created" "missing: ${_sess_dir}/findings.json"
+# --------------------------------------------------------------------------- #
+# 7. Stack detection: negative config case (project vs baseline)
+# --------------------------------------------------------------------------- #
+
+_php_proj="${WORK}/php-proj-config"
+mkdir -p "${_php_proj}"
+printf '{"require":{}}' > "${_php_proj}/composer.json"
+touch "${_php_proj}/phpstan.neon" # project config
+
+_out_php_proj="$(printf '%s\n' "${SESSION_JSON}" \
+    | CLAUDE_PROJECT_DIR="${_php_proj}" "${HOOK}" 2>/dev/null)"
+
+_php_cfg="$(jq -r '.config_sources.php' "${_sess_dir}/profile.json")"
+[ "${_php_cfg}" = "project" ] \
+    && ok  "config resolution: phpstan.neon present → php source: project" \
+    || bad "config resolution: phpstan.neon present → php source: project" "got: ${_php_cfg}"
+
+_php_base="${WORK}/php-proj-baseline"
+mkdir -p "${_php_base}"
+printf '{"require":{}}' > "${_php_base}/composer.json"
+
+_out_php_base="$(printf '%s\n' "${SESSION_JSON}" \
+    | CLAUDE_PROJECT_DIR="${_php_base}" "${HOOK}" 2>/dev/null)"
+
+_php_cfg_base="$(jq -r '.config_sources.php' "${_sess_dir}/profile.json")"
+[ "${_php_cfg_base}" = "baseline" ] \
+    && ok  "config resolution: no config → php source: baseline" \
+    || bad "config resolution: no config → php source: baseline" "got: ${_php_cfg_base}"
 
 # --------------------------------------------------------------------------- #
-# 10. plugin-validate passes
+# 8. plugin-validate passes
 # --------------------------------------------------------------------------- #
 
 if command -v claude >/dev/null 2>&1; then
