@@ -1,0 +1,171 @@
+# rules/policies/write.yaml — pre-write gate policy (§7.2, §6.10, §8.8)
+#
+# Authoritative specification for hooks/pre-write.
+# Embedded patterns in the hook are kept in sync with this file.
+#
+# Decision precedence: deny > ask > (pass — logged at Stop as info)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §6.10  Secret scanning
+# ─────────────────────────────────────────────────────────────────────────────
+secrets:
+  scanner: betterleaks          # primary; fallback: gitleaks; absent → fail-open (Z6)
+  config: configs/baseline/.gitleaks.toml
+  command:
+    - stdin
+    - --report-format
+    - json
+    - --report-path
+    - "-"
+    - --redact
+    - --no-banner
+  result: deny                  # any finding → deny; reason names type, never value
+  remediation: "Use an environment variable or a secret manager instead."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §7.2B  Suppression comments
+# ─────────────────────────────────────────────────────────────────────────────
+# Logic: compare new content to old (disk for Write; old_string for Edit).
+# detect added occurrences of each pattern, then check for justification.
+#
+# deny  — comment added with no reason.
+# ask   — comment added with reason but suppresses a blocker-severity rule.
+# pass  — comment added with reason for warn/error rule → Stop report (info).
+#
+# Required reason format per language:
+#   go:     //nolint:rule // reason: <≥10 chars>
+#   python: # noqa: RULE -- reason: <≥10 chars>
+#   php:    @directive (reason: <≥10 chars>)
+#   js/ts:  directive -- reason: <≥10 chars>  OR  @ts-expect-error <≥10 chars>
+#   iac:    directive reason: <≥10 chars>
+suppressions:
+  php:
+    extensions: [php, blade]
+    patterns:
+      - "@phpstan-ignore"
+      - "@phpstan-ignore-line"
+      - "@phpstan-ignore-next-line"
+      - "@psalm-suppress"
+      - "phpcs:ignore"
+      - "@SuppressWarnings(PHPMD"
+    reason_grep_E: '\(reason:[[:space:]]*.{10,}\)'
+    reason_example: "// @phpstan-ignore argument.type (reason: safe because input is validated)"
+
+  go:
+    extensions: [go]
+    patterns:
+      - "//nolint"
+      - "// #nosec"
+      - "//#nosec"
+    reason_grep_E: 'reason:[[:space:]]*.{10,}'
+    reason_example: "//nolint:gosec // reason: input is validated upstream before this call"
+
+  python:
+    extensions: [py]
+    patterns:
+      - "# noqa"
+      - "# nosec"
+      - "# type: ignore"
+      - "# pyright: ignore"
+      - "# ty: ignore"
+      - "# pragma: no cover"
+    reason_grep_E: '--[[:space:]]*reason:[[:space:]]*.{10,}'
+    reason_example: "# noqa: S608 -- reason: query is fully parameterised, no user data"
+
+  js_ts:
+    extensions: [js, mjs, cjs, jsx, ts, tsx]
+    patterns:
+      - "eslint-disable"
+      - "@ts-ignore"
+      - "@ts-nocheck"
+      - "@ts-expect-error"
+    reason_grep_E: '--[[:space:]]*reason:[[:space:]]*.{10,}|@ts-expect-error[[:space:]].{10,}'
+    reason_example: "// eslint-disable-next-line no-console -- reason: debug utility only"
+
+  iac:
+    extensions: [tf, hcl, yaml, yml]
+    names: [Dockerfile]
+    patterns:
+      - "checkov:skip="
+      - "# tflint-ignore"
+      - "# kics-scan ignore"
+      - "# hadolint ignore="
+      - "# zizmor: ignore"
+    reason_grep_E: 'reason:[[:space:]]*.{10,}'
+    reason_example: "# checkov:skip=CKV_AWS_18 reason: logging disabled intentionally per ADR-42"
+
+  opengrep:
+    # Applies to any file type (Semgrep/Opengrep inline suppressions).
+    patterns:
+      - "nosemgrep"
+      - "nosec"
+    reason_grep_E: 'reason:[[:space:]]*.{10,}'
+    reason_example: "# nosemgrep: rule-id -- reason: reviewed, confirmed not exploitable"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §7.2C  Protected files → ask
+# ─────────────────────────────────────────────────────────────────────────────
+# Reason: "lowering quality gates must be reviewed by a human"
+protected_files:
+  # Always ask — unconditional.
+  tool_configs:
+    - "phpstan*.neon*"
+    - "psalm*.xml*"
+    - ".golangci.*"
+    - "eslint.config.*"
+    - ".eslintrc*"
+    - "ruff.toml"
+    - ".ruff.toml"
+    - ".tflint.hcl"
+    - ".checkov.yaml"
+    - ".kube-linter.yaml"
+    - ".hadolint.yaml"
+    - "zizmor.yml"
+    - ".gitleaks.toml"
+    - ".sqlfluff"
+
+  baselines:
+    - "phpstan-baseline.neon"
+    - "psalm-baseline.xml"
+    - ".eslintcache"
+    - "*.baseline.json"
+
+  # Ask only when condition is met.
+  conditional:
+    pyproject_toml:
+      filename: "pyproject.toml"
+      trigger_when_diff_touches:
+        - "[tool.ruff]"
+        - "[tool.mypy]"
+        - "[tool.pyright]"
+
+    tsconfig:
+      pattern: "tsconfig*.json"
+      trigger_when_weakens_strict: true
+      # "weakens strict" = adds `"strict": false` that wasn't there,
+      # or removes `"strict": true` that was there.
+
+    ci_removes_step:
+      patterns:
+        - ".github/workflows/*"
+        - ".gitlab-ci.yml"
+      # Ask when the write removes occurrences of these keywords.
+      step_keywords:
+        - lint
+        - test
+        - security
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §7.2D  Test-skip markers → ask
+# ─────────────────────────────────────────────────────────────────────────────
+# Applied to any file type; detected by comparing new vs old occurrence counts.
+test_skip_markers:
+  - markTestSkipped             # PHPUnit
+  - markTestIncomplete          # PHPUnit
+  - "t.Skip("                   # Go testing
+  - "it.skip("                  # Jest / Mocha / Vitest
+  - "describe.skip("            # Jest / Mocha / Vitest
+  - "test.skip("                # Jest / Mocha / Vitest / pytest
+  - "xit("                      # Jasmine (word-boundary matched in hook)
+  - "@pytest.mark.skip"         # pytest
+  - "@unittest.skip"            # Python unittest
