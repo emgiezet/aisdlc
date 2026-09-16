@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Convert bash.yaml into a bash sourceable file.
+# Convert bash.yaml into bash arrays.
+# Output format: DENY_PATTERNS=( "pat1" "pat2" ) ASK_PATTERNS=( "pat1" )
 
-printf 'check_patterns() {\n'
-# Extract only lines with pattern:
-sed -n '/deny:/,/ask:/p' "$1" | sed '1d' | grep 'pattern:' | while read -r line; do
-    pat=$(echo "$line" | sed "s/.*pattern: '\(.*\)'/\1/")
-    printf '  [[ "$1" =~ %s ]] && return 1\n' "$pat"
-done
-printf '  return 0\n}\n'
+printf 'DENY_PATTERNS=('
+# Extract all pattern fields in deny: block
+sed -n '/deny:/,/ask:/p' "$1" | grep -E '(pattern|src_pattern|sink_pattern):' | sed "s/.*: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
+printf ')\n'
+
+printf 'ASK_PATTERNS=('
+# Extract all pattern fields in ask: block
+sed -n '/ask:/,$p' "$1" | grep -E '(pattern|src_pattern|sink_pattern):' | sed "s/.*: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
+printf ')\n'
