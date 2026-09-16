@@ -1,4 +1,17 @@
 {
   "description": "Slop Guard: prevention, detection and gating",
-  "hooks": {}
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-read",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }
