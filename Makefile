@@ -51,7 +51,12 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 		grok_dir="$${grok_path#./}"; \
 		test -d "$$grok_dir" \
 			|| (echo "  ✗ $$plugin: Grok source.path $$grok_path not found" && exit 1); \
-		echo "  ✓ Grok: $$plugin → $$grok_dir"; \
+		test -f "$$grok_dir/plugin.json" \
+			|| (echo "  ✗ $$plugin: $$grok_dir/plugin.json missing" && exit 1); \
+		grok_mname=$$(jq -r '.name' "$$grok_dir/plugin.json"); \
+		test "$$grok_mname" = "$$plugin" \
+			|| (echo "  ✗ $$plugin: Grok manifest name '$$grok_mname' != marketplace entry" && exit 1); \
+		echo "  ✓ Grok: $$plugin → $$grok_dir (name: $$grok_mname)"; \
 	done
 	@SDLC_CLAUDE_V=$$(jq -r '.version' $(PLUGIN_JSON)); \
 	 SDLC_PORT_V=$$(jq -r '.version' $(PORTABLE_SDLC_JSON)); \
