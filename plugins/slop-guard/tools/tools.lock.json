@@ -1,0 +1,24 @@
+{
+  "_comment": "Rationale: Z6 makes policy enforcement fail-closed; a missing jq would silently turn every JSON-based policy into a no-op — the one failure mode this plugin cannot have. shellcheck is the dispatcher's own lint gate. Every other tool is pinned in the stage that first uses it so that its lockfile entry, baseline config and fixtures always land together.",
+  "schema": 1,
+  "tools": {
+    "jq": {
+      "version": "1.8.2",
+      "assets": {
+        "linux-amd64":  { "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64",   "sha256": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f" },
+        "linux-arm64":  { "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-arm64",   "sha256": "8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309" },
+        "darwin-arm64": { "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-macos-arm64",   "sha256": "2d75340ba57a4b4b4c8708a21c2dc8e958a48aaa8bba13b27f77f6e4c0eca07e" }
+      },
+      "bin": "jq"
+    },
+    "shellcheck": {
+      "version": "0.11.0",
+      "assets": {
+        "linux-amd64":  { "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.gz",   "sha256": "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6" },
+        "linux-arm64":  { "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.gz",   "sha256": "68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc" },
+        "darwin-arm64": { "url": "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.gz", "sha256": "339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f" }
+      },
+      "bin": "shellcheck"
+    }
+  }
+}

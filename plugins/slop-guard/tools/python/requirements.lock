@@ -1,0 +1,11 @@
+# requirements.lock — hash-pinned Python dependencies for slop-guard.
+#
+# Entries arrive with the stage that first uses them:
+#   Stage 1: ruff, checkov (and their transitive deps with --require-hashes)
+#   Stage 2: pyright (if no project-level config is found)
+#
+# Format: uv pip install --require-hashes -r this-file
+# Install target: ${CLAUDE_PLUGIN_DATA}/tools/python-venv
+#
+# Do not add entries here without also adding the pinned version and sha256
+# to tools/tools.lock.json and updating the fixtures.
