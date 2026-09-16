@@ -82,12 +82,12 @@ decisions (an `adr/` directory, a decisions file) or none. A skill holding domai
 Detection must be side-effect-free; never inspect user home files, never install anything, never
 make network calls.
 
-- **Slop Guard** — query the host plugin or skill inventory if available (for example,
-  `codex plugins list` in Codex, or the Claude Code plugin registry). Report `available` if the
-  inventory confirms it is enabled, `unavailable` if the inventory confirms it is absent, or
-  `unknown` if no reliable inventory API is accessible in this session. Never use `command -v` or
-  binary presence to infer Slop Guard hook status — the binary being on PATH does not mean the
-  plugin or its hooks are enabled.
+- **Slop Guard** — in Codex, run `codex plugin list --json` and check whether an entry with
+  name `slop-guard` appears in the installed/enabled plugins; report `available` if found and
+  enabled, `unavailable` if the command succeeds and slop-guard is absent, or `unknown` if the
+  command is not available or the session is not Codex. On other hosts query the host plugin
+  registry by whatever API it exposes. Never use `command -v` or binary presence to infer hook
+  status — the binary on PATH does not mean the plugin or its hooks are enabled.
 - **Superpowers** — query the host skill or plugin inventory for `superpowers`. Report `available`,
   `unavailable`, or `unknown` by the same rules. Do not run a binary check; Superpowers has no
   standalone executable.
