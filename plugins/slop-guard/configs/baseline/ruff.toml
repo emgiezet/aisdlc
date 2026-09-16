@@ -1,27 +1,28 @@
+# target-version is overwritten by the dispatcher based on requires-python
 target-version = "py312"
 line-length = 100
 extend-exclude = ["migrations", ".venv", "build", "dist"]
 
 [lint]
 select = [
-  "F", "E4", "E7", "E9",
-  "B",
-  "S",
-  "ASYNC",
-  "PERF",
-  "UP",
-  "SIM",
-  "C4",
-  "DTZ",
-  "BLE",
-  "T20",
-  "PL",
-  "C90",
+  "F", "E4", "E7", "E9",  # pyflakes + critical pycodestyle
+  "B",                    # flake8-bugbear
+  "S",                    # flake8-bandit (security)
+  "ASYNC",                # blocking calls in async code
+  "PERF",                 # perflint
+  "UP",                   # pyupgrade
+  "SIM",                  # simplify
+  "C4",                   # comprehensions
+  "DTZ",                  # naive datetime
+  "BLE",                  # blind except
+  "T20",                  # print in code
+  "PL",                   # pylint
+  "C90",                  # mccabe
   "RUF",
 ]
 ignore = [
-  "PLR0913",
-  "PLR2004",
+  "PLR0913",  # too-many-arguments — too noisy as a baseline
+  "PLR2004",  # magic-value-comparison
 ]
 
 [lint.per-file-ignores]

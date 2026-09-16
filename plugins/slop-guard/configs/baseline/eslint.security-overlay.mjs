@@ -1,8 +1,8 @@
 // @ts-check
 // Security overlay: used as a second ESLint pass when a project has its own eslint config
 // but does not include eslint-plugin-security. Covers only the JS/TS common security rules
-// from the baseline config (spec §6.4).
-import js from '@eslint/js';
+// from the baseline config (spec §6.4). Does NOT re-run core js.configs.recommended rules;
+// the project's own config already covers those.
 import { defineConfig } from 'eslint/config';
 import security from 'eslint-plugin-security';
 import regexp from 'eslint-plugin-regexp';
@@ -13,7 +13,6 @@ export default defineConfig(
 
   {
     files: ['**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}'],
-    extends: [js.configs.recommended],
     plugins: { security, regexp, 'no-unsanitized': noUnsanitized },
     rules: {
       'no-eval': 'error',
