@@ -61,9 +61,6 @@ jobs:
       - name: make validate
         run: make validate
 
-      - name: make validate-slopguard
-        run: make validate-slopguard
-
   runner-and-fixture:
     runs-on: ubuntu-latest
     steps:

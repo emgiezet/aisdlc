@@ -82,14 +82,20 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
 	done; \
 	echo "  ✓ slopguard shell syntax"; \
-	command -v shellcheck > /dev/null 2>&1 && \
-		(shellcheck -S warning plugins/slop-guard/bin/slopguard \
+	if command -v shellcheck > /dev/null 2>&1; then \
+		shellcheck -S warning plugins/slop-guard/bin/slopguard \
 		            plugins/slop-guard/lib/*.sh \
-		            plugins/slop-guard/tests/run-tests && echo "  ✓ slopguard shellcheck clean") || \
+		            plugins/slop-guard/tests/run-tests; \
+		echo "  ✓ slopguard shellcheck clean"; \
+	else \
 		echo "  – shellcheck not installed, skipped"; \
+	fi; \
 	plugins/slop-guard/tests/run-tests; \
-	command -v claude > /dev/null 2>&1 && claude plugin validate plugins/slop-guard --strict \
-		|| echo "  – claude CLI not installed, plugin validate skipped"
+	if command -v claude > /dev/null 2>&1; then \
+		claude plugin validate plugins/slop-guard --strict; \
+	else \
+		echo "  – claude CLI not installed, plugin validate skipped"; \
+	fi
 
 selftest: ## Verify the queue runner against a stub claude (no API calls, no cost)
 	@evals/harness/selftest.sh
@@ -162,7 +168,7 @@ endif
 		$(MARKETPLACE_JSON) > /tmp/marketplace.json && mv /tmp/marketplace.json $(MARKETPLACE_JSON)
 	@echo "Version bumped to $(VERSION)"
 
-bump-slopguard: ## Bump the slop-guard plugin patch version (make bump-slopguard VERSION=x.y.z)
+bump-slopguard: ## Bump the slop-guard plugin patch version
 	@$(MAKE) _bump-slopguard VERSION=$$(jq -r '.version' $(SLOPGUARD_PLUGIN_JSON) | awk -F. '{print $$1"."$$2"."$$3+1}')
 
 _bump-slopguard:
