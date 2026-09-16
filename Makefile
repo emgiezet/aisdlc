@@ -1,14 +1,18 @@
 .PHONY: help validate validate-slopguard selftest sandbox harness-eval eval-dry templates \
         bump-patch bump-minor bump-major bump-slopguard
 
-PLUGIN_JSON := plugins/sdlc/.claude-plugin/plugin.json
+PLUGIN_JSON          := plugins/sdlc/.claude-plugin/plugin.json
 SLOPGUARD_PLUGIN_JSON := plugins/slop-guard/.claude-plugin/plugin.json
-MARKETPLACE_JSON := .claude-plugin/marketplace.json
+PORTABLE_SDLC_JSON   := plugins/sdlc/plugin.json
+PORTABLE_SLOPGUARD_JSON := plugins/slop-guard/plugin.json
+MARKETPLACE_JSON     := .claude-plugin/marketplace.json
+CODEX_MARKETPLACE    := .agents/plugins/marketplace.json
+GROK_MARKETPLACE     := .grok-plugin/marketplace.json
 SANDBOX_DIR := $(or $(TMPDIR),/tmp)/aisdlc-sandbox
 SCRIPTS := plugins/sdlc/hooks/run-hook.cmd plugins/sdlc/hooks/session-start \
            plugins/sdlc/hooks/guard plugins/sdlc/bin/aisdlc \
            evals/harness/run.sh evals/harness/selftest.sh evals/harness/stub-claude
-COMMANDS := init spec mockup implement qa ship
+WORKFLOW_SKILLS := init spec mockup implement qa ship
 SKILLS := spec-authoring task-router dense-testing harness-eval
 PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing
 
@@ -18,20 +22,38 @@ help: ## Show this help
 
 validate: validate-slopguard ## Validate manifests, required files, and shell scripts
 	@echo "Validating JSON..."
-	@jq . $(MARKETPLACE_JSON) > /dev/null && echo "  ✓ marketplace.json"
-	@jq . $(PLUGIN_JSON) > /dev/null && echo "  ✓ plugin.json"
-	@jq . plugins/sdlc/hooks/hooks.json > /dev/null && echo "  ✓ hooks.json"
+	@jq . $(MARKETPLACE_JSON) > /dev/null && echo "  ✓ .claude-plugin/marketplace.json"
+	@jq . $(PLUGIN_JSON) > /dev/null && echo "  ✓ sdlc/.claude-plugin/plugin.json"
+	@jq . $(PORTABLE_SDLC_JSON) > /dev/null && echo "  ✓ plugins/sdlc/plugin.json"
+	@jq . $(CODEX_MARKETPLACE) > /dev/null && echo "  ✓ .agents/plugins/marketplace.json"
+	@jq . $(GROK_MARKETPLACE) > /dev/null && echo "  ✓ .grok-plugin/marketplace.json"
+	@jq . plugins/sdlc/hooks/hooks.json > /dev/null && echo "  ✓ sdlc hooks.json"
 	@for f in evals/harness/scenarios/*/scenario.json; do \
 		jq . "$$f" > /dev/null && echo "  ✓ $$f"; \
 	done
-	@echo "Checking plugin name matches the command namespace..."
-	@test "$$(jq -r '.name' $(PLUGIN_JSON))" = "$$(jq -r '.plugins[0].name' $(MARKETPLACE_JSON))" \
-		&& echo "  ✓ plugin name consistent" \
-		|| (echo "  ✗ plugin.json and marketplace.json disagree on the plugin name" && exit 1)
+	@echo "Checking version and name consistency across manifests..."
+	@SDLC_CLAUDE_V=$$(jq -r '.version' $(PLUGIN_JSON)); \
+	 SDLC_PORT_V=$$(jq -r '.version' $(PORTABLE_SDLC_JSON)); \
+	 SDLC_MKT_V=$$(jq -r '.plugins[] | select(.name=="sdlc") | .version' $(MARKETPLACE_JSON)); \
+	 SDLC_GROK_V=$$(jq -r '.plugins[] | select(.name=="sdlc") | .version // empty' $(GROK_MARKETPLACE)); \
+	 test "$$SDLC_CLAUDE_V" = "$$SDLC_PORT_V" \
+	   && test "$$SDLC_CLAUDE_V" = "$$SDLC_MKT_V" \
+	   && { [ -z "$$SDLC_GROK_V" ] || test "$$SDLC_CLAUDE_V" = "$$SDLC_GROK_V"; } \
+	   && echo "  ✓ sdlc version consistent ($$SDLC_CLAUDE_V)" \
+	   || (echo "  ✗ sdlc version mismatch: claude=$$SDLC_CLAUDE_V portable=$$SDLC_PORT_V marketplace=$$SDLC_MKT_V grok=$$SDLC_GROK_V" && exit 1)
+	@jq -e '.plugins[] | select(.name == "sdlc")' $(CODEX_MARKETPLACE) > /dev/null \
+		&& echo "  ✓ sdlc present in Codex marketplace" \
+		|| (echo "  ✗ sdlc missing from Codex marketplace" && exit 1)
+	@jq -e '.plugins[] | select(.name == "sdlc")' $(GROK_MARKETPLACE) > /dev/null \
+		&& echo "  ✓ sdlc present in Grok marketplace" \
+		|| (echo "  ✗ sdlc missing from Grok marketplace" && exit 1)
+	@test "$$(jq -r '.name' $(PLUGIN_JSON))" = "$$(jq -r '.plugins[] | select(.name=="sdlc") | .name' $(MARKETPLACE_JSON))" \
+		&& echo "  ✓ sdlc name consistent across Claude manifests" \
+		|| (echo "  ✗ sdlc name mismatch between plugin.json and marketplace.json" && exit 1)
 	@echo "Checking required files..."
-	@for c in $(COMMANDS); do \
-		test -f plugins/sdlc/commands/$$c.md && echo "  ✓ commands/$$c.md" || \
-		(echo "  ✗ commands/$$c.md MISSING" && exit 1); \
+	@for c in $(WORKFLOW_SKILLS); do \
+		test -f plugins/sdlc/skills/$$c/SKILL.md && echo "  ✓ skills/$$c/SKILL.md" || \
+		(echo "  ✗ skills/$$c/SKILL.md MISSING" && exit 1); \
 	done
 	@for s in $(SKILLS); do \
 		test -f plugins/sdlc/skills/$$s/SKILL.md && echo "  ✓ skills/$$s/SKILL.md" || \
@@ -79,8 +101,22 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 		|| (echo "  ✗ slopguard plugin name mismatch" && exit 1); \
 	test "$$(jq -r '.version' plugins/slop-guard/.claude-plugin/plugin.json)" = \
 	     "$$(jq -r '.plugins[] | select(.name == "slop-guard") | .version' .claude-plugin/marketplace.json)" \
-		&& echo "  ✓ slopguard version consistent" \
+		&& echo "  ✓ slopguard Claude adapter version consistent" \
 		|| (echo "  ✗ slopguard plugin and marketplace versions disagree" && exit 1); \
+	jq . $(PORTABLE_SLOPGUARD_JSON) > /dev/null && echo "  ✓ plugins/slop-guard/plugin.json"; \
+	test "$$(jq -r '.version' plugins/slop-guard/.claude-plugin/plugin.json)" = \
+	     "$$(jq -r '.version' $(PORTABLE_SLOPGUARD_JSON))" \
+		&& echo "  ✓ slopguard portable manifest version consistent" \
+		|| (echo "  ✗ slopguard .claude-plugin and portable plugin.json versions disagree" && exit 1); \
+	SG_GROK_V=$$(jq -r '.plugins[] | select(.name=="slop-guard") | .version // empty' $(GROK_MARKETPLACE)); \
+	test -z "$$SG_GROK_V" || { \
+	  test "$$SG_GROK_V" = "$$(jq -r '.version' plugins/slop-guard/.claude-plugin/plugin.json)" \
+		&& echo "  ✓ slopguard Grok marketplace version consistent" \
+		|| (echo "  ✗ slopguard Grok marketplace version disagrees" && exit 1); \
+	}; \
+	jq -e '.plugins[] | select(.name == "slop-guard")' $(CODEX_MARKETPLACE) > /dev/null \
+		&& echo "  ✓ slop-guard present in Codex marketplace" \
+		|| (echo "  ✗ slop-guard missing from Codex marketplace" && exit 1); \
 	for s in plugins/slop-guard/bin/slopguard plugins/slop-guard/hooks/session-start \
 	          plugins/slop-guard/hooks/pre-* \
 	          plugins/slop-guard/lib/*.sh plugins/slop-guard/tests/run-tests \

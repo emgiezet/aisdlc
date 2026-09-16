@@ -1,0 +1,37 @@
+{
+  "name": "aisdlc",
+  "plugins": [
+    {
+      "name": "sdlc",
+      "source": {
+        "source": "local",
+        "path": "./plugins/sdlc"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity",
+      "interface": {
+        "displayName": "AI SDLC"
+      },
+      "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy for your repo, then spec → mockup → implement → qa → ship runs unattended and lands a draft PR"
+    },
+    {
+      "name": "slop-guard",
+      "source": {
+        "source": "local",
+        "path": "./plugins/slop-guard"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Security",
+      "interface": {
+        "displayName": "Slop Guard"
+      },
+      "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code"
+    }
+  ]
+}

@@ -1,10 +1,11 @@
 # aisdlc — an AI SDLC harness
 
-A Claude Code plugin for delivering software where **agents write the code and people own the
-specification**. It is spec-driven development with the emphasis moved: the spec is not a document
-that aligns humans before they type, it is the input an agent executes without supervision.
+A plugin for Claude Code, Codex, and Grok that delivers software where **agents write the code and
+people own the specification**. It is spec-driven development with the emphasis moved: the spec is
+not a document that aligns humans before they type, it is the input an agent executes without
+supervision.
 
-Concretely, it gives you five things a bare `claude -p` does not have:
+Concretely, it gives you five things a bare agent invocation does not have:
 
 1. A **task router** so an agent loads the instructions for its task and nothing else.
 2. A **spec format** whose acceptance criteria are observable, so they can be tested and traced.
@@ -14,6 +15,9 @@ Concretely, it gives you five things a bare `claude -p` does not have:
 5. An **eval harness** that measures whether all of this works on a cheap model, because if it only
    works on the expensive one, the harness is carrying none of the weight.
 
+The unattended queue (`aisdlc run`) requires the `claude` CLI. The interactive workflow skills
+(`/sdlc:spec`, `/sdlc:implement`, etc.) work on all three hosts.
+
 Status: **0.1.0.** The pipeline runs end to end on Haiku against the bundled sandbox: 10/10
 assertions, $0.59, 5.4 minutes — a test per use case carrying its id, the API contract updated in
 the same commit, zero skipped tests, and a QA verdict that was reached by starting the service and
@@ -22,25 +26,53 @@ costs too much, are in [`docs/ai-sdlc.md`](docs/ai-sdlc.md).
 
 ## Install
 
+Clone the repository:
+
 ```bash
 git clone git@github.com:emgiezet/aisdlc.git ~/.local/share/aisdlc
 ```
 
-In Claude Code:
+**Claude Code**
 
 ```
 /plugin marketplace add ~/.local/share/aisdlc
 /plugin install sdlc@aisdlc
 ```
 
-Put the queue runner on your `PATH`:
+**Codex**
+
+```bash
+codex plugin marketplace add ~/.local/share/aisdlc
+```
+
+Then open the Plugins Directory in the Codex UI, choose the aisdlc marketplace, and install sdlc.
+
+**Grok**
+
+Add the marketplace source to `~/.grok/config.toml`:
+
+```toml
+[[marketplace.sources]]
+type = "local"
+path = "/home/you/.local/share/aisdlc"
+```
+
+Then open the Marketplace tab (`/plugins`), browse aisdlc, and select sdlc.
+
+Grok also reads the Claude Code marketplace automatically, so the plugin is available once the
+`.claude-plugin/marketplace.json` path is reachable.
+
+**Queue runner** (requires the `claude` CLI):
 
 ```bash
 ln -s ~/.local/share/aisdlc/plugins/sdlc/bin/aisdlc ~/.local/bin/aisdlc
 ```
 
-Requires `git` ≥ 2.31, `jq`, `flock`, and the `claude` CLI. `gh` is optional — without it the ship
-step writes the pull request body to a file instead of opening a draft.
+`aisdlc run` starts headless `claude -p` sessions. It does not work with Codex or Grok.
+
+Runtime requirements: `git` ≥ 2.31, `jq`, `flock`, and the `claude` CLI for the queue. `gh` is
+optional — without it the ship step writes the pull request body to a file instead of opening a
+draft.
 
 ## Set up a repository
 
@@ -52,6 +84,10 @@ It surveys the repo — stacks, directories, the exact commands CI runs, test co
 of change the git history actually contains — proposes a router table for your approval, and then
 writes `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md` and
 `.aisdlc/config.json` calibrated to *this* repository.
+
+At the setup gate it also lists any optional capability plugins it can detect in the current
+environment, proposes which integrations make sense, and records the selections in the project
+profile. Installation of those plugins is left to you; `/sdlc:init` does not install anything.
 
 Run it in an interactive session. Claude Code will ask before writing under `.claude/` and will not
 grant that to an unattended run — deliberately, since agent configuration is the last thing you want
@@ -79,6 +115,8 @@ Or without the queue, one ticket at a time while you watch:
 /sdlc:spec ABC-123 → /sdlc:implement ABC-123 → /sdlc:qa ABC-123 → /sdlc:ship ABC-123
 ```
 
+On Codex, substitute `$sdlc:` for `/sdlc:`. On Grok, `/sdlc:` works directly.
+
 ### Why it holds together
 
 - **The spec replaces the plan gate.** `/sdlc:implement` never asks a question: it resolves
@@ -96,10 +134,12 @@ Or without the queue, one ticket at a time while you watch:
 
 ## What's included
 
-### Commands
+### Skills
 
-| Command | Purpose |
-|---------|---------|
+**Workflow skills** — invokable by name on all three hosts:
+
+| Skill | Purpose |
+|-------|---------|
 | `/sdlc:init` | Survey the repo and generate its router, playbooks, rules and profile. Run once. |
 | `/sdlc:spec` | Turn a ticket, URL, file or description into `specs/<TICKET>/spec.md` with a use-case table. Adds the negative cases the ticket forgot; leaves `status: draft`. |
 | `/sdlc:mockup` | Build a clickable single-file mockup from the spec's UI use cases — no build step, opens by double-clicking — including the empty, loading, error and denied states. |
@@ -107,7 +147,7 @@ Or without the queue, one ticket at a time while you watch:
 | `/sdlc:qa` | Independent verification: use cases re-derived from the spec, gaps closed, `qa-report.md` with a `PASS`/`GAPS` verdict. A new test that fails is a finding, never a silent fix. |
 | `/sdlc:ship` | Non-interactive delivery: refuses on a blocking verdict, opens a **draft** pull request with the verdict and the riskiest changes up front, QA report as a comment. |
 
-### Skills
+**Knowledge skills** — loaded on demand by the model:
 
 | Skill | What it provides |
 |-------|------------------|
@@ -130,6 +170,22 @@ One git worktree per task, branched off the base ref, then three headless `claud
 fresh context each. Success removes the worktree and leaves a draft pull request; failure keeps the
 worktree and the logs, because that is the evidence. Defaults resolve as CLI flag >
 `.aisdlc/config.json` > environment > built-in.
+
+**The queue is Claude-only.** `aisdlc run` spawns `claude -p` and has no Codex or Grok equivalent.
+The interactive workflow skills are the multi-host path.
+
+## Suggested companions
+
+All four are optional and independently installed. `/sdlc:init` detects which are present,
+proposes integrations at its existing setup gate, and records the result in the project profile.
+Absent companions fall back to AISDLC's own instructions; nothing breaks.
+
+| Companion | Role in the flow | Source | Boundary |
+|-----------|-----------------|--------|----------|
+| **Slop Guard** | Deterministic policy enforcement via PreToolUse/Stop hooks: supply-chain blocks, credential guards, linter-suppression gates, hard-coded secret detection | bundled — `plugins/slop-guard/` | Hooks fire at the tool boundary; AISDLC never calls Slop Guard directly. Install separately as a plugin. |
+| **Superpowers** | Planning, TDD, debug, and code-review disciplines contributed by matching skill triggers | [obra/superpowers](https://github.com/obra/superpowers) | Activates when the model selects its skills. AISDLC falls back to its own instructions when absent. |
+| **Ponytail** | Implementation minimalism checks and over-engineering review during `implement` and `qa` phases | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | Activates when the model selects its skills. AISDLC falls back to its own instructions when absent. |
+| **Headroom** | Agent-level context compression and memory — wraps the chosen agent at the transport layer | [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | Transport wrapper only. AISDLC never invokes Headroom; install it separately at the agent level if you want it. |
 
 ## Try it without risking a real repo
 
