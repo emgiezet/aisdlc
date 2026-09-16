@@ -34,6 +34,12 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installe
 
 # shellcheck source=../lib/tools.sh
 . "${CLAUDE_PLUGIN_ROOT}/lib/tools.sh"
+# shellcheck source=../lib/hook.sh
+. "${CLAUDE_PLUGIN_ROOT}/lib/hook.sh"
+# shellcheck source=../lib/state.sh
+. "${CLAUDE_PLUGIN_ROOT}/lib/state.sh"
+# shellcheck source=../lib/finding.sh
+. "${CLAUDE_PLUGIN_ROOT}/lib/finding.sh"
 
 # --------------------------------------------------------------------------- #
 # doctor
@@ -182,6 +188,13 @@ USAGE
 need jq
 
 case "${1:-help}" in
+    session-start)     shift; cmd_session_start "$@" ;;
+    pre-bash)          shift; cmd_pre_bash "$@" ;;
+    pre-write)         shift; cmd_pre_write "$@" ;;
+    pre-read)          shift; cmd_pre_read "$@" ;;
+    post-write)        shift; cmd_post_write "$@" ;;
+    stop-gate)         shift; cmd_stop_gate "$@" ;;
+    scan)              shift; cmd_scan "$@" ;;
     doctor)            shift; cmd_doctor "$@" ;;
     version|--version) say "slopguard ${VERSION}" ;;
     help|--help|-h)    cmd_help ;;

@@ -20,6 +20,10 @@ printf 'slop-guard test suite\n\n'
 # Source test files; they call ok()/bad() directly.
 # shellcheck source=tools_test.sh
 . "${TESTS_DIR}/tools_test.sh"
+# shellcheck source=hook_test.sh
+. "${TESTS_DIR}/hook_test.sh"
+# shellcheck source=state_test.sh
+. "${TESTS_DIR}/state_test.sh"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
