@@ -1,10 +1,8 @@
 ---
 name: spec
 description: >
-  Turn a ticket, URL, file, or description into an agent-executable spec at
-  specs/<TICKET>/spec.md — a use-case table with observable acceptance criteria, grounded in the
-  codebase. The artefact that /sdlc:implement, /sdlc:qa and the aisdlc queue consume. Use to
-  write, refresh, or readiness-check a spec before queueing unattended work.
+  Use when writing, refreshing, or readiness-checking a spec for a ticket, URL, file, or
+  free-text description before queueing unattended work.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, Agent
 ---
 

@@ -1,10 +1,8 @@
 ---
 name: init
 description: >
-  Set this repository up for the AI SDLC pipeline — survey the stacks, directories, CI commands
-  and conventions, then generate a CLAUDE.md task router, task-scoped playbooks, path-scoped
-  rules, and the .claude/sdlc.md project profile. Run once per repository, before the first spec.
-  Use also to refresh the setup after the repo's shape changes.
+  Use when setting up a repository for the AI SDLC pipeline for the first time, or when
+  refreshing the setup after the repo's shape has changed.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 

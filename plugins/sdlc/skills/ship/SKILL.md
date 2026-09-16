@@ -1,10 +1,8 @@
 ---
 name: ship
 description: >
-  Turn a verified branch into a reviewable draft PR without a human in the loop — pushes, opens
-  the PR with the spec and QA verdict up front, labels it ai-sdlc, and posts the QA report as a
-  comment so the PR list doubles as the review inbox. Use as the last step after /sdlc:qa, or
-  from the aisdlc queue.
+  Use after /sdlc:qa passes to push the implementation branch and open a draft PR with the
+  spec and QA verdict attached, or from the aisdlc queue as the final delivery step.
 allowed-tools: Bash(git:*), Bash(gh:*), Read, Write, Grep, Glob
 ---
 

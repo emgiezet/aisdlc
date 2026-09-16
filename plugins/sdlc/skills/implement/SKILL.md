@@ -1,10 +1,8 @@
 ---
 name: implement
 description: >
-  Deliver an approved spec end-to-end with no human gates — reads specs/<TICKET>/spec.md, routes
-  through the matching playbook, writes one test per UC before its implementation, runs the full
-  CI matrix, and stops hard with BLOCKED.md if it cannot finish. The unattended half of the
-  pipeline, built to be run by the aisdlc queue.
+  Use when an approved spec exists at specs/<TICKET>/spec.md and must be delivered end-to-end
+  without human gates, typically invoked by the aisdlc queue.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 

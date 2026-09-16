@@ -1,9 +1,8 @@
 ---
 name: mockup
 description: >
-  Generate a clickable single-file mockup from a spec's UI use cases at
-  specs/<TICKET>/mockup/index.html — no build, no install, opens in a browser. Use to validate
-  a spec with the people who asked for it, in minutes, before any production code is written.
+  Use when a spec contains UI use cases and you need a clickable single-file mockup to validate
+  the design with stakeholders before any production code is written.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 ---
 

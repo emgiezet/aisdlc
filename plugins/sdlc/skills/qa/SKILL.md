@@ -1,10 +1,8 @@
 ---
 name: qa
 description: >
-  Independently verify an implementation against its spec and close the test gaps — runs the
-  auto-qa agent to build a UC×test coverage matrix, closes the gaps it finds, and writes
-  specs/<TICKET>/qa-report.md with a PASS/GAPS verdict. Use after /sdlc:implement, before
-  opening a PR or reviewing agent-written code.
+  Use after /sdlc:implement to independently verify an implementation against its spec and
+  obtain a PASS/GAPS verdict before opening a PR or reviewing agent-written code.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 
