@@ -105,7 +105,12 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 		(shellcheck -S warning plugins/sdlc/hooks/guard plugins/sdlc/hooks/session-start \
 		            plugins/sdlc/bin/aisdlc evals/harness/run.sh evals/harness/selftest.sh \
 		            evals/harness/stub-claude && echo "  ✓ shellcheck clean") || \
-		echo "  – shellcheck not installed, skipped"
+	echo "  – shellcheck not installed, skipped"
+	@echo "Running sdlc hook tests..."
+	@for s in plugins/sdlc/tests/run-tests plugins/sdlc/tests/grok_hook_test.sh; do \
+		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
+	done
+	@plugins/sdlc/tests/run-tests
 	@echo "All checks passed."
 
 validate-slopguard: ## Validate the slop-guard plugin, if present
