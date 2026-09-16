@@ -7,8 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard",
-            "args": ["session-start"],
+            "command": "\"${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/bin/slopguard\" session-start",
             "timeout": 30
           }
         ]
@@ -20,8 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard",
-            "args": ["pre-bash"],
+            "command": "\"${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/bin/slopguard\" pre-bash",
             "timeout": 5
           }
         ]
@@ -31,8 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard",
-            "args": ["pre-read"],
+            "command": "\"${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/bin/slopguard\" pre-read",
             "timeout": 5
           }
         ]
@@ -42,8 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard",
-            "args": ["pre-write"],
+            "command": "\"${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}/bin/slopguard\" pre-write",
             "timeout": 10
           }
         ]

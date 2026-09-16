@@ -12,11 +12,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MANIFEST="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
 
-# When invoked by the Claude Code runtime, CLAUDE_PLUGIN_ROOT and
-# CLAUDE_PLUGIN_DATA are injected. Fall back to derived paths for standalone use.
+# Normalize plugin root across runtimes.
+# Grok injects GROK_PLUGIN_ROOT but does not set CLAUDE_PLUGIN_ROOT.
+# Codex injects CLAUDE_PLUGIN_ROOT directly.  Standalone: derive from script path.
+# Normalizing here means all hook scripts can reference CLAUDE_PLUGIN_ROOT uniformly.
+[ -n "${GROK_PLUGIN_ROOT:-}" ] && : "${CLAUDE_PLUGIN_ROOT:=$GROK_PLUGIN_ROOT}"
 : "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
-: "${CLAUDE_PLUGIN_DATA:=${XDG_DATA_HOME:-$HOME/.local/share}/claude/plugins/slop-guard}"
-export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
+# Normalize plugin data.
+# Prefer GROK_PLUGIN_DATA (Grok), then CLAUDE_PLUGIN_DATA (Claude/Codex),
+# then a platform-neutral XDG path for standalone use.
+[ -n "${GROK_PLUGIN_DATA:-}" ] && : "${CLAUDE_PLUGIN_DATA:=$GROK_PLUGIN_DATA}"
+: "${CLAUDE_PLUGIN_DATA:=${XDG_DATA_HOME:-$HOME/.local/share}/slop-guard}"
+# Normalize workspace root.
+# Grok injects GROK_WORKSPACE_ROOT; Claude injects CLAUDE_PROJECT_DIR; standalone: PWD.
+[ -n "${GROK_WORKSPACE_ROOT:-}" ] && : "${CLAUDE_PROJECT_DIR:=$GROK_WORKSPACE_ROOT}"
+: "${CLAUDE_PROJECT_DIR:=${PWD}}"
+export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA CLAUDE_PROJECT_DIR
 
 # Read identity from the manifest so nothing here hard-codes the plugin name.
 manifest_field() {

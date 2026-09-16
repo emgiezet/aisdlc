@@ -20,6 +20,7 @@ set -uo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${HOOKS_DIR}/.." && pwd)"
+[ -n "${GROK_PLUGIN_ROOT:-}" ] && : "${CLAUDE_PLUGIN_ROOT:=$GROK_PLUGIN_ROOT}"
 : "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
 
 # shellcheck source=../lib/hook.sh

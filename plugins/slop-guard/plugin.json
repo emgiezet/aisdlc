@@ -1,0 +1,56 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "slop-guard",
+  "version": "0.1.0",
+  "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code.",
+  "author": {
+    "name": "Maksymilian Małecki"
+  },
+  "license": "MIT",
+  "keywords": ["security", "sast", "linting", "anti-patterns", "supply-chain"],
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json",
+      "interface": {
+        "displayName": "Slop Guard",
+        "shortDescription": "Security and quality gate for agent-written code",
+        "longDescription": "Prevents, detects and gates security, performance and maintainability anti-patterns. Enforces linter-suppression justifications, blocks supply-chain installs, denies credential file access, detects hard-coded secrets, and gates quality-config lowering — across Claude Code, Codex, and Grok.",
+        "developerName": "Maksymilian Małecki",
+        "category": "Security",
+        "capabilities": ["PreToolUse"]
+      },
+      "userConfig": {
+        "enforcement_mode": {
+          "type": "string",
+          "title": "Enforcement mode",
+          "description": "advisory | balanced | strict",
+          "default": "balanced"
+        },
+        "stop_gate": {
+          "type": "boolean",
+          "title": "Block turn end on unresolved blockers",
+          "description": "Run slow checks at Stop and keep agent working while blockers remain.",
+          "default": true
+        },
+        "sast_engine": {
+          "type": "string",
+          "title": "SAST engine",
+          "description": "opengrep | semgrep | none",
+          "default": "opengrep"
+        },
+        "allow_network": {
+          "type": "boolean",
+          "title": "Allow network in Stop gate",
+          "description": "Enables dependency vulnerability lookups (SCA).",
+          "default": false
+        },
+        "tool_source": {
+          "type": "string",
+          "title": "Tool source",
+          "description": "project-first | plugin-only | project-only",
+          "default": "project-first"
+        }
+      }
+    }
+  }
+}

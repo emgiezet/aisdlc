@@ -197,3 +197,84 @@ _cmp_json "hook_ask: advisory emits context" \
 _cmp_json "hook_secret_deny: advisory still denies" \
     "$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_secret_deny "secret found")" \
     '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"secret found"}}'
+
+# --------------------------------------------------------------------------- #
+# 10. Grok camelCase normalization: hook_input maps fields to snake_case
+# --------------------------------------------------------------------------- #
+_save_runtime="$_SLOPGUARD_RUNTIME"
+_SLOPGUARD_RUNTIME="grok"
+
+_HOOK_INPUT=""
+hook_input < "${CONTRACT}/grok-pre-tool-bash.json"
+
+val="$(hook_field .session_id)"
+[ "$val" = "grok-sess-abc123" ] \
+    && ok  "grok bash: sessionId normalized to .session_id" \
+    || bad "grok bash: sessionId normalized" "got: $val"
+
+val="$(hook_field .hook_event_name)"
+[ "$val" = "PreToolUse" ] \
+    && ok  "grok bash: hookEventName normalized to .hook_event_name" \
+    || bad "grok bash: hookEventName normalized" "got: $val"
+
+val="$(hook_field .tool_name)"
+[ "$val" = "Bash" ] \
+    && ok  "grok bash: toolName normalized to .tool_name" \
+    || bad "grok bash: toolName normalized" "got: $val"
+
+val="$(hook_field .tool_input.command)"
+[ "$val" = "rm -rf /tmp/test" ] \
+    && ok  "grok bash: toolInput normalized to .tool_input" \
+    || bad "grok bash: toolInput.command" "got: $val"
+
+_HOOK_INPUT=""
+hook_input < "${CONTRACT}/grok-pre-tool-write.json"
+
+val="$(hook_field .tool_name)"
+[ "$val" = "Write" ] \
+    && ok  "grok write: toolName normalized to .tool_name" \
+    || bad "grok write: toolName normalized" "got: $val"
+
+val="$(hook_field .tool_input.file_path)"
+[ "$val" = "/home/user/myproject/secret.py" ] \
+    && ok  "grok write: toolInput.file_path accessible after normalization" \
+    || bad "grok write: toolInput.file_path" "got: $val"
+
+# --------------------------------------------------------------------------- #
+# 11. Grok response encoding: native {"decision","reason"} shape
+# --------------------------------------------------------------------------- #
+_cmp_json "grok: hook_secret_deny emits native decision/reason" \
+    "$(hook_secret_deny "blocked by policy")" \
+    '{"decision":"deny","reason":"blocked by policy"}'
+
+actual="$(hook_ask "please confirm")"
+grok_decision="$(printf '%s' "$actual" | jq -r '.decision')"
+grok_reason="$(printf '%s' "$actual" | jq -r '.reason')"
+[ "$grok_decision" = "deny" ] && [ "$grok_reason" = "please confirm" ] \
+    && ok  "grok: hook_ask becomes deny with original reason" \
+    || bad "grok: hook_ask→deny" "decision=${grok_decision}, reason=${grok_reason}"
+
+actual="$(hook_allow)"
+[ -z "$actual" ] \
+    && ok  "grok: hook_allow is silent (exit 0 = allow)" \
+    || bad "grok: hook_allow silent" "got: $actual"
+
+# --------------------------------------------------------------------------- #
+# 12. Grok advisory mode: non-blocking, no output
+# --------------------------------------------------------------------------- #
+actual="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_deny "advisory policy violation")"
+[ -z "$actual" ] \
+    && ok  "grok: advisory hook_deny is silent (fail-open)" \
+    || bad "grok: advisory hook_deny silent" "got: $actual"
+
+actual="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_ask "advisory ask")"
+[ -z "$actual" ] \
+    && ok  "grok: advisory hook_ask is silent (fail-open)" \
+    || bad "grok: advisory hook_ask silent" "got: $actual"
+
+# Secret denials remain blocking on Grok even in advisory mode
+_cmp_json "grok: hook_secret_deny always denies in advisory mode" \
+    "$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_secret_deny "secret found")" \
+    '{"decision":"deny","reason":"secret found"}'
+
+_SLOPGUARD_RUNTIME="$_save_runtime"

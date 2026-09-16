@@ -5,8 +5,11 @@ set -uo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${HOOKS_DIR}/.." && pwd)"
+[ -n "${GROK_PLUGIN_ROOT:-}" ] && : "${CLAUDE_PLUGIN_ROOT:=$GROK_PLUGIN_ROOT}"
 : "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
-: "${CLAUDE_PLUGIN_DATA:=${XDG_DATA_HOME:-$HOME/.local/share}/claude/plugins/slop-guard}"
+[ -n "${GROK_PLUGIN_DATA:-}" ] && : "${CLAUDE_PLUGIN_DATA:=$GROK_PLUGIN_DATA}"
+: "${CLAUDE_PLUGIN_DATA:=${XDG_DATA_HOME:-$HOME/.local/share}/slop-guard}"
+[ -n "${GROK_WORKSPACE_ROOT:-}" ] && : "${CLAUDE_PROJECT_DIR:=$GROK_WORKSPACE_ROOT}"
 : "${CLAUDE_PROJECT_DIR:=${PWD}}"
 
 # shellcheck source=../lib/hook.sh
