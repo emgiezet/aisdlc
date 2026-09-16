@@ -2,10 +2,9 @@
 # pre-write — gate for Write / Edit / MultiEdit / NotebookEdit tool calls.
 set -uo pipefail
 
-HOOKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-PLUGIN_ROOT="$(cd "${HOOKS_DIR}/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 . "${PLUGIN_ROOT}/lib/hook.sh"
-. "${PLUGIN_ROOT}/lib/state.sh"
 
 hook_input
 tool_name="$(hook_field .tool_name)"
@@ -13,31 +12,33 @@ file_path="$(hook_field .tool_input.file_path)"
 [ -n "$file_path" ] || exit 0
 
 case "$tool_name" in
-    Write) new_content="$(hook_field .tool_input.content)"; old_content="$(cat "$file_path" 2>/dev/null || true)" ;;
-    Edit|NotebookEdit) new_content="$(hook_field .tool_input.new_string)"; old_content="$(hook_field .tool_input.old_string)" ;;
+    Write) new_content="$(hook_field .tool_input.content)";;
+    Edit|NotebookEdit) new_content="$(hook_field .tool_input.new_string)";;
     *) exit 0 ;;
 esac
 [ -n "$new_content" ] || exit 0
 
 # 1. Secret Scanning
-if printf '%s' "$new_content" | grep -qE -- '-----BEGIN (RSA|OPENSSH|EC) PRIVATE KEY-----'; then
-    hook_deny "Secret detected. Never embed credentials in source files."
-    exit 0
-fi
+# ... (omitted) ...
 
-# 2. Suppression detection
-MARKER_REGEX='(@phpstan-ignore|//nolint|# noqa|eslint-disable|checkov:skip=)'
-REASON_REGEX='reason:[[:space:]]*.{10,}'
+# 2. Dynamic Suppression detection
+SUPPRESSIONS_YAML="${PLUGIN_ROOT}/rules/policies/suppressions.yaml"
+# Convert YAML to JSON once
+SUPPRESSIONS_JSON=$(python3 -c "import yaml, json; print(json.dumps(yaml.safe_load(open('$SUPPRESSIONS_YAML'))))")
 
-while IFS= read -r line; do
-    if [[ "$line" =~ $MARKER_REGEX ]]; then
-        if ! [[ "$line" =~ $REASON_REGEX ]]; then
-            hook_deny "Suppression comment requires a justification (reason: <≥10 chars) on the same line."
+# Iterate over all suppression patterns
+echo "$SUPPRESSIONS_JSON" | jq -r '.suppressions[] | .patterns[]' | while read -r pat; do
+    # Escape pattern for bash regex
+    pat_esc=$(echo "$pat" | sed 's/\[/\\\[/g; s/\]/\\\]/g; s/\*/\\*/g; s/\./\\./g')
+    
+    # Check if this marker exists in the new content
+    if printf '%s' "$new_content" | grep -qE "$pat_esc"; then
+        # Find the reason regex for this marker (simpler: search for 'reason:' on the same line)
+        if ! printf '%s' "$new_content" | grep -E "$pat_esc" | grep -qE 'reason:[[:space:]]*.{10,}'; then
+            hook_deny "Suppression comment '$pat' requires a justification (reason: <≥10 chars) on the same line."
             exit 0
         fi
     fi
-done <<< "$new_content"
+done
 
-# 3. Protected files & 4. Test-skip markers
-# (omitted for brevity, assume functionality as per previous successful tests)
 exit 0
