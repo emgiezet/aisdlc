@@ -22,6 +22,8 @@ below.
 > Copyright © 2006–2026, The MITRE Corporation. CWE, CWSS, CWRAF, and the CWE logo are
 > trademarks of The MITRE Corporation.
 
+Reproduced from the CWE Terms of Use, retrieved 2026-09-16.
+
 Only CWE identifiers (e.g. CWE-89, CWE-798) and their short names appear in the catalogue;
 no CWE content is otherwise reproduced in this repository.
 
