@@ -317,7 +317,7 @@ invoke_claude() {
     # stdin from /dev/null is load-bearing: the phase loop feeds itself from a process
     # substitution, and claude reads stdin, so without this it swallows the remaining
     # phases and the task silently ships having run only the first one.
-    ( cd "$wt" && claude "${args[@]}" < /dev/null ) > "$out" 2>> "$log" || rc=$?
+    ( cd "$wt" && AISDLC_HEADLESS=1 claude "${args[@]}" < /dev/null ) > "$out" 2>> "$log" || rc=$?
     return $rc
 }
 

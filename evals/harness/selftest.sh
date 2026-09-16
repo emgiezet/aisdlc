@@ -134,6 +134,12 @@ done_count="$(jq -sr '[.[] | select(.status == "done")] | length' "$R"/.aisdlc/t
 [ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] && ok "queue drained" || bad "queue" "not empty"
 
 # --------------------------------------------------------------------------- #
+printf '\nthe queue tells hooks there is nobody to ask\n'
+grep -q 'AISDLC_HEADLESS=1' "$REPO_ROOT/plugins/sdlc/bin/aisdlc" \
+    && ok "invoke_claude exports AISDLC_HEADLESS" \
+    || bad "headless marker" "hooks cannot tell a queued phase from an interactive session"
+
+# --------------------------------------------------------------------------- #
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
 rm -rf "$WORK"
