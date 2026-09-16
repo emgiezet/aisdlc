@@ -26,9 +26,9 @@ FAIL=0
 # Temp dir for harness files (psalm config, phpstan cache).
 # Placed under ${TMPDIR:-/tmp} so it is outside the repository working tree.
 # Trap covers EXIT, INT, TERM, and HUP so Ctrl-C does not leave leftovers.
-_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/slopguard-validate.XXXXXX")
+_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/slopguard-validate.XXXXXX") || exit 1
 _cleanup() { rm -rf "${_TMPDIR}"; }
-trap _cleanup EXIT INT TERM HUP
+trap '_cleanup; exit 130' INT TERM HUP; trap _cleanup EXIT
 
 # ---------------------------------------------------------------------------
 # helpers
