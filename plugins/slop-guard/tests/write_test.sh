@@ -1,76 +1,37 @@
 #!/usr/bin/env bash
-# write_test.sh — standalone tests for the pre-write hook policy.
+# write_test.sh — sourced by tests/run-tests; ok()/bad() are pre-defined.
 
-set -uo pipefail
+WRITE_HOOK="${PLUGIN_ROOT}/hooks/pre-write"
 
-TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-PLUGIN_ROOT="$(cd "${TESTS_DIR}/.." && pwd)"
-: "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
-
-HOOK="${PLUGIN_ROOT}/hooks/pre-write"
-CONTRACT="${TESTS_DIR}/hook-contract"
-
-# Mock betterleaks: detect "hunter2" and output a dummy finding.
-# We expect betterleaks to be in PATH or local directory.
-export PATH="${TESTS_DIR}:${PATH}"
-
-[ -x "$HOOK" ] || { printf 'FATAL: %s is not executable\n' "$HOOK" >&2; exit 1; }
-
-PASS=0
-FAIL=0
-
-ok()  { printf '  ok    %s\n' "$1"; PASS=$((PASS + 1)); }
-bad() { printf '  FAIL  %s: %s\n' "$1" "$2"; FAIL=$((FAIL + 1)); }
-
-# run_hook <fixture-path>
-run_hook() {
-    HOOK_OUTPUT="$("$HOOK" < "$1" 2>/dev/null)"
-    HOOK_EXIT=$?
-}
-
-last_decision() {
-    if [ -z "$HOOK_OUTPUT" ]; then
-        printf 'allow'
+run_write_policy() {
+    local tool="$1" file="$2" new_content="$3" old_content="$4" expected="$5" label="$6"
+    local output decision
+    output="$(jq -n \
+        --arg tool "$tool" --arg file "$file" --arg new "$new_content" --arg old "$old_content" \
+        '{tool_name:$tool,tool_input:{file_path:$file,content:$new,new_string:$new,old_string:$old}}' \
+        | "$WRITE_HOOK")"
+    if [ -n "$output" ]; then
+        decision="$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
     else
-        printf '%s' "$HOOK_OUTPUT" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'
+        decision="allow"
     fi
+    [ "$decision" = "$expected" ] \
+        && ok "pre-write: $label" \
+        || bad "pre-write: $label" "expected $expected, got $decision"
 }
 
-assert_deny() {
-    local label="$1" fixture="$2"
-    run_hook "$fixture"
-    local got; got="$(last_decision)"
-    [ "$got" = "deny" ] \
-        && ok  "deny: $label" \
-        || bad "deny: $label" "expected deny, got '${got}' (exit=${HOOK_EXIT})"
-}
+run_write_policy Write app.go '//nolint:gosec' '' deny 'suppression without reason denied'
+run_write_policy Write app.go '//nolint:gosec // reason: input validated upstream' '' allow 'suppression with configured reason allowed'
+run_write_policy Edit app.go '//nolint:gosec' '//nolint:gosec' allow 'unchanged suppression remains editable'
+run_write_policy Write app.py 'api_key = "1234567890abcdef"' '' deny 'obvious secret denied'
+run_write_policy Edit phpstan-baseline.neon 'parameters: {}' 'parameters: {}' ask 'protected baseline asks'
+run_write_policy Edit sample.test.ts 'it.skip("works", fn)' 'it("works", fn)' ask 'added test skip asks'
 
-assert_ask() {
-    local label="$1" fixture="$2"
-    run_hook "$fixture"
-    local got; got="$(last_decision)"
-    [ "$got" = "ask" ] \
-        && ok  "ask: $label" \
-        || bad "ask: $label" "expected ask, got '${got}' (exit=${HOOK_EXIT})"
-}
-
-assert_allow() {
-    local label="$1" fixture="$2"
-    run_hook "$fixture"
-    local got; got="$(last_decision)"
-    [ $HOOK_EXIT -eq 0 ] && [ "$got" = "allow" ] \
-        && ok  "allow: $label" \
-        || bad "allow: $label" "expected allow (exit 0, no deny/ask), got '${got}' exit=${HOOK_EXIT}"
-}
-
-printf 'pre-write hook tests\n\n'
-
-assert_deny "secret content" "${CONTRACT}/pre-write-secret-content.json"
-assert_deny "secret edit"    "${CONTRACT}/pre-write-secret-edit.json"
-assert_deny "suppression no reason" "${CONTRACT}/pre-write-suppression-added-no-reason.json"
-assert_allow "suppression with reason" "${CONTRACT}/pre-write-suppression-added-reason.json"
-assert_ask   "protected file" "${CONTRACT}/pre-write-protected-file-edit.json"
-assert_ask   "test skip added" "${CONTRACT}/pre-write-test-skip-added.json"
-
-printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ] || exit 1
+output="$(jq -n --arg file 'eslint.config.js' --arg new 'export default {}' \
+    '{tool_name:"Write",tool_input:{file_path:$file,content:$new}}' \
+    | AISDLC_HEADLESS=1 "$WRITE_HOOK")"
+decision="$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')"
+reason="$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason')"
+[ "$decision" = deny ] && printf '%s' "$reason" | grep -qF 'no human in this session' \
+    && ok 'pre-write: headless protected edit becomes reasoned deny' \
+    || bad 'pre-write: headless protected edit' "decision=${decision}, reason=${reason}"

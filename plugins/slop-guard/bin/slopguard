@@ -100,11 +100,19 @@ DIGEST
 }
 
 # --------------------------------------------------------------------------- #
-# pre-write
+# policy hooks
 # --------------------------------------------------------------------------- #
+
+cmd_pre_bash() {
+    "${PLUGIN_ROOT}/hooks/pre-bash"
+}
 
 cmd_pre_write() {
     "${PLUGIN_ROOT}/hooks/pre-write"
+}
+
+cmd_pre_read() {
+    "${PLUGIN_ROOT}/hooks/pre-read"
 }
 
 # --------------------------------------------------------------------------- #
@@ -249,9 +257,6 @@ case "${1:-help}" in
     pre-bash)          shift; cmd_pre_bash "$@" ;;
     pre-write)         shift; cmd_pre_write "$@" ;;
     pre-read)          shift; cmd_pre_read "$@" ;;
-    post-write)        shift; cmd_post_write "$@" ;;
-    stop-gate)         shift; cmd_stop_gate "$@" ;;
-    scan)              shift; cmd_scan "$@" ;;
     doctor)            shift; cmd_doctor "$@" ;;
     version|--version) say "slopguard ${VERSION}" ;;
     help|--help|-h)    cmd_help ;;

@@ -8,6 +8,8 @@
 # Contract: exit 0 = allow. exit 2 = block, with the reason on stderr (Claude reads it).
 # Any other failure mode must allow: a broken guard that blocks every session is worse
 # than no guard.
+# Ownership boundary: this hook alone owns destructive git/rm commands and test
+# weakening. Slop Guard owns secrets, suppressions, dependency and lint policy.
 set -uo pipefail
 
 MODE="${1:-}"

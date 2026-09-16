@@ -172,3 +172,13 @@ parsed="$(printf '%s' "$actual" | jq -r '.hookSpecificOutput.additionalContext')
 [ "$parsed" = "$TRICKY" ] \
     && ok  "hook_context: double-quote + dollar survive round-trip" \
     || bad "hook_context: special chars" "got: $parsed"
+
+# --------------------------------------------------------------------------- #
+# 8. Headless asks fail closed with the original reason preserved
+# --------------------------------------------------------------------------- #
+actual="$(AISDLC_HEADLESS=1 hook_ask "please confirm")"
+decision="$(printf '%s' "$actual" | jq -r '.hookSpecificOutput.permissionDecision')"
+parsed="$(printf '%s' "$actual" | jq -r '.hookSpecificOutput.permissionDecisionReason')"
+[ "$decision" = "deny" ] && [ "$parsed" = "please confirm — no human in this session" ] \
+    && ok  "hook_ask: headless session denies with reason" \
+    || bad "hook_ask: headless session" "decision=${decision}, reason=${parsed}"

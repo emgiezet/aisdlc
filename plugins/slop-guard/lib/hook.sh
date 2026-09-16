@@ -51,10 +51,15 @@ hook_deny() {
 }
 
 # hook_ask <reason>
-# Ask the user to confirm; Claude presents the reason as a prompt.
+# Ask interactively, or deny explicitly when the queue has no human to answer.
 hook_ask() {
-    jq -n --arg reason "$1" \
-        '{"hookSpecificOutput":{"permissionDecision":"ask","permissionDecisionReason":$reason}}'
+    local decision="ask" reason="$1"
+    if [ "${AISDLC_HEADLESS:-0}" = "1" ]; then
+        decision="deny"
+        reason="${reason} — no human in this session"
+    fi
+    jq -n --arg decision "$decision" --arg reason "$reason" \
+        '{"hookSpecificOutput":{"permissionDecision":$decision,"permissionDecisionReason":$reason}}'
 }
 
 # hook_allow

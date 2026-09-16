@@ -24,6 +24,10 @@ printf 'slop-guard test suite\n\n'
 . "${TESTS_DIR}/hook_test.sh"
 # shellcheck source=state_test.sh
 . "${TESTS_DIR}/state_test.sh"
+# shellcheck source=bash_test.sh
+. "${TESTS_DIR}/bash_test.sh"
+# shellcheck source=write_test.sh
+. "${TESTS_DIR}/write_test.sh"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -4,8 +4,8 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=../lib/hook.sh
 . "${PLUGIN_ROOT}/lib/hook.sh"
-. "${PLUGIN_ROOT}/lib/state.sh"
 
 hook_input
 tool_name="$(hook_field .tool_name)"
@@ -13,36 +13,99 @@ file_path="$(hook_field .tool_input.file_path)"
 [ -n "$file_path" ] || exit 0
 
 case "$tool_name" in
-    Write) new_content="$(hook_field .tool_input.content)"; old_content="$(cat "$file_path" 2>/dev/null || true)" ;;
-    Edit|NotebookEdit) new_content="$(hook_field .tool_input.new_string)"; old_content="$(hook_field .tool_input.old_string)" ;;
+    Write)
+        new_content="$(hook_field .tool_input.content)"
+        old_content="$(cat "$file_path" 2>/dev/null || true)"
+        ;;
+    Edit|NotebookEdit)
+        new_content="$(hook_field .tool_input.new_string)"
+        old_content="$(hook_field .tool_input.old_string)"
+        ;;
+    MultiEdit)
+        new_content="$(hook_field '[.tool_input.edits[]?.new_string] | join("\n")')"
+        old_content="$(hook_field '[.tool_input.edits[]?.old_string] | join("\n")')"
+        ;;
     *) exit 0 ;;
 esac
 
-# 1. Secret Scanning (betterleaks/gitleaks)
-# Simplified implementation: just check for a secret pattern
-if printf '%s' "$new_content" | grep -qE '-----BEGIN (RSA|OPENSSH|EC) PRIVATE KEY-----'; then
-    hook_deny "Secret detected. Never embed credentials in source files."
+# Fail closed for obvious secrets even when the optional external scanner is absent.
+secret_pattern="-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----|(^|[^[:alnum:]_])(aws_secret_access_key|api[_-]?key|client[_-]?secret|password)[[:space:]]*[:=][[:space:]]*[\"']?[^[:space:]\"']{8,}"
+if printf '%s' "$new_content" | grep -Eq -- "$secret_pattern"; then
+    hook_deny "Secret detected in new content. Use an environment variable or a secret manager instead."
     exit 0
 fi
 
-# 2. Suppression detection: just check for patterns from write.yaml
-if printf '%s' "$new_content" | grep -qE '(@phpstan-ignore|//nolint|# noqa|eslint-disable|checkov:skip=)'; then
-    if ! printf '%s' "$new_content" | grep -qE 'reason:[[:space:]]*.{10,}'; then
-        hook_deny "Suppression comment requires a justification (reason: <≥10 chars)."
-        exit 0
-    fi
-fi
+# Parse the deliberately small suppressions.yaml schema without adding a YAML dependency.
+# Each emitted record pairs a literal marker with its language-specific POSIX ERE.
+suppression_records="$(awk '
+    /^  [[:alnum:]_]+:$/ { in_patterns = 0; count = 0; next }
+    /^    patterns:$/ { in_patterns = 1; count = 0; next }
+    in_patterns && /^      - / {
+        value = $0
+        sub(/^[[:space:]]*-[[:space:]]*/, "", value)
+        gsub(/^\042|\042$/, "", value)
+        patterns[++count] = value
+        next
+    }
+    in_patterns && /^    reason_grep_E:/ {
+        reason = $0
+        sub(/^[[:space:]]*reason_grep_E:[[:space:]]*\047/, "", reason)
+        sub(/\047[[:space:]]*$/, "", reason)
+        for (i = 1; i <= count; i++) print patterns[i] "\t" reason
+        delete patterns
+        count = 0
+        in_patterns = 0
+    }
+' "${PLUGIN_ROOT}/rules/policies/suppressions.yaml" 2>/dev/null || true)"
 
-# 3. Protected files: just check a few
-if [[ "$file_path" =~ (phpstan\.neon|eslint\.config\.js) ]]; then
+while IFS=$'\t' read -r marker reason_pattern; do
+    [ -n "$marker" ] || continue
+    while IFS= read -r line; do
+        case "$line" in
+            *"$marker"*)
+                if ! printf '%s\n' "$old_content" | grep -Fqx -- "$line" \
+                    && ! printf '%s\n' "$line" | grep -Eq -- "$reason_pattern"; then
+                    hook_deny "Suppression comment '$marker' requires a justification on the same line."
+                    exit 0
+                fi
+                ;;
+        esac
+    done <<< "$new_content"
+done <<< "$suppression_records"
+
+base_name="${file_path##*/}"
+protected=0
+case "$base_name" in
+    phpstan*.neon*|psalm*.xml*|.golangci.*|eslint.config.*|.eslintrc*|ruff.toml|.ruff.toml|.tflint.hcl|.checkov.yaml|.kube-linter.yaml|.hadolint.yaml|zizmor.yml|.gitleaks.toml|.sqlfluff|phpstan-baseline.neon|psalm-baseline.xml|.eslintcache|*.baseline.json)
+        protected=1 ;;
+    pyproject.toml)
+        printf '%s' "$new_content" | grep -Eq '^\[tool\.(ruff|mypy|pyright)\]' && protected=1 ;;
+    tsconfig*.json)
+        printf '%s' "$new_content" | grep -Eq '"strict"[[:space:]]*:[[:space:]]*false' && protected=1 ;;
+esac
+case "$file_path" in
+    */.github/workflows/*|*/.gitlab-ci.yml|.github/workflows/*|.gitlab-ci.yml)
+        for keyword in lint test security; do
+            if printf '%s' "$old_content" | grep -qi -- "$keyword" \
+                && ! printf '%s' "$new_content" | grep -qi -- "$keyword"; then
+                protected=1
+                break
+            fi
+        done
+        ;;
+esac
+if [ "$protected" -eq 1 ]; then
     hook_ask "Lowering quality gates must be reviewed by a human."
     exit 0
 fi
 
-# 4. Test-skip markers
-if printf '%s' "$new_content" | grep -qE '(markTestSkipped|t.Skip|it.skip)'; then
-    hook_ask "Adding test-skip marker requires confirmation."
-    exit 0
-fi
+for marker in markTestSkipped markTestIncomplete 't.Skip(' 'it.skip(' 'describe.skip(' 'test.skip(' 'xit(' '@pytest.mark.skip' '@unittest.skip'; do
+    new_count="$(printf '%s' "$new_content" | grep -Fo -- "$marker" | wc -l | tr -d ' ')"
+    old_count="$(printf '%s' "$old_content" | grep -Fo -- "$marker" | wc -l | tr -d ' ')"
+    if [ "$new_count" -gt "$old_count" ]; then
+        hook_ask "Adding a test-skip marker requires confirmation."
+        exit 0
+    fi
+done
 
 exit 0

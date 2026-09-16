@@ -51,3 +51,15 @@ The risk is maintenance, not capability: the fork is young and small. Mitigation
 A `hooks.json` entry that points at a subcommand which does not yet exist fails open: Claude
 Code executes nothing and the defect is invisible. Each hook binding therefore lands in the
 same commit as its handler. Hooks are wired in Stage 1, one subcommand at a time.
+
+### Guard ownership and unattended prompts
+
+The `sdlc` guard exclusively owns force pushes, `--no-verify`, destructive `rm -rf`
+outside the worktree, and deleted or skipped tests at turn end. Slop Guard owns
+secrets, suppressions, protected quality configuration, dependency supply-chain
+checks, and lint findings. Keeping one owner per action avoids contradictory blocks.
+
+Queued phases export `AISDLC_HEADLESS=1` and run with `bypassPermissions`, so nobody
+can answer an `ask` decision. In that environment every Slop Guard `ask` becomes a
+`deny` with the original reason plus “no human in this session”; it never silently
+allows the action.

@@ -4,34 +4,71 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=../lib/hook.sh
 . "${PLUGIN_ROOT}/lib/hook.sh"
+# shellcheck source=../lib/shellsplit.sh
 . "${PLUGIN_ROOT}/lib/shellsplit.sh"
 
 hook_input
 command="$(hook_field .tool_input.command)"
+[ -n "$command" ] || { hook_allow; exit 0; }
 
 POLICY_FILE="${PLUGIN_ROOT}/rules/policies/bash.yaml"
 PARSER="${PLUGIN_ROOT}/rules/policies/generate_policy.sh"
-POLICY_SCRIPT="${TMPDIR:-/tmp}/policy_check.sh"
+# The generated text contains only single-quoted strings from the repository-owned policy.
+eval "$("$PARSER" "$POLICY_FILE")"
 
-"$PARSER" "$POLICY_FILE" > "$POLICY_SCRIPT"
-. "$POLICY_SCRIPT"
+mapfile -t components < <(shellsplit "$command")
+decision=""
+reason=""
+previous=""
+operator=""
 
-# 1. Pipe-to-shell check (full command)
-if echo "$command" | grep -qE '^[[:space:]]*(curl|wget)\b.*\|[[:space:]]*(sh|bash|zsh|python[0-9.]*)\b'; then
-    hook_deny "Remote script execution. Download, verify checksum, then run explicitly."
-    exit 0
-fi
-
-# 2. Split command into components
-mapfile -t components < <(shellsplit "$command" | grep -v '^[[:space:]]*$')
-
-# 3. Check against rules
 for component in "${components[@]}"; do
-    if ! check_patterns "$component"; then
-        hook_deny "Command component violates security policy: $component"
+    case "$component" in
+        '&&'|'||'|';'|'('|')') operator="$component"; continue ;;
+        '|') operator='|'; continue ;;
+    esac
+
+    if [ "$operator" = '|' ] \
+        && [[ "$previous" =~ ^[[:space:]]*(curl|wget)([[:space:]]|$) ]] \
+        && [[ "$component" =~ ^[[:space:]]*(sh|bash|zsh|python[0-9.]*)([[:space:]]|$) ]]; then
+        hook_deny "Remote script execution. Download, verify checksum, then run explicitly."
         exit 0
     fi
+
+    allowed=0
+    for pattern in "${ALLOW_PATTERNS[@]}"; do
+        if [[ "$component" =~ $pattern ]]; then
+            allowed=1
+            break
+        fi
+    done
+
+    if [ "$allowed" -eq 0 ]; then
+        for pattern in "${DENY_PATTERNS[@]}"; do
+            if [[ "$component" =~ $pattern ]]; then
+                hook_deny "Command component violates security policy: $component"
+                exit 0
+            fi
+        done
+        if [ -z "$decision" ]; then
+            for pattern in "${ASK_PATTERNS[@]}"; do
+                if [[ "$component" =~ $pattern ]]; then
+                    decision="ask"
+                    reason="Action requires confirmation: $component"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    previous="$component"
+    operator=""
 done
 
-exit 0
+if [ "$decision" = "ask" ]; then
+    hook_ask "$reason"
+else
+    hook_allow
+fi

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # lib/shellsplit.sh — robust shell command splitting.
-# Splits compound commands into atomic components based on operators.
+# Splits compound commands into atomic components based on operators and groupings.
 
 shellsplit() {
-    # Using python to split by operators: &&, ||, |, ;
-    python3 -c "import sys, re; print('\n'.join(re.split(r'(&&|\|\||\||;)', sys.argv[1])))" "$1"
+    python3 "$(dirname "${BASH_SOURCE[0]}")/shellsplit.py" "$1"
 }

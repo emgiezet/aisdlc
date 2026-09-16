@@ -1,10 +1,27 @@
 #!/usr/bin/env bash
-# Convert bash.yaml into a bash sourceable file.
+# Convert the repository-owned bash.yaml subset into shell arrays.
+set -eu
 
-printf 'check_patterns() {\n'
-# Extract only lines with pattern:
-sed -n '/deny:/,/ask:/p' "$1" | sed '1d' | grep 'pattern:' | while read -r line; do
-    pat=$(echo "$line" | sed "s/.*pattern: '\(.*\)'/\1/")
-    printf '  [[ "$1" =~ %s ]] && return 1\n' "$pat"
-done
-printf '  return 0\n}\n'
+policy="${1:?usage: generate_policy.sh POLICY}"
+
+emit_array() {
+    local name="$1" section="$2"
+    printf '%s=(' "$name"
+    awk -v section="$section" '
+        $0 == section ":" { active = 1; next }
+        active && /^[[:alnum:]_]+:/ { exit }
+        active && /^[[:space:]]*pattern:/ {
+            value = $0
+            sub(/^[[:space:]]*pattern:[[:space:]]*\047/, "", value)
+            sub(/\047[[:space:]]*$/, "", value)
+            print value
+        }
+    ' "$policy" | while IFS= read -r pattern; do
+        printf ' %q' "$pattern"
+    done
+    printf ' )\n'
+}
+
+emit_array ALLOW_PATTERNS allow
+emit_array DENY_PATTERNS deny
+emit_array ASK_PATTERNS ask

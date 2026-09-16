@@ -77,15 +77,16 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 	jq . plugins/slop-guard/tools/tools.lock.json > /dev/null && echo "  ✓ slopguard tools.lock.json"; \
 	test "$$(jq -r '.name' plugins/slop-guard/.claude-plugin/plugin.json)" = "slop-guard" \
 		|| (echo "  ✗ slopguard plugin name mismatch" && exit 1); \
-	for s in plugins/slop-guard/bin/slopguard plugins/slop-guard/lib/*.sh \
-	          plugins/slop-guard/tests/run-tests; do \
+	for s in plugins/slop-guard/bin/slopguard plugins/slop-guard/hooks/pre-* \
+	          plugins/slop-guard/lib/*.sh plugins/slop-guard/tests/run-tests \
+	          plugins/slop-guard/tests/*.sh; do \
 		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
 	done; \
 	echo "  ✓ slopguard shell syntax"; \
 	if command -v shellcheck > /dev/null 2>&1; then \
 		shellcheck -S warning plugins/slop-guard/bin/slopguard \
-		            plugins/slop-guard/lib/*.sh \
-		            plugins/slop-guard/tests/run-tests; \
+		            plugins/slop-guard/hooks/pre-* plugins/slop-guard/lib/*.sh \
+		            plugins/slop-guard/tests/run-tests plugins/slop-guard/tests/*.sh; \
 		echo "  ✓ slopguard shellcheck clean"; \
 	else \
 		echo "  – shellcheck not installed, skipped"; \
