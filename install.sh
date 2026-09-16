@@ -19,10 +19,14 @@ Clone (if you have not already):
 
 --- Claude Code ---
 
-Run these in Claude Code:
+Register the marketplace and install the plugin:
 
   /plugin marketplace add $HERE
   /plugin install sdlc@aisdlc
+
+Then set up a repository:
+
+  /sdlc:init
 
 --- Codex ---
 
@@ -30,8 +34,11 @@ Register this checkout as a marketplace source:
 
   codex plugin marketplace add $HERE
 
-Then open the Plugins Directory in the Codex UI, choose the aisdlc marketplace,
-and install the sdlc plugin from there.
+Then open the Plugins Directory, select the aisdlc marketplace, and install sdlc.
+
+To set up a repository, start a Codex session in the repo and run:
+
+  \$init
 
 --- Grok ---
 
@@ -41,8 +48,11 @@ Add this checkout as a marketplace source in ~/.grok/config.toml:
   type = "local"
   path = "$HERE"
 
-Then open the Marketplace tab in the Grok TUI (/plugins), browse the aisdlc
-marketplace, and select sdlc.
+Then open the Marketplace tab in the Grok TUI (/plugins), browse aisdlc, and select sdlc.
+
+To set up a repository, start a Grok session in the repo and run:
+
+  /init
 
 --- Queue runner (requires the claude CLI) ---
 
@@ -51,13 +61,6 @@ Put the queue runner on your PATH:
   ln -s $HERE/plugins/sdlc/bin/aisdlc ~/.local/bin/aisdlc
 
 aisdlc run starts headless claude -p sessions. It does not work with Codex or Grok.
-
---- Set up a repository ---
-
-After installing the plugin on your chosen host, start an interactive session
-inside the repository you want to use and run:
-
-  /sdlc:init
 
 To try it without touching a real repository:
 

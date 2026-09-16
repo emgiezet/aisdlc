@@ -31,25 +31,37 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	@for f in evals/harness/scenarios/*/scenario.json; do \
 		jq . "$$f" > /dev/null && echo "  ✓ $$f"; \
 	done
-	@echo "Checking version and name consistency across manifests..."
+	@echo "Checking source paths and name consistency across all marketplaces..."
+	@for plugin in sdlc slop-guard; do \
+		codex_path=$$(jq -r ".plugins[] | select(.name==\"$$plugin\") | .source.path" $(CODEX_MARKETPLACE)); \
+		test -n "$$codex_path" \
+			|| (echo "  ✗ $$plugin: not found in Codex marketplace" && exit 1); \
+		codex_dir="$${codex_path#./}"; \
+		test -d "$$codex_dir" \
+			|| (echo "  ✗ $$plugin: Codex source.path $$codex_path not found" && exit 1); \
+		test -f "$$codex_dir/plugin.json" \
+			|| (echo "  ✗ $$plugin: $$codex_dir/plugin.json missing" && exit 1); \
+		mname=$$(jq -r '.name' "$$codex_dir/plugin.json"); \
+		test "$$mname" = "$$plugin" \
+			|| (echo "  ✗ $$plugin: manifest name '$$mname' != marketplace entry" && exit 1); \
+		echo "  ✓ Codex: $$plugin → $$codex_dir (name: $$mname)"; \
+		grok_path=$$(jq -r ".plugins[] | select(.name==\"$$plugin\") | .source.path" $(GROK_MARKETPLACE)); \
+		test -n "$$grok_path" \
+			|| (echo "  ✗ $$plugin: not found in Grok marketplace" && exit 1); \
+		grok_dir="$${grok_path#./}"; \
+		test -d "$$grok_dir" \
+			|| (echo "  ✗ $$plugin: Grok source.path $$grok_path not found" && exit 1); \
+		echo "  ✓ Grok: $$plugin → $$grok_dir"; \
+	done
 	@SDLC_CLAUDE_V=$$(jq -r '.version' $(PLUGIN_JSON)); \
 	 SDLC_PORT_V=$$(jq -r '.version' $(PORTABLE_SDLC_JSON)); \
 	 SDLC_MKT_V=$$(jq -r '.plugins[] | select(.name=="sdlc") | .version' $(MARKETPLACE_JSON)); \
-	 SDLC_GROK_V=$$(jq -r '.plugins[] | select(.name=="sdlc") | .version // empty' $(GROK_MARKETPLACE)); \
+	 SDLC_GROK_V=$$(jq -r '.plugins[] | select(.name=="sdlc") | .version' $(GROK_MARKETPLACE)); \
 	 test "$$SDLC_CLAUDE_V" = "$$SDLC_PORT_V" \
 	   && test "$$SDLC_CLAUDE_V" = "$$SDLC_MKT_V" \
-	   && { [ -z "$$SDLC_GROK_V" ] || test "$$SDLC_CLAUDE_V" = "$$SDLC_GROK_V"; } \
+	   && test "$$SDLC_CLAUDE_V" = "$$SDLC_GROK_V" \
 	   && echo "  ✓ sdlc version consistent ($$SDLC_CLAUDE_V)" \
 	   || (echo "  ✗ sdlc version mismatch: claude=$$SDLC_CLAUDE_V portable=$$SDLC_PORT_V marketplace=$$SDLC_MKT_V grok=$$SDLC_GROK_V" && exit 1)
-	@jq -e '.plugins[] | select(.name == "sdlc")' $(CODEX_MARKETPLACE) > /dev/null \
-		&& echo "  ✓ sdlc present in Codex marketplace" \
-		|| (echo "  ✗ sdlc missing from Codex marketplace" && exit 1)
-	@jq -e '.plugins[] | select(.name == "sdlc")' $(GROK_MARKETPLACE) > /dev/null \
-		&& echo "  ✓ sdlc present in Grok marketplace" \
-		|| (echo "  ✗ sdlc missing from Grok marketplace" && exit 1)
-	@test "$$(jq -r '.name' $(PLUGIN_JSON))" = "$$(jq -r '.plugins[] | select(.name=="sdlc") | .name' $(MARKETPLACE_JSON))" \
-		&& echo "  ✓ sdlc name consistent across Claude manifests" \
-		|| (echo "  ✗ sdlc name mismatch between plugin.json and marketplace.json" && exit 1)
 	@echo "Checking required files..."
 	@for c in $(WORKFLOW_SKILLS); do \
 		test -f plugins/sdlc/skills/$$c/SKILL.md && echo "  ✓ skills/$$c/SKILL.md" || \
@@ -93,7 +105,8 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 
 validate-slopguard: ## Validate the slop-guard plugin, if present
 	@set -e; \
-	test -d plugins/slop-guard || { echo "  – slop-guard not present, skipped"; exit 0; }; \
+	test -d plugins/slop-guard \
+		|| (echo "  ✗ plugins/slop-guard missing — bundled plugin is required" && exit 1); \
 	jq . plugins/slop-guard/.claude-plugin/plugin.json > /dev/null && echo "  ✓ slopguard plugin.json"; \
 	jq . plugins/slop-guard/hooks/hooks.json > /dev/null && echo "  ✓ slopguard hooks.json"; \
 	jq . plugins/slop-guard/tools/tools.lock.json > /dev/null && echo "  ✓ slopguard tools.lock.json"; \
@@ -108,12 +121,12 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 	     "$$(jq -r '.version' $(PORTABLE_SLOPGUARD_JSON))" \
 		&& echo "  ✓ slopguard portable manifest version consistent" \
 		|| (echo "  ✗ slopguard .claude-plugin and portable plugin.json versions disagree" && exit 1); \
-	SG_GROK_V=$$(jq -r '.plugins[] | select(.name=="slop-guard") | .version // empty' $(GROK_MARKETPLACE)); \
-	test -z "$$SG_GROK_V" || { \
-	  test "$$SG_GROK_V" = "$$(jq -r '.version' plugins/slop-guard/.claude-plugin/plugin.json)" \
+	SG_GROK_V=$$(jq -r '.plugins[] | select(.name=="slop-guard") | .version' $(GROK_MARKETPLACE)); \
+	test -n "$$SG_GROK_V" && test "$$SG_GROK_V" != "null" \
+		|| (echo "  ✗ slop-guard not versioned in Grok marketplace" && exit 1); \
+	test "$$SG_GROK_V" = "$$(jq -r '.version' plugins/slop-guard/.claude-plugin/plugin.json)" \
 		&& echo "  ✓ slopguard Grok marketplace version consistent" \
 		|| (echo "  ✗ slopguard Grok marketplace version disagrees" && exit 1); \
-	}; \
 	jq -e '.plugins[] | select(.name == "slop-guard")' $(CODEX_MARKETPLACE) > /dev/null \
 		&& echo "  ✓ slop-guard present in Codex marketplace" \
 		|| (echo "  ✗ slop-guard missing from Codex marketplace" && exit 1); \
@@ -208,8 +221,11 @@ ifndef VERSION
 	$(error VERSION is required)
 endif
 	@jq '.version = "$(VERSION)"' $(PLUGIN_JSON) > /tmp/plugin.json && mv /tmp/plugin.json $(PLUGIN_JSON)
+	@jq '.version = "$(VERSION)"' $(PORTABLE_SDLC_JSON) > /tmp/portable-sdlc.json && mv /tmp/portable-sdlc.json $(PORTABLE_SDLC_JSON)
 	@jq '(.plugins[] | select(.name == "sdlc") | .version) = "$(VERSION)" | .metadata.version = "$(VERSION)"' \
 		$(MARKETPLACE_JSON) > /tmp/marketplace.json && mv /tmp/marketplace.json $(MARKETPLACE_JSON)
+	@jq '(.plugins[] | select(.name == "sdlc") | .version) = "$(VERSION)"' \
+		$(GROK_MARKETPLACE) > /tmp/grok-marketplace.json && mv /tmp/grok-marketplace.json $(GROK_MARKETPLACE)
 	@echo "Version bumped to $(VERSION)"
 
 bump-slopguard: ## Bump the slop-guard plugin patch version
@@ -220,6 +236,9 @@ ifndef VERSION
 	$(error VERSION is required)
 endif
 	@jq '.version = "$(VERSION)"' $(SLOPGUARD_PLUGIN_JSON) > /tmp/plugin-sg.json && mv /tmp/plugin-sg.json $(SLOPGUARD_PLUGIN_JSON)
+	@jq '.version = "$(VERSION)"' $(PORTABLE_SLOPGUARD_JSON) > /tmp/portable-sg.json && mv /tmp/portable-sg.json $(PORTABLE_SLOPGUARD_JSON)
 	@jq '(.plugins[] | select(.name == "slop-guard") | .version) = "$(VERSION)"' \
 		$(MARKETPLACE_JSON) > /tmp/marketplace-sg.json && mv /tmp/marketplace-sg.json $(MARKETPLACE_JSON)
+	@jq '(.plugins[] | select(.name == "slop-guard") | .version) = "$(VERSION)"' \
+		$(GROK_MARKETPLACE) > /tmp/grok-marketplace-sg.json && mv /tmp/grok-marketplace-sg.json $(GROK_MARKETPLACE)
 	@echo "slop-guard version bumped to $(VERSION)"

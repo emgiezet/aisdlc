@@ -16,7 +16,7 @@ Concretely, it gives you five things a bare agent invocation does not have:
    works on the expensive one, the harness is carrying none of the weight.
 
 The unattended queue (`aisdlc run`) requires the `claude` CLI. The interactive workflow skills
-(`/sdlc:spec`, `/sdlc:implement`, etc.) work on all three hosts.
+work on all three hosts.
 
 Status: **0.1.0.** The pipeline runs end to end on Haiku against the bundled sandbox: 10/10
 assertions, $0.59, 5.4 minutes — a test per use case carrying its id, the API contract updated in
@@ -76,27 +76,30 @@ draft.
 
 ## Set up a repository
 
-```
-/sdlc:init
-```
+Start an interactive session in the repository you want to use.
 
-It surveys the repo — stacks, directories, the exact commands CI runs, test conventions, what kinds
-of change the git history actually contains — proposes a router table for your approval, and then
-writes `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md` and
-`.aisdlc/config.json` calibrated to *this* repository.
+| Host | Command |
+|------|---------|
+| Claude Code | `/sdlc:init` |
+| Codex | `$init` |
+| Grok | `/init` |
 
-At the setup gate it also lists any optional capability plugins it can detect in the current
-environment, proposes which integrations make sense, and records the selections in the project
-profile. Installation of those plugins is left to you; `/sdlc:init` does not install anything.
+The init skill surveys the repo — stacks, directories, the exact commands CI runs, test
+conventions, what kinds of change the git history actually contains — proposes a router table for
+your approval, and then writes `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md`
+and `.aisdlc/config.json` calibrated to *this* repository.
 
-Run it in an interactive session. Claude Code will ask before writing under `.claude/` and will not
-grant that to an unattended run — deliberately, since agent configuration is the last thing you want
-rewritten silently. `--yes` skips this command's own review gate; it does not skip that approval.
+At the setup gate it also lists any optional capability plugins it detects in the current
+environment, proposes integrations, and records the selections in the project profile. Installation
+of those plugins is left to you.
 
-That last point is the whole design: this framework deliberately ships **no** ready-made
-conventions for your stack. Copying someone else's playbooks is what makes generic harnesses
-useless. `make templates TARGET=…` will drop the raw templates in if you would rather fill them in
-by hand.
+Run it in an interactive session. Claude Code will ask before writing under `.claude/` and will
+not grant that to an unattended run — deliberately, since agent configuration is the last thing
+you want rewritten silently.
+
+This framework ships **no** ready-made conventions for your stack. Copying someone else's playbooks
+is what makes generic harnesses useless. `make templates TARGET=…` will drop the raw templates in
+if you would rather fill them in by hand.
 
 ## The loop
 
@@ -109,13 +112,15 @@ aisdlc run --workers 3  → worktree per task; implement → qa → ship
 aisdlc inbox            → draft pull requests, each with its QA verdict on the first line
 ```
 
+Commands above use Claude Code syntax (`/sdlc:<skill>`). On Codex, use `$<skill>` (e.g. `$spec`,
+`$implement`). On Grok, use `/<skill>` (e.g. `/spec`, `/implement`).
+
 Or without the queue, one ticket at a time while you watch:
 
-```
-/sdlc:spec ABC-123 → /sdlc:implement ABC-123 → /sdlc:qa ABC-123 → /sdlc:ship ABC-123
-```
-
-On Codex, substitute `$sdlc:` for `/sdlc:`. On Grok, `/sdlc:` works directly.
+| Claude Code | `/sdlc:spec` → `/sdlc:implement` → `/sdlc:qa` → `/sdlc:ship` |
+|-------------|--------------------------------------------------------------|
+| Codex       | `$spec` → `$implement` → `$qa` → `$ship` |
+| Grok        | `/spec` → `/implement` → `/qa` → `/ship` |
 
 ### Why it holds together
 
@@ -136,18 +141,18 @@ On Codex, substitute `$sdlc:` for `/sdlc:`. On Grok, `/sdlc:` works directly.
 
 ### Skills
 
-**Workflow skills** — invokable by name on all three hosts:
+**Workflow skills** (invokable as `/sdlc:<name>` on Claude Code, `$<name>` on Codex, `/<name>` on Grok):
 
 | Skill | Purpose |
 |-------|---------|
-| `/sdlc:init` | Survey the repo and generate its router, playbooks, rules and profile. Run once. |
-| `/sdlc:spec` | Turn a ticket, URL, file or description into `specs/<TICKET>/spec.md` with a use-case table. Adds the negative cases the ticket forgot; leaves `status: draft`. |
-| `/sdlc:mockup` | Build a clickable single-file mockup from the spec's UI use cases — no build step, opens by double-clicking — including the empty, loading, error and denied states. |
-| `/sdlc:implement` | The unattended build: refuses anything not `approved`, one playbook, a test carrying each `UC-<n>` id before its implementation, full CI matrix, `BLOCKED.md` rather than a broken finish. |
-| `/sdlc:qa` | Independent verification: use cases re-derived from the spec, gaps closed, `qa-report.md` with a `PASS`/`GAPS` verdict. A new test that fails is a finding, never a silent fix. |
-| `/sdlc:ship` | Non-interactive delivery: refuses on a blocking verdict, opens a **draft** pull request with the verdict and the riskiest changes up front, QA report as a comment. |
+| `init` | Survey the repo and generate its router, playbooks, rules and profile. Run once. |
+| `spec` | Turn a ticket, URL, file or description into `specs/<TICKET>/spec.md` with a use-case table. Adds the negative cases the ticket forgot; leaves `status: draft`. |
+| `mockup` | Build a clickable single-file mockup from the spec's UI use cases — no build step, opens by double-clicking — including the empty, loading, error and denied states. |
+| `implement` | The unattended build: refuses anything not `approved`, one playbook, a test carrying each `UC-<n>` id before its implementation, full CI matrix, `BLOCKED.md` rather than a broken finish. |
+| `qa` | Independent verification: use cases re-derived from the spec, gaps closed, `qa-report.md` with a `PASS`/`GAPS` verdict. A new test that fails is a finding, never a silent fix. |
+| `ship` | Non-interactive delivery: refuses on a blocking verdict, opens a **draft** pull request with the verdict and the riskiest changes up front, QA report as a comment. |
 
-**Knowledge skills** — loaded on demand by the model:
+**Knowledge skills** (loaded on demand by the model):
 
 | Skill | What it provides |
 |-------|------------------|
@@ -176,16 +181,16 @@ The interactive workflow skills are the multi-host path.
 
 ## Suggested companions
 
-All four are optional and independently installed. `/sdlc:init` detects which are present,
-proposes integrations at its existing setup gate, and records the result in the project profile.
-Absent companions fall back to AISDLC's own instructions; nothing breaks.
+All four are optional and independently installed. The `init` skill detects which are present,
+proposes integrations at its setup gate, and records the result in the project profile. Absent
+companions fall back to AISDLC's own instructions; nothing breaks.
 
-| Companion | Role in the flow | Source | Boundary |
-|-----------|-----------------|--------|----------|
-| **Slop Guard** | Deterministic policy enforcement via PreToolUse/Stop hooks: supply-chain blocks, credential guards, linter-suppression gates, hard-coded secret detection | bundled — `plugins/slop-guard/` | Hooks fire at the tool boundary; AISDLC never calls Slop Guard directly. Install separately as a plugin. |
-| **Superpowers** | Planning, TDD, debug, and code-review disciplines contributed by matching skill triggers | [obra/superpowers](https://github.com/obra/superpowers) | Activates when the model selects its skills. AISDLC falls back to its own instructions when absent. |
-| **Ponytail** | Implementation minimalism checks and over-engineering review during `implement` and `qa` phases | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | Activates when the model selects its skills. AISDLC falls back to its own instructions when absent. |
-| **Headroom** | Agent-level context compression and memory — wraps the chosen agent at the transport layer | [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | Transport wrapper only. AISDLC never invokes Headroom; install it separately at the agent level if you want it. |
+| Companion | Role in the flow | Install |
+|-----------|-----------------|---------|
+| **Slop Guard** | Deterministic policy enforcement via PreToolUse/Stop hooks: supply-chain blocks, credential guards, linter-suppression gates, hard-coded secret detection. AISDLC never calls it directly; hooks fire at the tool boundary. | bundled in `plugins/slop-guard/` — Claude Code: `/plugin install slop-guard@aisdlc`; Codex: install from the aisdlc marketplace; Grok: select slop-guard in `/plugins` |
+| **Superpowers** | Planning, TDD, debug, and review disciplines contributed by matching skill triggers. AISDLC falls back to its own instructions when absent. | [obra/superpowers](https://github.com/obra/superpowers) — Claude Code: `/plugin install superpowers@claude-plugins-official`; Codex: browse the official Codex plugin marketplace for Superpowers; Grok: `grok plugin install superpowers@xai-official --trust` |
+| **Ponytail** | Implementation minimalism checks and over-engineering review during `implement` and `qa` phases. AISDLC falls back to its own instructions when absent. | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) — Claude Code: `/plugin marketplace add DietrichGebert/ponytail` then `/plugin install ponytail@ponytail`; Codex: `codex plugin marketplace add DietrichGebert/ponytail && codex plugin add ponytail@ponytail`; Grok: `grok plugin install DietrichGebert/ponytail --trust` |
+| **Headroom** | Context compression and cross-agent memory at the transport layer. AISDLC never invokes Headroom; it wraps whichever agent you run. Not a plugin — install separately and wrap: `headroom wrap claude` / `headroom wrap codex` / `headroom wrap grok`. | [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) — `uv tool install "headroom-ai[all]"` or `pip install "headroom-ai[all]"` |
 
 ## Try it without risking a real repo
 
