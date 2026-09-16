@@ -8,7 +8,8 @@
 #     findings.json     — findings array (written atomically by finding_add)
 #     stop-iterations   — stop-gate iteration counter (plain integer, default 0)
 #
-# Locking (D1): mkdir "$dir/.lock" — atomic on every POSIX filesystem.
+# Locking (D1): mkdir "$dir/.lock" (best-effort) + noclobber tiebreaker
+#   ( set -C; : > "$dir/.lock/owner" ) — O_EXCL open, atomic on all POSIX fs.
 #
 # Pruning: sessions older than 7 days removed at session-start (§4.5).
 
@@ -62,34 +63,40 @@ _stat_mtime() {
 }
 
 # state_lock_acquire <dir> [<max_retries> [<stale_age_seconds>]]
-# Acquire an exclusive mkdir lock on <dir>.
+# Acquire an exclusive lock on <dir>.
+# Strategy: mkdir creates the lock directory (best-effort; not atomic on all
+# implementations), then a noclobber redirect atomically claims ownership.
+# Only the process that creates .lock/owner holds the lock.
 state_lock_acquire() {
     local dir="$1"
-    local max_retries="${2:-1000}"
+    local max_retries="${2:-50}"
     local stale_age="${3:-60}"
     local lockdir="${dir}/.lock"
     local attempt=0
     while [ "$attempt" -lt "$max_retries" ]; do
-        if mkdir "$lockdir"; then
+        mkdir "$lockdir" 2>/dev/null || true
+        # O_EXCL tiebreaker: only one process can create the owner file.
+        if ( set -C; : > "${lockdir}/owner" ) 2>/dev/null; then
             return 0
         fi
-        
+
         # Detect and remove a stale lock.
         if [ -d "$lockdir" ]; then
             local now; now="$(date +%s)"
             local mtime; mtime="$(_stat_mtime "$lockdir")"
             if [ -n "$mtime" ] && [ "$((now - mtime))" -gt "$stale_age" ]; then
-                rmdir "$lockdir" 2>/dev/null || true
+                rm -rf "$lockdir" 2>/dev/null || true
             fi
         fi
         attempt=$((attempt + 1))
-        sleep "$(awk "BEGIN {srand(); print rand() * 0.1}")"
+        sleep "0.0$((RANDOM % 9 + 1))"
     done
     return 1
 }
 
 # state_lock_release <dir>
 state_lock_release() {
+    rm -f "${1}/.lock/owner" 2>/dev/null || true
     rmdir "${1}/.lock" 2>/dev/null || true
 }
 
