@@ -46,11 +46,7 @@ need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installe
 # --------------------------------------------------------------------------- #
 
 cmd_session_start() {
-    hook_input
-    # Debug
-    echo "cmd_session_start: PROJECT_DIR=${CLAUDE_PROJECT_DIR:-not set}" >&2
-    echo "cmd_session_start: PLUGIN_DATA=${CLAUDE_PLUGIN_DATA:-not set}" >&2
-    
+    # §4.4: dispatcher-based SessionStart
     local session_id="$(hook_field .session_id)"
     local agent_id="$(hook_field .agent_id)"
     : "${session_id:="unknown-$$"}"
@@ -58,9 +54,6 @@ cmd_session_start() {
     state_init "$session_id" "${agent_id:-}"
     state_prune
 
-    # Debug
-    ls -ld "$(state_dir "$session_id" "${agent_id:-}")" >&2
-    
     local _stacks="" _php_cfg="baseline" _go_cfg="baseline"
     _add_stack() { _stacks="${_stacks:+${_stacks} }$1"; }
     local _d="${CLAUDE_PROJECT_DIR:-.}"
@@ -89,8 +82,8 @@ cmd_session_start() {
         --arg php_cfg "$_php_cfg" \
         --arg go_cfg "$_go_cfg" \
         --argjson tools "$_tools_json" \
-        '{stacks: $stacks, tools: $tools, config_sources: {php: $php_cfg, go: $go_cfg}}' \
-        > "${_sdir}/profile.json.tmp" \
+        '.stacks = $stacks | .tools = $tools | .config_sources = {php: $php_cfg, go: $go_cfg}' \
+        "${_sdir}/profile.json" > "${_sdir}/profile.json.tmp" \
         && mv "${_sdir}/profile.json.tmp" "${_sdir}/profile.json"
 
     printf 'slop-guard: stacks detected: %s\n' "${_stacks:-none}"
@@ -104,6 +97,14 @@ AP-AGENT-005: .env*, private keys, and credential files are denied for reading.
 AP-AGENT-006: hard-coded credentials in written files are detected and blocked.
 AP-AGENT-007: edits outside the targeted diff scope are flagged at turn end.
 DIGEST
+}
+
+# --------------------------------------------------------------------------- #
+# pre-write
+# --------------------------------------------------------------------------- #
+
+cmd_pre_write() {
+    "${PLUGIN_ROOT}/hooks/pre-write"
 }
 
 # --------------------------------------------------------------------------- #
@@ -213,6 +214,10 @@ cmd_doctor() {
     fi
 }
 
+# --------------------------------------------------------------------------- #
+# help
+# --------------------------------------------------------------------------- #
+
 cmd_help() {
     cat <<USAGE
 slopguard ${VERSION} — anti-pattern detection and gate for agent-written code.
@@ -234,6 +239,8 @@ Tool resolution order (tool_source=project-first):
 See tools/tools.lock.json for pinned versions and sha256 hashes.
 USAGE
 }
+
+# --------------------------------------------------------------------------- #
 
 need jq
 

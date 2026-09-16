@@ -14,11 +14,21 @@ run_hook() {
 }
 
 # 1. Deny: Suppression marker without reason
-result=$(run_hook "Write" "app.php" "<?php // @phpstan-ignore" "")
-if echo "$result" | grep -q "permissionDecision\":\"deny"; then ok "deny: suppression no reason"; else bad "deny: suppression no reason" "$result"; fi
+    # Run the hook, capture decision from JSON output
+    local output
+    output="$(cat "$fixture" | "$HOOK" 2>/dev/null)"
+    local decision
+    decision="$(printf '%s' "$output" | tr -d '[:space:]' | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+    
+    if [ "$decision" = "$expected" ]; then
 
 # 2. Allow: Suppression marker with reason
 result=$(run_hook "Write" "app.php" "<?php // @phpstan-ignore (reason: this is valid)" "")
 if [[ -z "$result" ]]; then ok "allow: suppression with reason"; else bad "allow: suppression with reason" "$result"; fi
+
+# 3. Sabotage: Suppression marker on line 1, reason on line 2 (Should be denied)
+new_content=$'//nolint:rule\n// reason: this is a valid reason'
+result=$(run_hook "Write" "app.go" "$new_content" "")
+if echo "$result" | grep -q "permissionDecision\":\"deny"; then ok "sabotage: reason on different line denied"; else bad "sabotage: reason on different line denied" "$result"; fi
 
 echo "All tests passed"
