@@ -2,21 +2,18 @@
 
 ## What is pinned here and why
 
-Only `jq` and `shellcheck` are pinned in Stage 0.
+Stage 0 pins every analyzer needed by the spec section 9.3 config gate, plus
+`jq` and `shellcheck`: Betterleaks, Checkov, ESLint, golangci-lint, hadolint,
+kube-linter, Opengrep, PHPStan, Psalm, Ruff, tflint, and zizmor.
 
-**jq** — the dispatcher (`bin/slopguard`) builds and parses every JSON response
-using `jq`. Under Z6 (fail-closed for policy), a missing `jq` would silently
-turn every JSON-based policy into a no-op — the one failure mode this plugin
-cannot have. It is pinned as a first-class binary, not assumed to be present.
+`jq` is bootstrapped before the dispatcher parses JSON. This prevents a missing
+system package from disabling policy hooks. `shellcheck` validates the plugin's
+own shell code.
 
-**shellcheck** — the dispatcher's own lint gate. `shellcheck -S warning` is the
-CI acceptance criterion for every `.sh` file in this plugin.
-
-Every other tool (opengrep, golangci-lint, ruff, eslint-stack, checkov,
-tflint, kube-linter, hadolint, zizmor, …) is added by the stage that first
-uses it, so that the lockfile entry, its baseline config, and its test fixtures
-always land in the same commit. A lockfile of twenty entries whose hashes
-nobody has verified is worse than a short one that is true.
+Binary and PHAR releases carry a hash for each supported platform. Ruff and
+Checkov share a hash-pinned Python lock. The ESLint stack uses an npm lockfile
+and installs with lifecycle scripts disabled. tflint also pins its AWS ruleset
+in the baseline config.
 
 ## Schema
 

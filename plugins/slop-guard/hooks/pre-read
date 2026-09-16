@@ -46,21 +46,21 @@ esac
 # ── Deny: environment files ────────────────────────────────────────────────
 case "$base_lc" in
     .env|.env.*)
-        hook_deny "Reading environment files is not allowed — they may contain secrets (database passwords, API keys, …). Use .env.example for templates."
+        hook_secret_deny "Reading environment files is not allowed — they may contain secrets (database passwords, API keys, …). Use .env.example for templates."
         exit 0 ;;
 esac
 
 # ── Deny: private key and certificate material ────────────────────────────
 case "$base_lc" in
     *.pem|*.key|*.p12|*.pfx)
-        hook_deny "Reading private key and certificate files is not allowed."
+        hook_secret_deny "Reading private key and certificate files is not allowed."
         exit 0 ;;
 esac
 
 # ── Deny: SSH private keys ────────────────────────────────────────────────
 case "$base_lc" in
     id_rsa*|id_ed25519*)
-        hook_deny "Reading SSH key files is not allowed."
+        hook_secret_deny "Reading SSH key files is not allowed."
         exit 0 ;;
 esac
 
@@ -69,13 +69,13 @@ esac
 # **/.kube/config, and **/secrets/**.
 case "$file_path" in
     */.aws/credentials)
-        hook_deny "Reading the AWS credentials file is not allowed."
+        hook_secret_deny "Reading the AWS credentials file is not allowed."
         exit 0 ;;
     */.kube/config)
-        hook_deny "Reading the Kubernetes config file is not allowed — it may contain embedded cluster credentials."
+        hook_secret_deny "Reading the Kubernetes config file is not allowed — it may contain embedded cluster credentials."
         exit 0 ;;
     */secrets/*)
-        hook_deny "Reading files inside a secrets/ directory is not allowed."
+        hook_secret_deny "Reading files inside a secrets/ directory is not allowed."
         exit 0 ;;
 esac
 
@@ -83,7 +83,7 @@ esac
 # not under .aws/ or .kube/, e.g. /path/to/credentials or credentials.json).
 case "$base_lc" in
     credentials|credentials.*)
-        hook_deny "Reading credentials files is not allowed."
+        hook_secret_deny "Reading credentials files is not allowed."
         exit 0 ;;
 esac
 

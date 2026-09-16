@@ -2,6 +2,19 @@
   "name": "slop-guard-node-tools",
   "version": "0.0.0",
   "private": true,
-  "description": "ESLint stack for slop-guard. Dependencies and their pinned versions arrive in Stage 2 together with the baseline config and fixtures. See spec §6.4 for the planned stack: eslint 9.x, @eslint/js, typescript-eslint 8.x, typescript, eslint-plugin-react, eslint-plugin-react-hooks, eslint-plugin-security, eslint-plugin-regexp, eslint-plugin-no-unsanitized, eslint-plugin-n.",
-  "dependencies": {}
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "@eslint/js": "9.35.0",
+    "eslint": "9.35.0",
+    "eslint-plugin-n": "17.23.1",
+    "eslint-plugin-no-unsanitized": "4.1.4",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "eslint-plugin-regexp": "2.10.0",
+    "eslint-plugin-security": "3.0.1",
+    "typescript": "5.9.2",
+    "typescript-eslint": "8.43.0"
+  }
 }

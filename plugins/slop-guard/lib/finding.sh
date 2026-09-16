@@ -58,13 +58,12 @@ finding_add() {
     local snippet="${15}"
 
     # Compute fingerprint per §4.6 and brief.
-    local raw_fp
-    if ! raw_fp="$(printf '%s|%s|%s|%s' "$tool" "$tool_rule" "$file" "$snippet" \
-                   | sha256sum | cut -d' ' -f1)"; then
-        printf 'slopguard: finding_add: sha256sum failed\n' >&2
+    local raw_fp fingerprint
+    if ! raw_fp="$(_finding_sha256_str "${tool}|${tool_rule}|${file}|${snippet}")"; then
+        printf 'slopguard: finding_add: SHA-256 failed\n' >&2
         return 1
     fi
-    local fingerprint="sha256:${raw_fp}"
+    fingerprint="sha256:${raw_fp}"
 
     # Resolve and prepare the state directory.
     local dir; dir="$(state_dir "$session_id" "$agent_id")"

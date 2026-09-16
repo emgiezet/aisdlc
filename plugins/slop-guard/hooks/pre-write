@@ -4,34 +4,50 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+: "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
 # shellcheck source=../lib/hook.sh
 . "${PLUGIN_ROOT}/lib/hook.sh"
+# shellcheck source=../lib/tools.sh
+. "${PLUGIN_ROOT}/lib/tools.sh"
+# shellcheck source=../lib/secrets.sh
+. "${PLUGIN_ROOT}/lib/secrets.sh"
+# shellcheck source=../lib/state.sh
+. "${PLUGIN_ROOT}/lib/state.sh"
 
 hook_input
 tool_name="$(hook_field .tool_name)"
-file_path="$(hook_field .tool_input.file_path)"
-[ -n "$file_path" ] || exit 0
+file_path=""
+new_content=""
+old_content=""
 
 case "$tool_name" in
     Write)
+        file_path="$(hook_field .tool_input.file_path)"
         new_content="$(hook_field .tool_input.content)"
         old_content="$(cat "$file_path" 2>/dev/null || true)"
         ;;
-    Edit|NotebookEdit)
+    Edit)
+        file_path="$(hook_field .tool_input.file_path)"
         new_content="$(hook_field .tool_input.new_string)"
         old_content="$(hook_field .tool_input.old_string)"
         ;;
     MultiEdit)
+        file_path="$(hook_field .tool_input.file_path)"
         new_content="$(hook_field '[.tool_input.edits[]?.new_string] | join("\n")')"
         old_content="$(hook_field '[.tool_input.edits[]?.old_string] | join("\n")')"
         ;;
+    NotebookEdit)
+        file_path="$(hook_field .tool_input.notebook_path)"
+        new_content="$(hook_field .tool_input.new_source)"
+        old_content="$(hook_field .tool_input.old_source)"
+        ;;
     *) exit 0 ;;
 esac
+[ -n "$file_path" ] || exit 0
 
-# Fail closed for obvious secrets even when the optional external scanner is absent.
-secret_pattern="-----BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY-----|(^|[^[:alnum:]_])(aws_secret_access_key|api[_-]?key|client[_-]?secret|password)[[:space:]]*[:=][[:space:]]*[\"']?[^[:space:]\"']{8,}"
-if printf '%s' "$new_content" | grep -Eq -- "$secret_pattern"; then
-    hook_deny "Secret detected in new content. Use an environment variable or a secret manager instead."
+# External scanner first; unmistakable credential formats remain covered if it is unavailable.
+if secret_finding="$(secret_in_content "$new_content" "$file_path")"; then
+    hook_secret_deny "${secret_finding}. Use an environment variable or a secret manager instead."
     exit 0
 fi
 
@@ -58,30 +74,54 @@ suppression_records="$(awk '
     }
 ' "${PLUGIN_ROOT}/rules/policies/suppressions.yaml" 2>/dev/null || true)"
 
-while IFS=$'\t' read -r marker reason_pattern; do
-    [ -n "$marker" ] || continue
+_suppression_count() {
+    printf '%s' "$1" | grep -Fo -- "$2" | wc -l | tr -d ' '
+}
+
+_unjustified_suppression_count() {
+    local content="$1" marker_text="$2" reason_regex="$3" line count=0
     while IFS= read -r line; do
         case "$line" in
-            *"$marker"*)
-                if ! printf '%s\n' "$old_content" | grep -Fqx -- "$line" \
-                    && ! printf '%s\n' "$line" | grep -Eq -- "$reason_pattern"; then
-                    hook_deny "Suppression comment '$marker' requires a justification on the same line."
-                    exit 0
-                fi
-                ;;
+            *"$marker_text"*)
+                if ! printf '%s\n' "$line" | grep -Eq -- "$reason_regex"; then
+                    count=$((count + 1))
+                fi ;;
         esac
-    done <<< "$new_content"
+    done <<< "$content"
+    printf '%s' "$count"
+}
+
+while IFS=$'\t' read -r marker reason_pattern; do
+    [ -n "$marker" ] || continue
+    new_marker_count="$(_suppression_count "$new_content" "$marker")"
+    old_marker_count="$(_suppression_count "$old_content" "$marker")"
+    [ "$new_marker_count" -gt "$old_marker_count" ] || continue
+
+    new_unjustified="$(_unjustified_suppression_count "$new_content" "$marker" "$reason_pattern")"
+    old_unjustified="$(_unjustified_suppression_count "$old_content" "$marker" "$reason_pattern")"
+    if [ "$new_unjustified" -gt "$old_unjustified" ]; then
+        hook_deny "Suppression comment '$marker' requires a justification on the same line."
+        exit 0
+    fi
 done <<< "$suppression_records"
 
 base_name="${file_path##*/}"
 protected=0
 case "$base_name" in
-    phpstan*.neon*|psalm*.xml*|.golangci.*|eslint.config.*|.eslintrc*|ruff.toml|.ruff.toml|.tflint.hcl|.checkov.yaml|.kube-linter.yaml|.hadolint.yaml|zizmor.yml|.gitleaks.toml|.sqlfluff|phpstan-baseline.neon|psalm-baseline.xml|.eslintcache|*.baseline.json)
+    phpstan*.neon*|psalm*.xml*|.golangci.*|eslint.config.*|.eslintrc*|ruff.toml|.ruff.toml|.tflint.hcl|.checkov.yaml|.kube-linter.yaml|.hadolint.yaml|zizmor.yml|.gitleaks.toml|.sqlfluff|.eslintcache|*.baseline.json)
         protected=1 ;;
     pyproject.toml)
-        printf '%s' "$new_content" | grep -Eq '^\[tool\.(ruff|mypy|pyright)\]' && protected=1 ;;
+        if [ "$new_content" != "$old_content" ] \
+            && { printf '%s\n%s' "$old_content" "$new_content" \
+                | grep -Eq '^\[tool\.(ruff|mypy|pyright)\]'; }; then
+            protected=1
+        fi ;;
     tsconfig*.json)
-        printf '%s' "$new_content" | grep -Eq '"strict"[[:space:]]*:[[:space:]]*false' && protected=1 ;;
+        if printf '%s' "$new_content" | grep -Eq '"strict"[[:space:]]*:[[:space:]]*false' \
+            || { printf '%s' "$old_content" | grep -Eq '"strict"[[:space:]]*:[[:space:]]*true' \
+                && ! printf '%s' "$new_content" | grep -Eq '"strict"[[:space:]]*:[[:space:]]*true'; }; then
+            protected=1
+        fi ;;
 esac
 case "$file_path" in
     */.github/workflows/*|*/.gitlab-ci.yml|.github/workflows/*|.gitlab-ci.yml)
@@ -99,13 +139,30 @@ if [ "$protected" -eq 1 ]; then
     exit 0
 fi
 
-for marker in markTestSkipped markTestIncomplete 't.Skip(' 'it.skip(' 'describe.skip(' 'test.skip(' 'xit(' '@pytest.mark.skip' '@unittest.skip'; do
-    new_count="$(printf '%s' "$new_content" | grep -Fo -- "$marker" | wc -l | tr -d ' ')"
-    old_count="$(printf '%s' "$old_content" | grep -Fo -- "$marker" | wc -l | tr -d ' ')"
-    if [ "$new_count" -gt "$old_count" ]; then
-        hook_ask "Adding a test-skip marker requires confirmation."
-        exit 0
+
+session_id="$(hook_field .session_id)"
+agent_id="$(hook_field .agent_id)"
+language=""
+case "$base_name" in
+    *.php) language="php" ;;
+    *.go) language="go" ;;
+    *.py) language="python" ;;
+    *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx) language="js-ts" ;;
+    *.tf|*.hcl|*.yaml|*.yml|Dockerfile) language="iac" ;;
+esac
+if [ -n "$session_id" ] && [ -n "$language" ]; then
+    context_dir="$(state_dir "$session_id" "${agent_id:-}")"
+    mkdir -p "$context_dir"
+    if mkdir "${context_dir}/context-${language}.sent" 2>/dev/null; then
+        case "$language" in
+            php) blockers="SQL injection, unsafe deserialization, mass assignment, and env() outside config" ;;
+            go) blockers="unchecked errors, command or SQL injection, and unsafe filesystem boundaries" ;;
+            python) blockers="eval/exec, shell=True, unsafe deserialization, and raw SQL" ;;
+            js-ts) blockers="eval, unsafe HTML injection, unbounded request bodies, and unhandled promises" ;;
+            iac) blockers="public exposure, unpinned images/actions, broad IAM, and embedded secrets" ;;
+        esac
+        hook_context "Slop Guard first ${language} edit: blocker checks cover ${blockers}."
     fi
-done
+fi
 
 exit 0

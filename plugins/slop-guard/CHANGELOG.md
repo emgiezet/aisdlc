@@ -16,10 +16,20 @@ All notable changes to Slop Guard will be documented in this file.
   `eslint.security-overlay.mjs` (spec §6.4 describes role but gives no verbatim content — derived
   from the JS/TS common security block of `eslint.config.mjs`; `extends: [js.configs.recommended]`
   omitted since the overlay is a second pass, not a replacement config).
-- Validation script `scripts/validate-configs` created (spec §9.3). Ruff validated PASS against
-  ruff 0.16.7. All other tools not yet installed — rows SKIP pending `slopguard doctor --install`.
-  golangci-lint v1.51.0 present but does not support `config verify` (v2 config format requires
-  golangci-lint v2+); SKIP until the tool is pinned in `tools.lock.json`.
+- `slopguard doctor --install` now installs every analyzer required by the section 9.3
+  config gate, plus jq and ShellCheck. Binary and PHAR releases use per-platform SHA-256
+  pins; Python and Node dependencies use hash-pinned lockfiles.
+- `scripts/validate-configs` is part of the Make and CI gates and fails when any required
+  config is skipped. The tflint baseline now pins AWS ruleset 0.48.0. Opengrep validation
+  starts when Stage 3 adds the first own rule files.
 - Fixture directories created: `tests/fixtures/{php,python,ts,terraform,docker,kubernetes,ci}/good/`.
   Each contains a minimal valid file sufficient for the §9.3 validation command to run.
   `ci/good/workflow.yml` uses pinned action hash and `persist-credentials: false`.
+- Stage 1 hook runtime: session stack/profile detection, pre-read secret paths, pre-bash
+  supply-chain policy with quote-aware compound-command parsing, and pre-write secret,
+  suppression, protected-config, and first-edit context checks.
+- Headless queue runs now fail closed for interactive `ask` decisions while advisory mode
+  reports non-secret policy findings as context. Guard ownership no longer overlaps `sdlc`.
+- Hook-contract coverage now includes macOS-compatible hashing and shell behavior,
+  NotebookEdit payloads, stale-session resume, enforcement modes, and plugin/marketplace
+  version consistency.

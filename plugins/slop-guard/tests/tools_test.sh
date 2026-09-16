@@ -75,6 +75,42 @@ jq -n \
                 "darwin-arm64":{url:$url,sha256:$hash}},
         bin:"fake-tool"}}}' > "$UPGRADE_LOCK"
 
+# Raw jq fixture: bootstrap_jq must parse and install it before jq is available
+# for normal lockfile access.
+FAKE_JQ="${TEST_WORK}/jq"
+printf '#!/bin/sh\nprintf "jq-9.9.9\\n"\n' > "$FAKE_JQ"
+chmod +x "$FAKE_JQ"
+FAKE_JQ_HASH="$(_sha256 "$FAKE_JQ")"
+FAKE_JQ_LOCK="${TEST_WORK}/jq-bootstrap.lock.json"
+cat > "$FAKE_JQ_LOCK" <<EOF
+{
+  "schema": 1,
+  "tools": {
+    "jq": {
+      "version": "9.9.9",
+      "assets": {
+        "linux-amd64": { "url": "file://${FAKE_JQ}", "sha256": "${FAKE_JQ_HASH}" },
+        "linux-arm64": { "url": "file://${FAKE_JQ}", "sha256": "${FAKE_JQ_HASH}" },
+        "darwin-amd64": { "url": "file://${FAKE_JQ}", "sha256": "${FAKE_JQ_HASH}" },
+        "darwin-arm64": { "url": "file://${FAKE_JQ}", "sha256": "${FAKE_JQ_HASH}" }
+      },
+      "bin": "jq"
+    }
+  }
+}
+EOF
+
+printf '\ninstaller: jq bootstraps from its lock entry without jq parsing\n'
+FAKE_DATA_JQ="${TEST_WORK}/plugin-data-jq"
+bootstrapped_jq=$(
+    TOOLS_LOCK="$FAKE_JQ_LOCK"
+    CLAUDE_PLUGIN_DATA="$FAKE_DATA_JQ"
+    bootstrap_jq
+); rc_jq=$?
+[ "$rc_jq" -eq 0 ] && [ "$("$bootstrapped_jq" --version)" = "jq-9.9.9" ] \
+    && ok "jq bootstrap installs and returns the pinned binary" \
+    || bad "jq bootstrap" "path='${bootstrapped_jq}', rc=${rc_jq}"
+
 # --------------------------------------------------------------------------- #
 printf 'installer: good hash installs and points current at the version dir\n'
 # --------------------------------------------------------------------------- #
@@ -358,6 +394,52 @@ dotzip_version_dir="${FAKE_DATA_DOTZIP}/tools/fake-tool/9.9.9"
 [ -f "${dotzip_version_dir}/.config" ] \
     && ok "zip-dotfile: .config survives in version dir" \
     || bad "zip-dotfile .config" "missing: ${dotzip_version_dir}/.config"
+
+# --------------------------------------------------------------------------- #
+printf '\nresolver: changed Node lockfiles invalidate the managed bundle\n'
+# --------------------------------------------------------------------------- #
+
+NODE_ROOT="${TEST_WORK}/node-plugin"
+NODE_DATA="${TEST_WORK}/node-data"
+NODE_LOCK="${NODE_ROOT}/tools/tools.lock.json"
+mkdir -p "${NODE_ROOT}/tools/node" \
+    "${NODE_DATA}/tools/node" \
+    "${NODE_DATA}/tools/eslint-stack/9.9.9"
+printf '{"private":true}\n' > "${NODE_ROOT}/tools/node/package.json"
+printf '{"lockfileVersion":3,"packages":{}}\n' > "${NODE_ROOT}/tools/node/package-lock.json"
+cp "${NODE_ROOT}/tools/node/package.json" "${NODE_ROOT}/tools/node/package-lock.json" \
+    "${NODE_DATA}/tools/node/"
+printf '#!/bin/sh\nprintf "eslint 9.9.9\\n"\n' \
+    > "${NODE_DATA}/tools/eslint-stack/9.9.9/eslint"
+chmod +x "${NODE_DATA}/tools/eslint-stack/9.9.9/eslint"
+ln -s "${NODE_DATA}/tools/eslint-stack/9.9.9" \
+    "${NODE_DATA}/tools/eslint-stack/current"
+jq -n '{schema:1, tools:{"eslint-stack":{
+    version:"9.9.9", bin:"eslint", node_lock:"tools/node/package-lock.json"}}}' \
+    > "$NODE_LOCK"
+
+node_resolved="$(
+    TOOLS_LOCK="$NODE_LOCK"
+    CLAUDE_PLUGIN_ROOT="$NODE_ROOT"
+    CLAUDE_PLUGIN_DATA="$NODE_DATA"
+    CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="plugin-only"
+    resolve_tool "eslint-stack"
+)"
+printf '{"lockfileVersion":3,"packages":{"changed":{}}}\n' \
+    > "${NODE_ROOT}/tools/node/package-lock.json"
+node_stale="$(
+    TOOLS_LOCK="$NODE_LOCK"
+    CLAUDE_PLUGIN_ROOT="$NODE_ROOT"
+    CLAUDE_PLUGIN_DATA="$NODE_DATA"
+    CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="plugin-only"
+    resolve_tool "eslint-stack"
+)"
+if [ -n "$node_resolved" ] && [ -z "$node_stale" ]; then
+    ok "Node bundle is rejected when the plugin lockfile changes"
+else
+    bad "Node lockfile freshness" \
+        "before='${node_resolved}' after='${node_stale}'"
+fi
 
 # --------------------------------------------------------------------------- #
 printf '\ndoctor: empty-resolution after install does not blame precedence\n'

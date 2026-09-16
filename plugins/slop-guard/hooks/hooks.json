@@ -20,7 +20,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-bash",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard",
+            "args": ["pre-bash"],
             "timeout": 5
           }
         ]
@@ -30,7 +31,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-read",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard",
+            "args": ["pre-read"],
             "timeout": 5
           }
         ]
@@ -40,10 +42,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-write",
-            "args": [
-              "pre-write"
-            ],
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard",
+            "args": ["pre-write"],
             "timeout": 10
           }
         ]

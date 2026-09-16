@@ -7,17 +7,27 @@
 # Outcomes per tool:
 #   PASS — tool present and accepted the config.
 #   FAIL — tool present and rejected the config or named an unknown rule.
-#   SKIP — tool absent, or installed version lacks the required validation subcommand,
-#          or a prerequisite (plugin cache, network) is not ready.
+#   SKIP — a required tool or prerequisite is absent. Any skip fails this gate.
 #
-# Exits non-zero only when K (failures) > 0.
-# A SKIP is never reported as green; the summary makes unvalidated configs visible.
+# Exits non-zero when a validation fails or is skipped.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${PLUGIN_ROOT}" || { printf "error: cannot cd to plugin root: %s\n" "${PLUGIN_ROOT}" >&2; exit 1; }
+
+: "${CLAUDE_PLUGIN_ROOT:=${PLUGIN_ROOT}}"
+: "${CLAUDE_PLUGIN_DATA:=${XDG_DATA_HOME:-$HOME/.local/share}/claude/plugins/slop-guard}"
+# shellcheck source=../lib/tools.sh
+. "${PLUGIN_ROOT}/lib/tools.sh"
+while IFS= read -r _managed_name; do
+    _managed_path="$(resolve_tool "$_managed_name" 2>/dev/null || true)"
+    if [ -n "$_managed_path" ]; then
+        PATH="$(dirname "$_managed_path"):${PATH}"
+    fi
+done <<< "$(lock_tools)"
+export PATH
 
 PASS=0
 SKIP=0
@@ -95,12 +105,12 @@ fi
 # --- PHPStan ----------------------------------------------------------------
 # Spec: vendor/bin/phpstan analyse -c configs/baseline/phpstan.neon --debug tests/fixtures/php/good
 # phpstan.neon references %env.SLOPGUARD_CACHE_DIR% — export a temp dir so the env var resolves.
-if ! tool_present vendor/bin/phpstan; then
+if ! tool_present phpstan; then
     _skip "PHPStan" "tool not installed"
 else
     run_check "PHPStan" \
         env SLOPGUARD_CACHE_DIR="${_TMPDIR}/phpstan" \
-        vendor/bin/phpstan analyse \
+        phpstan analyse \
         -c configs/baseline/phpstan.neon \
         --debug \
         tests/fixtures/php/good
@@ -113,7 +123,7 @@ fi
 # a harness config pointing at the fixture tree so the row measures the config, not the harness.
 # Psalm resolves <directory name="…"/> relative to the config file's own location
 # (resolveFromConfigFile defaults true), so we write an absolute path.
-if ! tool_present vendor/bin/psalm; then
+if ! tool_present psalm; then
     _skip "Psalm" "tool not installed"
 else
     _psalm_cfg="${_TMPDIR}/psalm-harness.xml"
@@ -128,7 +138,7 @@ else
 </psalm>
 PSALMEOF
     run_check "Psalm" \
-        vendor/bin/psalm \
+        psalm \
         -c "${_psalm_cfg}" \
         --no-cache \
         tests/fixtures/php/good
@@ -146,40 +156,38 @@ else
         tests/fixtures/python/good
 fi
 
-# --- ESLint -----------------------------------------------------------------
 # Spec: eslint --config configs/baseline/eslint.config.mjs --print-config tests/fixtures/ts/good/sample.tsx
 if ! tool_present eslint; then
     _skip "ESLint" "tool not installed"
 else
+    _eslint_cfg="configs/baseline/eslint.config.mjs"
+    if [ -d "${CLAUDE_PLUGIN_DATA}/tools/node/node_modules" ]; then
+        ln -s "${CLAUDE_PLUGIN_DATA}/tools/node/node_modules" "${_TMPDIR}/node_modules"
+        cp "$_eslint_cfg" "${_TMPDIR}/eslint.config.mjs"
+        _eslint_cfg="${_TMPDIR}/eslint.config.mjs"
+    fi
     run_check "ESLint" \
         eslint \
-        --config configs/baseline/eslint.config.mjs \
+        --config "$_eslint_cfg" \
         --print-config tests/fixtures/ts/good/sample.tsx
 fi
 
 # --- tflint -----------------------------------------------------------------
-# Spec: tflint --config configs/baseline/.tflint.hcl --init && tflint --chdir tests/fixtures/terraform/good
-# The plugin "aws" block in .tflint.hcl is currently commented out (pending tflint pin in
-# tools.lock.json). When the block is re-enabled, the cache gate below activates automatically.
-# --init fetches plugins from the network; it belongs in session-start / doctor --install, not here.
+# The pinned AWS ruleset is fetched only during this explicit validation gate.
 if ! tool_present tflint; then
     _skip "tflint" "tool not installed"
-elif grep -qE '^[[:space:]]*plugin[[:space:]]+"aws"' configs/baseline/.tflint.hcl 2>/dev/null; then
-    # aws plugin block is active; gate on the cache to avoid FAIL on a missing ruleset.
-    _tflint_pd="${TFLINT_PLUGIN_DIR:-${HOME}/.tflint.d/plugins}"
-    if find "${_tflint_pd}" -path "*/tflint-ruleset-aws*" 2>/dev/null | grep -q .; then
-        run_check "tflint" \
-            tflint \
-            --config configs/baseline/.tflint.hcl \
-            --chdir tests/fixtures/terraform/good
-    else
-        _skip "tflint" "AWS ruleset not installed in ${_tflint_pd} (run slopguard doctor --install)"
-    fi
 else
-    run_check "tflint" \
-        tflint \
-        --config configs/baseline/.tflint.hcl \
-        --chdir tests/fixtures/terraform/good
+    _tflint_pd="${TFLINT_PLUGIN_DIR:-${CLAUDE_PLUGIN_DATA}/tools/tflint/plugins}"
+    mkdir -p "$_tflint_pd"
+    if env TFLINT_PLUGIN_DIR="$_tflint_pd" tflint \
+        --config "${PLUGIN_ROOT}/configs/baseline/.tflint.hcl" --init >/dev/null 2>&1; then
+        run_check "tflint" \
+            env TFLINT_PLUGIN_DIR="$_tflint_pd" tflint \
+            --config "${PLUGIN_ROOT}/configs/baseline/.tflint.hcl" \
+            --chdir "${PLUGIN_ROOT}/tests/fixtures/terraform/good"
+    else
+        _fail "tflint" "failed to install the pinned AWS ruleset"
+    fi
 fi
 
 # --- Checkov ----------------------------------------------------------------
@@ -228,25 +236,15 @@ else
         --config configs/baseline/zizmor.yml \
         --format json \
         --offline \
-        tests/fixtures/ci/good
+        tests/fixtures/ci/good/workflow.yml
 fi
 
 # --- Opengrep ---------------------------------------------------------------
-# Spec: opengrep --validate --config rules/opengrep + opengrep --test rules/opengrep
-# rules/opengrep is currently empty (gitkeep only); skip if no rule files are present.
-if ! tool_present opengrep; then
-    _skip "Opengrep" "tool not installed"
+# Stage 0 carries no own rules yet, so there is no config to validate here.
+if tool_present opengrep; then
+    _info "Opengrep rules — no rule files yet; validation starts with the Stage 3 rules"
 else
-    _og_files=$(find rules/opengrep \( -name "*.yaml" -o -name "*.yml" \) \
-        ! -name ".gitkeep" 2>/dev/null | wc -l)
-    if [ "${_og_files}" -eq 0 ]; then
-        _skip "Opengrep" "rules/opengrep has no rule files yet — validation deferred"
-    else
-        run_check "Opengrep (validate)" \
-            opengrep --validate --config rules/opengrep
-        run_check "Opengrep (test)" \
-            opengrep --test rules/opengrep
-    fi
+    _skip "Opengrep" "tool not installed"
 fi
 
 # ---------------------------------------------------------------------------
@@ -385,6 +383,6 @@ fi
 printf "\n%d validated, %d skipped (not validated), %d failed\n" \
     "${PASS}" "${SKIP}" "${FAIL}"
 
-if [ "${FAIL}" -gt 0 ]; then
+if [ "${FAIL}" -gt 0 ] || [ "${SKIP}" -gt 0 ]; then
     exit 1
 fi

@@ -182,3 +182,18 @@ parsed="$(printf '%s' "$actual" | jq -r '.hookSpecificOutput.permissionDecisionR
 [ "$decision" = "deny" ] && [ "$parsed" = "please confirm — no human in this session" ] \
     && ok  "hook_ask: headless session denies with reason" \
     || bad "hook_ask: headless session" "decision=${decision}, reason=${parsed}"
+
+# --------------------------------------------------------------------------- #
+# 9. Advisory mode reports policy decisions but never relaxes secret blocks
+# --------------------------------------------------------------------------- #
+_cmp_json "hook_deny: advisory emits context" \
+    "$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_deny "blocked by policy")" \
+    '{"hookSpecificOutput":{"additionalContext":"blocked by policy"}}'
+
+_cmp_json "hook_ask: advisory emits context" \
+    "$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_ask "please confirm")" \
+    '{"hookSpecificOutput":{"additionalContext":"please confirm"}}'
+
+_cmp_json "hook_secret_deny: advisory still denies" \
+    "$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_secret_deny "secret found")" \
+    '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"secret found"}}'

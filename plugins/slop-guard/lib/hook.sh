@@ -7,8 +7,8 @@
 # Public interface:
 #   hook_input               — read stdin once into _HOOK_INPUT (call at entry)
 #   hook_field  <jq-path>    — extract a field; empty for null/missing
-#   hook_deny   <reason>     — print permissionDecision:deny JSON to stdout
-#   hook_ask    <reason>     — print permissionDecision:ask JSON to stdout
+#   hook_deny   <reason>     — deny, or add context in advisory mode
+#   hook_secret_deny <reason> — always deny secret access/content
 #   hook_allow               — print permissionDecision:allow JSON to stdout
 #   hook_context <text>      — print additionalContext JSON to stdout
 #   hook_message <text>      — print systemMessage JSON to stdout
@@ -25,6 +25,13 @@
 # additionalContext is written as a statement of fact, never as a system-style
 # order — prompt-injection defences may trigger on imperative text (§3.2).
 
+
+# SessionStart bootstraps jq into plugin data. Hook processes do not inherit the
+# SessionStart process environment, so discover that managed binary explicitly.
+if ! command -v jq >/dev/null 2>&1 && [ -x "${CLAUDE_PLUGIN_DATA:-}/tools/jq/current/jq" ]; then
+    PATH="${CLAUDE_PLUGIN_DATA}/tools/jq/current:${PATH}"
+    export PATH
+fi
 # Cache for the hook's stdin payload.
 _HOOK_INPUT=""
 
@@ -43,17 +50,30 @@ hook_field() {
 }
 
 # hook_deny <reason>
-# Emit a structured deny decision (exit 0 path).  The reason is safe for
-# double-quotes and dollar signs because it passes through jq --arg.
+# Policy denial in balanced/strict mode; advisory mode reports context instead.
 hook_deny() {
+    if [ "${CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE:-balanced}" = "advisory" ]; then
+        hook_context "$1"
+    else
+        hook_secret_deny "$1"
+    fi
+}
+
+# hook_secret_deny <reason>
+# Secrets are the sole advisory-mode exception and always fail closed.
+hook_secret_deny() {
     jq -n --arg reason "$1" \
         '{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":$reason}}'
 }
 
 # hook_ask <reason>
-# Ask interactively, or deny explicitly when the queue has no human to answer.
+# Ask interactively, deny when headless, or report context in advisory mode.
 hook_ask() {
     local decision="ask" reason="$1"
+    if [ "${CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE:-balanced}" = "advisory" ]; then
+        hook_context "$reason"
+        return
+    fi
     if [ "${AISDLC_HEADLESS:-0}" = "1" ]; then
         decision="deny"
         reason="${reason} — no human in this session"
