@@ -4,6 +4,7 @@
   "displayName": "Slop Guard",
   "version": "0.1.0",
   "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code.",
+  "license": "MIT",
   "author": { "name": "Maksymilian Małecki" },
   "keywords": ["security", "sast", "linting", "anti-patterns", "supply-chain"],
   "userConfig": {
