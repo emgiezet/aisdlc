@@ -3,11 +3,11 @@
 # Output format: DENY_PATTERNS=( "pat1" "pat2" ) ASK_PATTERNS=( "pat1" )
 
 printf 'DENY_PATTERNS=('
-# Extract all pattern fields in deny: block
-sed -n '/deny:/,/ask:/p' "$1" | grep -E '(pattern|src_pattern|sink_pattern):' | sed "s/.*: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
+# Extract only 'pattern:' fields in deny: block
+sed -n '/deny:/,/ask:/p' "$1" | grep 'pattern:' | sed "s/.*pattern: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
 printf ')\n'
 
 printf 'ASK_PATTERNS=('
-# Extract all pattern fields in ask: block
-sed -n '/ask:/,$p' "$1" | grep -E '(pattern|src_pattern|sink_pattern):' | sed "s/.*: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
+# Extract only 'pattern:' fields in ask: block
+sed -n '/ask:/,$p' "$1" | grep 'pattern:' | sed "s/.*pattern: '//;s/'//" | while read -r p; do printf '"%s" ' "$p"; done
 printf ')\n'
