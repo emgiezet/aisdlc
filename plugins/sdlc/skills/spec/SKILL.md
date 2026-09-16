@@ -1,5 +1,5 @@
 ---
-name: sdlc-spec
+name: spec
 description: >
   Turn a ticket, URL, file, or description into an agent-executable spec at
   specs/<TICKET>/spec.md — a use-case table with observable acceptance criteria, grounded in the

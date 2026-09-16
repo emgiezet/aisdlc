@@ -1,5 +1,5 @@
 ---
-name: sdlc-implement
+name: implement
 description: >
   Deliver an approved spec end-to-end with no human gates — reads specs/<TICKET>/spec.md, routes
   through the matching playbook, writes one test per UC before its implementation, runs the full
@@ -55,7 +55,7 @@ and the wandering that precedes the guess costs more than the whole task should.
    read the relevant map files; otherwise grep for the nearest sibling implementation and
    mirror it.
 3. Build the **CI verification matrix** per
-   [`ci-matrix.md`](../skills/dense-testing/references/ci-matrix.md) for the touched stacks
+   [`ci-matrix.md`](../dense-testing/references/ci-matrix.md) for the touched stacks
    only. Verify each tool is actually installed now — discovering a missing binary after
    writing the code wastes the whole run.
 4. Create the working branch if not already on one: `ai/<TICKET>-<slug>`.

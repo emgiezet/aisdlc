@@ -1,5 +1,5 @@
 ---
-name: sdlc-mockup
+name: mockup
 description: >
   Generate a clickable single-file mockup from a spec's UI use cases at
   specs/<TICKET>/mockup/index.html — no build, no install, opens in a browser. Use to validate

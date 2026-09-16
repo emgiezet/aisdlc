@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "sdlc",
   "version": "0.1.0",
   "description": "AI SDLC harness — spec-driven delivery for agents: a task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests",
@@ -8,25 +9,24 @@
   },
   "homepage": "https://github.com/emgiezet/aisdlc",
   "repository": "https://github.com/emgiezet/aisdlc",
-  "license": "MIT",
+  "license": "LicenseRef-proprietary",
   "keywords": ["sdlc", "spec-driven", "agents", "harness", "task-router", "testing", "queue", "evals"],
-  "skills": "./skills/",
   "extensions": {
     "com.openai": {
-      "hooks": "./hooks/hooks.json"
+      "hooks": "./hooks/hooks.json",
+      "interface": {
+        "displayName": "AI SDLC",
+        "shortDescription": "Spec-driven delivery for agents",
+        "longDescription": "A task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests. Compose with Slop Guard for hook enforcement, Superpowers for disciplines, and Ponytail for implementation minimalism.",
+        "developerName": "Maksymilian Małecki",
+        "category": "Productivity",
+        "capabilities": ["Write", "Interactive"],
+        "defaultPrompt": [
+          "/sdlc:init — set up this repo for the SDLC pipeline",
+          "/sdlc:spec <TICKET> — turn a ticket into an executable spec",
+          "/sdlc:implement <TICKET> — deliver an approved spec unattended"
+        ]
+      }
     }
-  },
-  "interface": {
-    "displayName": "AI SDLC",
-    "shortDescription": "Spec-driven delivery for agents",
-    "longDescription": "A task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests. Compose with Slop Guard for hook enforcement, Superpowers for disciplines, and Ponytail for implementation minimalism.",
-    "developerName": "Maksymilian Małecki",
-    "category": "Productivity",
-    "capabilities": ["Write", "Interactive"],
-    "defaultPrompt": [
-      "/sdlc:init — set up this repo for the SDLC pipeline",
-      "/sdlc:spec <TICKET> — turn a ticket into an executable spec",
-      "/sdlc:implement <TICKET> — deliver an approved spec unattended"
-    ]
   }
 }

@@ -1,5 +1,5 @@
 ---
-name: sdlc-ship
+name: ship
 description: >
   Turn a verified branch into a reviewable draft PR without a human in the loop — pushes, opens
   the PR with the spec and QA verdict up front, labels it ai-sdlc, and posts the QA report as a

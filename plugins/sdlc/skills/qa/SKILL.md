@@ -1,5 +1,5 @@
 ---
-name: sdlc-qa
+name: qa
 description: >
   Independently verify an implementation against its spec and close the test gaps — runs the
   auto-qa agent to build a UC×test coverage matrix, closes the gaps it finds, and writes

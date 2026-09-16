@@ -1,5 +1,5 @@
 ---
-name: sdlc-init
+name: init
 description: >
   Set this repository up for the AI SDLC pipeline — survey the stacks, directories, CI commands
   and conventions, then generate a CLAUDE.md task router, task-scoped playbooks, path-scoped
@@ -82,11 +82,12 @@ decisions (an `adr/` directory, a decisions file) or none. A skill holding domai
 Detection must be side-effect-free; never inspect user home files, never install anything, never
 make network calls.
 
-- **Slop Guard** — if the host exposes a plugin or skill inventory (for example, `codex plugins
-  list` in Codex, or the Claude Code plugin registry), query it for `slop-guard` first. If no
-  inventory API is accessible in this session, run `command -v slopguard 2>/dev/null`. Report
-  `available` if found in inventory or the binary exists, `unavailable` if explicitly absent from
-  an inventory that was successfully queried, or `unknown` if no reliable check was possible.
+- **Slop Guard** — query the host plugin or skill inventory if available (for example,
+  `codex plugins list` in Codex, or the Claude Code plugin registry). Report `available` if the
+  inventory confirms it is enabled, `unavailable` if the inventory confirms it is absent, or
+  `unknown` if no reliable inventory API is accessible in this session. Never use `command -v` or
+  binary presence to infer Slop Guard hook status — the binary being on PATH does not mean the
+  plugin or its hooks are enabled.
 - **Superpowers** — query the host skill or plugin inventory for `superpowers`. Report `available`,
   `unavailable`, or `unknown` by the same rules. Do not run a binary check; Superpowers has no
   standalone executable.
