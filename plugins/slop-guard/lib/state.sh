@@ -54,14 +54,18 @@ state_init() {
 
 # _stat_mtime <path>
 _stat_mtime() {
-    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || true
+    local mtime
+    mtime=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)
+    if [[ "$mtime" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$mtime"
+    fi
 }
 
 # state_lock_acquire <dir> [<max_retries> [<stale_age_seconds>]]
 # Acquire an exclusive mkdir lock on <dir>.
 state_lock_acquire() {
     local dir="$1"
-    local max_retries="${2:-50}"
+    local max_retries="${2:-1000}"
     local stale_age="${3:-60}"
     local lockdir="${dir}/.lock"
     local attempt=0
@@ -79,7 +83,7 @@ state_lock_acquire() {
             fi
         fi
         attempt=$((attempt + 1))
-        sleep 0.05
+        sleep "$(awk "BEGIN {srand(); print rand() * 0.1}")"
     done
     return 1
 }

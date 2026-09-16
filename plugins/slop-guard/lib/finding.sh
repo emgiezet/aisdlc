@@ -113,6 +113,7 @@ finding_add() {
 
     if [ "$jq_ok" -ne 0 ]; then
         rm -f "$tmp"
+        printf 'slopguard: finding_add: jq failed with %d\n' "$jq_ok" >&2
         state_lock_release "$dir"
         return 1
     fi

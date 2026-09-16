@@ -171,6 +171,7 @@ done
 wait
 
 _count="$(jq 'length' "${CLAUDE_PLUGIN_DATA}/sessions/concurrent-test/findings.json")"
+echo "Count: $_count" >&2
 [ "$_count" = "8" ] \
     && ok  "concurrent: all 8 findings survived with mkdir locking" \
     || bad "concurrent: locking" "count=${_count} (expected 8)"
