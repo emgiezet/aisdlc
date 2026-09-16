@@ -1,0 +1,20 @@
+---
+# rules/policies/bash.yaml — pre-bash command policy (spec §7.1)
+version: "1"
+
+allow:
+  - id: npm-ci
+    pattern: '^[[:space:]]*npm[[:space:]]+ci\b'
+deny:
+  - id: pipe-to-shell
+    src_pattern:  '^[[:space:]]*(curl|wget)\b'
+    sink_pattern: '^[[:space:]]*(sh|bash|zsh|python[0-9.]*)\b'
+    reason: "Remote script execution. Download, verify checksum, then run explicitly."
+  - id: deny-lockfile-delete
+    pattern: '^[[:space:]]*rm[[:space:]]+.*(\bpackage-lock\.json\b|\bgo\.sum\b|\bpoetry\.lock\b)'
+    reason: "Lockfile deletion must be explicit."
+ask:
+  - id: npm-add-package
+    pattern: '^[[:space:]]*(npm|pnpm|yarn|bun)[[:space:]]+(add|install|i)[[:space:]]+[^-]'
+    ecosystem: node
+    reason: "New dependency. Confirm name (typosquatting), maintainer, release age, license."

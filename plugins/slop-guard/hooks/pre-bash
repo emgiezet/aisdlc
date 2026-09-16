@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# hooks/pre-bash — policy-based gate for bash commands.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+. "${PLUGIN_ROOT}/lib/hook.sh"
+. "${PLUGIN_ROOT}/lib/shellsplit.sh"
+
+hook_input
+command="$(hook_field .tool_input.command)"
+
+POLICY_FILE="${PLUGIN_ROOT}/rules/policies/bash.yaml"
+PARSER="${PLUGIN_ROOT}/rules/policies/generate_policy.sh"
+POLICY_SCRIPT="${TMPDIR:-/tmp}/policy_check.sh"
+
+"$PARSER" "$POLICY_FILE" > "$POLICY_SCRIPT"
+. "$POLICY_SCRIPT"
+
+# 1. Pipe-to-shell check (full command)
+if echo "$command" | grep -qE '^[[:space:]]*(curl|wget)\b.*\|[[:space:]]*(sh|bash|zsh|python[0-9.]*)\b'; then
+    hook_deny "Remote script execution. Download, verify checksum, then run explicitly."
+    exit 0
+fi
+
+# 2. Split command into components
+mapfile -t components < <(shellsplit "$command" | grep -v '^[[:space:]]*$')
+
+# 3. Check against rules
+for component in "${components[@]}"; do
+    if ! check_patterns "$component"; then
+        hook_deny "Command component violates security policy: $component"
+        exit 0
+    fi
+done
+
+exit 0
