@@ -22,7 +22,6 @@ manifest_field() {
     sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$MANIFEST" 2>/dev/null | head -1
 }
 VERSION="$(manifest_field version)"; [ -n "$VERSION" ] || VERSION="unknown"
-PLUGIN_NAME="$(manifest_field name)";  [ -n "$PLUGIN_NAME" ] || PLUGIN_NAME="slop-guard"
 
 # --------------------------------------------------------------------------- #
 # plumbing
@@ -50,69 +49,87 @@ cmd_doctor() {
         esac
     done
 
-    local platform; platform="$(detect_platform)" || die "unsupported platform"
-    local all_ok=1
-    local missing_tools=""
+    detect_platform >/dev/null || die "unsupported platform"
+
+    # Guard against a missing or malformed lockfile — an empty tool list would
+    # produce a false-green "All tools present" and is the exact inverse of §Z6.
+    local lock_path; lock_path="$(_tools_lock)" || die "CLAUDE_PLUGIN_ROOT is not set"
+    [ -f "$lock_path" ] || die "lockfile missing: $lock_path"
+
+    local tools_list
+    tools_list="$(lock_tools)" || die "lockfile unreadable or malformed: $lock_path"
+    [ -n "$tools_list" ] || die "lockfile contains no tools: $lock_path"
 
     say "slopguard doctor — plugin: ${CLAUDE_PLUGIN_ROOT}  data: ${CLAUDE_PLUGIN_DATA}"
     say ""
 
+    local fail_count=0
+
     while IFS= read -r tool; do
         local expected_version; expected_version="$(lock_version "$tool")"
         local resolved;         resolved="$(resolve_tool "$tool")"
-        local source_label version_label match_label config_label
-
-        config_label="none"
+        local config_label="none"
+        local fail_this=0
 
         if [ -z "$resolved" ]; then
-            source_label="missing"
-            version_label="—"
-            match_label="NOT FOUND"
-            all_ok=0
-            missing_tools="${missing_tools} ${tool}"
-            say "  ${tool}  source: ${source_label}  lockfile: ${expected_version}  [${match_label}]  config: ${config_label}"
+            fail_this=1
+            say "  ${tool}  source: missing  lockfile: ${expected_version}  [NOT FOUND]  config: ${config_label}"
+            # §9.1: log any PATH binary that was found but rejected for version mismatch.
+            local path_bin
+            if path_bin="$(command -v "$tool" 2>/dev/null)"; then
+                local path_ver; path_ver="$( { "$path_bin" --version 2>&1 || true; } | head -1 )"
+                say "    PATH: ${path_bin} (${path_ver}) — rejected: version mismatch (want ${expected_version})"
+            fi
+        else
+            local source_label version_label match_label
+            # Determine where the resolved binary came from.
+            local plugin_pfx="${CLAUDE_PLUGIN_DATA:-__NO_PLUGIN_DATA__}/tools/"
+            case "$resolved" in
+                "${plugin_pfx}"*)
+                    source_label="plugin" ;;
+                */vendor/bin/*|*/node_modules/.bin/*|*/.venv/bin/*)
+                    source_label="project" ;;
+                *)
+                    if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && \
+                       [ "${resolved#${CLAUDE_PROJECT_DIR}/}" != "$resolved" ]; then
+                        source_label="project"
+                    else
+                        source_label="PATH"
+                    fi
+                    ;;
+            esac
+
+            version_label="$( { "$resolved" --version 2>&1 || true; } | head -1 )"
+
+            if tool_version_matches "$tool" "$resolved"; then
+                match_label="ok"
+            else
+                match_label="version mismatch (want ${expected_version})"
+                fail_this=1
+            fi
+
+            say "  ${tool}  source: ${source_label}  version: ${version_label}  [${match_label}]  config: ${config_label}"
+        fi
+
+        # Install (or reinstall) when the tool is missing or version-mismatched.
+        if [ "$fail_this" -eq 1 ]; then
+            fail_count=$((fail_count + 1))
             if [ "$do_install" -eq 1 ]; then
                 say "    → installing..."
                 if install_tool "$tool"; then
-                    resolved="$(resolve_tool "$tool")"
                     say "    → installed ${tool} ${expected_version}"
+                    fail_count=$((fail_count - 1))
                 else
-                    say "    → install FAILED" >&2
+                    say "    → install FAILED"
                 fi
-            else
+            elif [ -z "$resolved" ]; then
                 say "    install:  slopguard doctor --install"
             fi
-            continue
         fi
-
-        # Determine the source label.
-        case "$resolved" in
-            "${CLAUDE_PLUGIN_DATA}/tools/"*)
-                source_label="plugin" ;;
-            "${CLAUDE_PROJECT_DIR:-__none__}/"*)
-                source_label="project" ;;
-            */vendor/bin/*|*/node_modules/.bin/*|*/.venv/bin/*)
-                source_label="project" ;;
-            *)
-                source_label="PATH" ;;
-        esac
-
-        # Read the version from the binary.
-        version_label="$("$resolved" --version 2>&1 | head -1 || printf '(version unreadable)')"
-
-        # Version match.
-        if tool_version_matches "$tool" "$resolved"; then
-            match_label="ok"
-        else
-            match_label="version mismatch (want ${expected_version})"
-            all_ok=0
-        fi
-
-        say "  ${tool}  source: ${source_label}  version: ${version_label}  [${match_label}]  config: ${config_label}"
-    done < <(lock_tools)
+    done <<< "$tools_list"
 
     say ""
-    if [ "$all_ok" -eq 1 ]; then
+    if [ "$fail_count" -eq 0 ]; then
         say "All tools present and version-matched."
     else
         say "Some tools are missing or version-mismatched."
@@ -140,9 +157,10 @@ Plugin root: ${CLAUDE_PLUGIN_ROOT}
 Plugin data: ${CLAUDE_PLUGIN_DATA}
 
 Tool resolution order (tool_source=project-first):
-  1. Project binary  — vendor/bin, node_modules/.bin, .venv/bin, go tool
+  1. Project binary  — vendor/bin, node_modules/.bin, .venv/bin, go tool -n
   2. Plugin binary   — \${CLAUDE_PLUGIN_DATA}/tools/<name>/current/<name>
-  3. PATH binary     — only when --version matches the lockfile
+                       accepted only when version equals the lockfile
+  3. PATH binary     — only when version equals the lockfile
 
 See tools/tools.lock.json for pinned versions and sha256 hashes.
 USAGE

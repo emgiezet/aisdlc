@@ -1,5 +1,4 @@
 {
-  "_comment": "Rationale: Z6 makes policy enforcement fail-closed; a missing jq would silently turn every JSON-based policy into a no-op — the one failure mode this plugin cannot have. shellcheck is the dispatcher's own lint gate. Every other tool is pinned in the stage that first uses it so that its lockfile entry, baseline config and fixtures always land together.",
   "schema": 1,
   "tools": {
     "jq": {
