@@ -39,8 +39,8 @@ Out:
   step is skipped, per the profile's own convention.
 - Retrofitting rules onto existing code: `Z2`-style, only boundaries this change declares are
   enforced; pre-existing violations are recorded once, not fixed.
-- Per-framework syntactic rules inside a single file — that is `antipattern-guard`'s subject
-  (`docs/antipattern-guard-spec.md` §6.1, §8), and this spec must not duplicate it.
+- Per-framework syntactic rules inside a single file — that is `slop-guard`'s subject
+  (`docs/slop-guard-spec.md` §6.1, §8), and this spec must not duplicate it.
 
 ## Context
 

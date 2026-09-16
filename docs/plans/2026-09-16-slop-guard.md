@@ -1,12 +1,12 @@
-# Antipattern Guard — Implementation Plan (Stages 0–1 + host integration)
+# Slop Guard — Implementation Plan (Stages 0–1 + host integration)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship a second Claude Code plugin from this marketplace — `antipattern-guard` — that
+**Goal:** Ship a second Claude Code plugin from this marketplace — `slop-guard` — that
 prevents, detects and gates anti-patterns in agent-written code, starting with the layer that
 returns the most for the least: the dispatcher and the fail-closed policies.
 
-**Architecture:** One POSIX-shell dispatcher (`bin/apguard`, bash + `jq`) invoked by every hook
+**Architecture:** One POSIX-shell dispatcher (`bin/slopguard`, bash + `jq`) invoked by every hook
 with a subcommand, a session-state directory under `${CLAUDE_PLUGIN_DATA}`, a rule catalogue
 (`rules/catalog.yaml`) that generates the per-language prevention skills, and per-tool baseline
 configs used only when the project has none. This repository hosts it beside `sdlc`; the two
@@ -19,7 +19,7 @@ first CI target (decision D10), plus the per-language tool matrix in spec §5. T
 assertion runner over recorded hook-contract JSON, in the style of `evals/harness/selftest.sh`;
 `shellcheck`; `claude plugin validate --strict`; `claude plugin eval`.
 
-**Spec:** `docs/antipattern-guard-spec.md` (full, authoritative) and `specs/SDLC-003/spec.md`
+**Spec:** `docs/slop-guard-spec.md` (full, authoritative) and `specs/SDLC-003/spec.md`
 (this repository's side of hosting it)
 
 ## Scope of this plan
@@ -42,7 +42,7 @@ plan, written when its predecessor is green — a plan for tool #37 written toda
 
 - Everything in the plugin — code, identifiers, tool messages, commits, code comments — is in
   **English**. User documentation may be Polish (spec §0.2).
-- **No feature outside the spec.** Ideas go to `plugins/antipattern-guard/docs/ideas.md` (§0.4).
+- **No feature outside the spec.** Ideas go to `plugins/slop-guard/docs/ideas.md` (§0.4).
 - Rule and parameter names in baseline configs are as of 2026-09 and **must be validated against
   the pinned tool version** (§9.3). A renamed or removed rule is fixed in the config and recorded
   in `CHANGELOG.md` — never silently dropped (§0.3).
@@ -59,7 +59,7 @@ plan, written when its predecessor is green — a plan for tool #37 written toda
   `tools/tools.lock.json`; a hash mismatch aborts the install (§5.1, §9.2).
 - Licences: own content only. No Semgrep Registry or SonarSource rule text, no verbatim CC BY-SA
   excerpts — paraphrase and link (§10).
-- Every stage ends with `claude plugin validate plugins/antipattern-guard --strict` green (§0.5).
+- Every stage ends with `claude plugin validate plugins/slop-guard --strict` green (§0.5).
 
 ---
 
@@ -92,7 +92,7 @@ that was a recommendation rather than a choice:
 
 - [ ] **Step 1: Record the answers**
 
-Write `plugins/antipattern-guard/docs/decisions.md`: the table above with the date, plus the
+Write `plugins/slop-guard/docs/decisions.md`: the table above with the date, plus the
 non-blocking decisions taken at the spec's recommendation — D3 `balanced`, D4 Stop blocks on
 blockers only with at most 2 iterations, D5 Trivy and KICS off, D6 ESLint + typescript-eslint,
 D7 project's type checker with Pyright as fallback, D8 `allow_network=false`, D9 no LLM review
@@ -103,8 +103,8 @@ migrations.
 - [ ] **Step 2: Commit the record**
 
 ```bash
-git add plugins/antipattern-guard/docs/decisions.md
-git commit -m "docs(apguard): record the answered decisions (bash+jq, opengrep, github actions)"
+git add plugins/slop-guard/docs/decisions.md
+git commit -m "docs(slopguard): record the answered decisions (bash+jq, opengrep, github actions)"
 ```
 
 ---
@@ -114,20 +114,20 @@ git commit -m "docs(apguard): record the answered decisions (bash+jq, opengrep, 
 ### Task 0.1: Skeleton, manifest, licences
 
 **Files:**
-- Create: `plugins/antipattern-guard/.claude-plugin/plugin.json`
-- Create: `plugins/antipattern-guard/hooks/hooks.json` (empty `hooks` object for now)
-- Create: `plugins/antipattern-guard/LICENSE` (MIT), `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md`
-- Create: `plugins/antipattern-guard/docs/ideas.md`, `docs/decisions.md`
+- Create: `plugins/slop-guard/.claude-plugin/plugin.json`
+- Create: `plugins/slop-guard/hooks/hooks.json` (empty `hooks` object for now)
+- Create: `plugins/slop-guard/LICENSE` (MIT), `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md`
+- Create: `plugins/slop-guard/docs/ideas.md`, `docs/decisions.md`
 - Create: the directory tree of spec §4.1 with a `.gitkeep` in each empty directory
 
 **Interfaces:**
-- Produces: the plugin name `antipattern-guard` and its `userConfig` keys — read by every later
+- Produces: the plugin name `slop-guard` and its `userConfig` keys — read by every later
   task as `CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE`, `…_STOP_GATE`, `…_SAST_ENGINE`,
   `…_ALLOW_NETWORK`, `…_TOOL_SOURCE` (§3.1).
 
 - [ ] **Step 1: Write the manifest**
 
-Copy spec §4.2 verbatim into `plugins/antipattern-guard/.claude-plugin/plugin.json`. Do not add
+Copy spec §4.2 verbatim into `plugins/slop-guard/.claude-plugin/plugin.json`. Do not add
 keys: `settings.json` for a plugin supports only `agent` and `subagentStatusLine`, and a plugin
 **cannot** set `permissions` (§3.1) — that is why §7.4 ships a snippet instead.
 
@@ -135,7 +135,7 @@ keys: `settings.json` for a plugin supports only `agent` and `subagentStatusLine
 
 ```json
 {
-  "description": "Antipattern Guard: prevention, detection and gating",
+  "description": "Slop Guard: prevention, detection and gating",
   "hooks": {}
 }
 ```
@@ -154,28 +154,28 @@ linked, never quoted**; and the run-only tools whose licences never enter this r
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-jq . plugins/antipattern-guard/.claude-plugin/plugin.json
-jq . plugins/antipattern-guard/hooks/hooks.json
-claude plugin validate plugins/antipattern-guard --strict
-git add plugins/antipattern-guard
-git commit -m "feat(apguard): plugin skeleton, manifest and licence notices"
+jq . plugins/slop-guard/.claude-plugin/plugin.json
+jq . plugins/slop-guard/hooks/hooks.json
+claude plugin validate plugins/slop-guard --strict
+git add plugins/slop-guard
+git commit -m "feat(slopguard): plugin skeleton, manifest and licence notices"
 ```
 
 ### Task 0.2: The pinned tool lockfile and `doctor --install`
 
 **Files:**
-- Create: `plugins/antipattern-guard/tools/tools.lock.json`
-- Create: `plugins/antipattern-guard/tools/python/requirements.lock` (hash-pinned)
-- Create: `plugins/antipattern-guard/tools/node/package.json` + `package-lock.json`
-- Create: `plugins/antipattern-guard/bin/apguard` — dispatcher entry point, `doctor` subcommand
+- Create: `plugins/slop-guard/tools/tools.lock.json`
+- Create: `plugins/slop-guard/tools/python/requirements.lock` (hash-pinned)
+- Create: `plugins/slop-guard/tools/node/package.json` + `package-lock.json`
+- Create: `plugins/slop-guard/bin/slopguard` — dispatcher entry point, `doctor` subcommand
   only for now
-- Create: `plugins/antipattern-guard/lib/tools.sh` — resolution and install functions
-- Create: `plugins/antipattern-guard/tests/run-tests` — the bash assertion runner
-- Test: `plugins/antipattern-guard/tests/tools_test.sh`
+- Create: `plugins/slop-guard/lib/tools.sh` — resolution and install functions
+- Create: `plugins/slop-guard/tests/run-tests` — the bash assertion runner
+- Test: `plugins/slop-guard/tests/tools_test.sh`
 
 **Interfaces:**
 - Consumes: `CLAUDE_PLUGIN_OPTION_TOOL_SOURCE`.
-- Produces: `apguard doctor`, `apguard doctor --install`, and the resolution order every later
+- Produces: `slopguard doctor`, `slopguard doctor --install`, and the resolution order every later
   tool call uses — `resolve_tool <name>` prints an absolute path or nothing: project binary →
   `${CLAUDE_PLUGIN_DATA}/tools/<name>/current/` → `PATH` **only if `--version` matches the
   lockfile** (§9.1).
@@ -192,7 +192,7 @@ directory, removes the download, and exits non-zero. Serve the fake asset from a
 the test needs no network.
 
 ```bash
-plugins/antipattern-guard/tests/run-tests
+plugins/slop-guard/tests/run-tests
 ```
 
 Expected: FAIL — `lib/tools.sh` does not exist.
@@ -228,21 +228,21 @@ lockfile, and the config file that would be used. Missing tools print the exact 
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-cd plugins/antipattern-guard && tests/run-tests && shellcheck -S warning bin/apguard lib/*.sh tests/*.sh tests/run-tests
-bin/apguard doctor
-git add plugins/antipattern-guard && git commit -m "feat(apguard): pinned tool lockfile, verified installer, doctor"
+cd plugins/slop-guard && tests/run-tests && shellcheck -S warning bin/slopguard lib/*.sh tests/*.sh tests/run-tests
+bin/slopguard doctor
+git add plugins/slop-guard && git commit -m "feat(slopguard): pinned tool lockfile, verified installer, doctor"
 ```
 
 ### Task 0.3: Baseline configs, validated against the pinned versions
 
 **Files:**
-- Create: every file in `plugins/antipattern-guard/configs/baseline/` from spec §6 — `phpstan.neon`,
+- Create: every file in `plugins/slop-guard/configs/baseline/` from spec §6 — `phpstan.neon`,
   `psalm.xml`, `phpmd.xml`, `.golangci.yml`, `ruff.toml`, `pyrightconfig.json`,
   `eslint.config.mjs`, `eslint.security-overlay.mjs`, `.sqlfluff`, `.squawk.toml`, `.tflint.hcl`,
   `.checkov.yaml`, `.kube-linter.yaml`, `.hadolint.yaml`, `zizmor.yml`, `.gitleaks.toml`
-- Create: `plugins/antipattern-guard/tests/fixtures/<lang>/good/…` — the minimum each validation
+- Create: `plugins/slop-guard/tests/fixtures/<lang>/good/…` — the minimum each validation
   command needs
-- Create: `plugins/antipattern-guard/scripts/validate-configs` — runs the §9.3 table
+- Create: `plugins/slop-guard/scripts/validate-configs` — runs the §9.3 table
 
 **Interfaces:**
 - Produces: the config files the dispatcher passes with `-c`/`--config` when the project has none.
@@ -264,7 +264,7 @@ tool, enumerated with `ruff rule --all --output-format json`, `golangci-lint lin
 - [ ] **Step 3: Run it and fix what has drifted**
 
 ```bash
-plugins/antipattern-guard/scripts/validate-configs
+plugins/slop-guard/scripts/validate-configs
 ```
 
 Every rule name that no longer exists is corrected in the config **and recorded in
@@ -274,7 +274,7 @@ detector gap against its AP id — never silently deleted.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add plugins/antipattern-guard && git commit -m "feat(apguard): baseline configs validated against pinned tool versions"
+git add plugins/slop-guard && git commit -m "feat(slopguard): baseline configs validated against pinned tool versions"
 ```
 
 **Stage 0 acceptance (§11.3):** `claude plugin validate --strict` green; `doctor` resolves every
@@ -288,12 +288,12 @@ recorded in `CHANGELOG.md`.
 ### Task 1.1: Hook plumbing, session state, and the finding type
 
 **Files:**
-- Create: `plugins/antipattern-guard/lib/hook.sh` — stdin decode, response encode, exit codes
-- Create: `plugins/antipattern-guard/lib/state.sh` — session directory, `mkdir` locking, pruning
-- Create: `plugins/antipattern-guard/lib/finding.sh` — the normalised finding and its fingerprint
-- Modify: `plugins/antipattern-guard/bin/apguard` — subcommand dispatch, in the shape of
+- Create: `plugins/slop-guard/lib/hook.sh` — stdin decode, response encode, exit codes
+- Create: `plugins/slop-guard/lib/state.sh` — session directory, `mkdir` locking, pruning
+- Create: `plugins/slop-guard/lib/finding.sh` — the normalised finding and its fingerprint
+- Modify: `plugins/slop-guard/bin/slopguard` — subcommand dispatch, in the shape of
   `plugins/sdlc/bin/aisdlc:737-749`
-- Test: `plugins/antipattern-guard/tests/hook_test.sh`, `tests/state_test.sh`
+- Test: `plugins/slop-guard/tests/hook_test.sh`, `tests/state_test.sh`
 
 **Interfaces:**
 - Produces:
@@ -319,7 +319,7 @@ each helper emits, compared with `jq -S .` so key order is not the thing under t
 case that matters in shell: a reason containing `"` and a `$` — the encoder must survive both.
 
 ```bash
-plugins/antipattern-guard/tests/run-tests
+plugins/slop-guard/tests/run-tests
 ```
 
 Expected: FAIL — `lib/hook.sh` does not exist.
@@ -341,16 +341,16 @@ and asserts every finding survived.
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-cd plugins/antipattern-guard && tests/run-tests && \
-  shellcheck -S warning bin/apguard lib/*.sh tests/run-tests tests/*.sh
-git add plugins/antipattern-guard && git commit -m "feat(apguard): hook I/O contract, session state, finding record"
+cd plugins/slop-guard && tests/run-tests && \
+  shellcheck -S warning bin/slopguard lib/*.sh tests/run-tests tests/*.sh
+git add plugins/slop-guard && git commit -m "feat(slopguard): hook I/O contract, session state, finding record"
 ```
 
 ### Task 1.2: `session-start` — stack detection and the always-on agent rules
 
 **Files:**
-- Create: `plugins/antipattern-guard/lib/detect.sh` — stack detection per spec §6.1–§6.9
-- Modify: `plugins/antipattern-guard/bin/apguard` — the `session-start` subcommand
+- Create: `plugins/slop-guard/lib/detect.sh` — stack detection per spec §6.1–§6.9
+- Modify: `plugins/slop-guard/bin/slopguard` — the `session-start` subcommand
 - Modify: `hooks/hooks.json` — the `SessionStart` binding from §4.3
 - Test: `tests/hook-contract/session-start-*.json`, `tests/detect_test.sh` with fixture repos
   under `tests/fixtures/repos/<name>/`
@@ -370,7 +370,7 @@ Z1 exists for: a repo carrying `phpstan.neon` resolves the **project** config, n
 - [ ] **Step 2: Implement detection and the profile**
 
 Record per tool: source, version, config path, and whether that config is the project's or the
-baseline's. `apguard doctor` prints exactly this structure, so detection and reporting are one
+baseline's. `slopguard doctor` prints exactly this structure, so detection and reporting are one
 code path, not two that disagree.
 
 - [ ] **Step 3: Emit the always-on context**
@@ -384,19 +384,19 @@ install command (Z6).
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-cd plugins/antipattern-guard && tests/run-tests && \
-  bin/apguard session-start < tests/hook-contract/session-start-laravel.json | jq .
-git add plugins/antipattern-guard && git commit -m "feat(apguard): session-start stack detection and agent-rule digest"
+cd plugins/slop-guard && tests/run-tests && \
+  bin/slopguard session-start < tests/hook-contract/session-start-laravel.json | jq .
+git add plugins/slop-guard && git commit -m "feat(slopguard): session-start stack detection and agent-rule digest"
 ```
 
 ### Task 1.3: `pre-bash` — the command policy
 
 **Files:**
 - Create: `rules/policies/bash.yaml` — every row of spec §7.1
-- Create: `plugins/antipattern-guard/lib/shellsplit.sh` — split on `&&`, `||`, `;`, `|`, `$()`,
+- Create: `plugins/slop-guard/lib/shellsplit.sh` — split on `&&`, `||`, `;`, `|`, `$()`,
   backticks
-- Create: `plugins/antipattern-guard/lib/typosquat.sh` + `rules/policies/popular-packages/<eco>.txt`
-- Modify: `plugins/antipattern-guard/bin/apguard` — the `pre-bash` subcommand
+- Create: `plugins/slop-guard/lib/typosquat.sh` + `rules/policies/popular-packages/<eco>.txt`
+- Modify: `plugins/slop-guard/bin/slopguard` — the `pre-bash` subcommand
 - Modify: `hooks/hooks.json` — `PreToolUse` matcher `Bash`
 - Test: `tests/hook-contract/pre-bash-*.json` — **one per row of §7.1**, plus compound commands
 
@@ -412,7 +412,7 @@ because installing from a lockfile is fine and a policy that blocks it is a poli
 turns off.
 
 ```bash
-plugins/antipattern-guard/tests/run-tests
+plugins/slop-guard/tests/run-tests
 ```
 
 Expected: FAIL — `pre-bash` is not implemented.
@@ -438,16 +438,16 @@ observed, never a verdict the data does not support.
 - [ ] **Step 4: Verify and commit**
 
 ```bash
-cd plugins/antipattern-guard && tests/run-tests && shellcheck -S warning lib/*.sh bin/apguard
-git add plugins/antipattern-guard && git commit -m "feat(apguard): pre-bash supply-chain and secret-file policy"
+cd plugins/slop-guard && tests/run-tests && shellcheck -S warning lib/*.sh bin/slopguard
+git add plugins/slop-guard && git commit -m "feat(slopguard): pre-bash supply-chain and secret-file policy"
 ```
 
 ### Task 1.4: `pre-write` — secrets, suppressions, protected files, test removal
 
 **Files:**
 - Create: `rules/policies/suppressions.yaml`, `rules/policies/protected-files.yaml`
-- Create: `plugins/antipattern-guard/lib/secrets.sh` — Betterleaks/Gitleaks over stdin
-- Modify: `plugins/antipattern-guard/bin/apguard` — the `pre-write` subcommand
+- Create: `plugins/slop-guard/lib/secrets.sh` — Betterleaks/Gitleaks over stdin
+- Modify: `plugins/slop-guard/bin/slopguard` — the `pre-write` subcommand
 - Modify: `hooks/hooks.json` — `PreToolUse` matcher `Write|Edit|MultiEdit|NotebookEdit`
 - Test: `tests/hook-contract/pre-write-*.json`
 
@@ -488,15 +488,15 @@ by a human". Test removal per §7.2D.
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-cd plugins/antipattern-guard && tests/run-tests && shellcheck -S warning lib/*.sh bin/apguard
-git add plugins/antipattern-guard && git commit -m "feat(apguard): pre-write secret, suppression and quality-gate policy"
+cd plugins/slop-guard && tests/run-tests && shellcheck -S warning lib/*.sh bin/slopguard
+git add plugins/slop-guard && git commit -m "feat(slopguard): pre-write secret, suppression and quality-gate policy"
 ```
 
 ### Task 1.5: `pre-read` and the recommended project settings
 
 **Files:**
-- Modify: `plugins/antipattern-guard/bin/apguard` — the `pre-read` subcommand
-- Create: `plugins/antipattern-guard/docs/recommended-project-settings.json` (spec §7.4 verbatim)
+- Modify: `plugins/slop-guard/bin/slopguard` — the `pre-read` subcommand
+- Create: `plugins/slop-guard/docs/recommended-project-settings.json` (spec §7.4 verbatim)
 - Modify: `hooks/hooks.json` — `PreToolUse` matcher `Read`
 - Test: `tests/hook-contract/pre-read-*.json`
 
@@ -515,10 +515,10 @@ defence in depth, the permission rules are the floor.
 - [ ] **Step 3: Verify and commit**
 
 ```bash
-cd plugins/antipattern-guard && tests/run-tests && \
-  shellcheck -S warning bin/apguard lib/*.sh tests/run-tests tests/*.sh && \
-  claude plugin validate plugins/antipattern-guard --strict
-git add plugins/antipattern-guard && git commit -m "feat(apguard): pre-read secret-file policy and project settings snippet"
+cd plugins/slop-guard && tests/run-tests && \
+  shellcheck -S warning bin/slopguard lib/*.sh tests/run-tests tests/*.sh && \
+  claude plugin validate plugins/slop-guard --strict
+git add plugins/slop-guard && git commit -m "feat(slopguard): pre-read secret-file policy and project settings snippet"
 ```
 
 **Stage 1 acceptance (§11.3):** every policy hook-contract case passes; the evals
@@ -537,15 +537,15 @@ the second plugin.
 
 **Files:**
 - Modify: `.claude-plugin/marketplace.json` — a second entry in `plugins[]`
-- Modify: `Makefile` — a `bump-apguard` target beside `bump-patch|minor|major`
+- Modify: `Makefile` — a `bump-slopguard` target beside `bump-patch|minor|major`
 - Modify: `.github/workflows/validate.yml` — version consistency for both plugins
 
 - [ ] **Step 1: Add the marketplace entry**
 
 ```json
     {
-      "name": "antipattern-guard",
-      "source": "./plugins/antipattern-guard",
+      "name": "slop-guard",
+      "source": "./plugins/slop-guard",
       "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code: per-language prevention skills, deterministic checks after each edit, and a Stop gate that blocks on unresolved blockers",
       "version": "0.1.0",
       "strict": true
@@ -555,9 +555,9 @@ the second plugin.
 `_bump` already selects `.plugins[] | select(.name == "sdlc")`, so `make bump-minor` cannot touch
 it — verify that, do not assume it.
 
-- [ ] **Step 2: Add `bump-apguard`**
+- [ ] **Step 2: Add `bump-slopguard`**
 
-A sibling of `_bump` that rewrites `plugins/antipattern-guard/.claude-plugin/plugin.json` and the
+A sibling of `_bump` that rewrites `plugins/slop-guard/.claude-plugin/plugin.json` and the
 matching marketplace entry, and leaves `.metadata.version` alone: the marketplace version tracks
 the repository, not either plugin.
 
@@ -576,7 +576,7 @@ git add .claude-plugin/marketplace.json Makefile .github/workflows/validate.yml
 git commit -m "build: host a second plugin with independent versioning (SDLC-003)"
 ```
 
-### Task H.2: `validate-apguard`, without disturbing the `sdlc` checks
+### Task H.2: `validate-slopguard`, without disturbing the `sdlc` checks
 
 **Files:**
 - Modify: `Makefile` — new target, added to `.PHONY`; `validate` gains a soft dependency
@@ -585,25 +585,25 @@ git commit -m "build: host a second plugin with independent versioning (SDLC-003
 - [ ] **Step 1: Add the target**
 
 ```make
-validate-apguard: ## Validate the antipattern-guard plugin, if present
-	@test -d plugins/antipattern-guard || { echo "  – antipattern-guard not present, skipped"; exit 0; }
-	@jq . plugins/antipattern-guard/.claude-plugin/plugin.json > /dev/null && echo "  ✓ apguard plugin.json"
-	@jq . plugins/antipattern-guard/hooks/hooks.json > /dev/null && echo "  ✓ apguard hooks.json"
-	@jq . plugins/antipattern-guard/tools/tools.lock.json > /dev/null && echo "  ✓ apguard tools.lock.json"
-	@test "$$(jq -r '.name' plugins/antipattern-guard/.claude-plugin/plugin.json)" = "antipattern-guard" \
-		|| (echo "  ✗ apguard plugin name mismatch" && exit 1)
-	@for s in plugins/antipattern-guard/bin/apguard plugins/antipattern-guard/lib/*.sh \
-	          plugins/antipattern-guard/tests/run-tests; do \
+validate-slopguard: ## Validate the slop-guard plugin, if present
+	@test -d plugins/slop-guard || { echo "  – slop-guard not present, skipped"; exit 0; }
+	@jq . plugins/slop-guard/.claude-plugin/plugin.json > /dev/null && echo "  ✓ slopguard plugin.json"
+	@jq . plugins/slop-guard/hooks/hooks.json > /dev/null && echo "  ✓ slopguard hooks.json"
+	@jq . plugins/slop-guard/tools/tools.lock.json > /dev/null && echo "  ✓ slopguard tools.lock.json"
+	@test "$$(jq -r '.name' plugins/slop-guard/.claude-plugin/plugin.json)" = "slop-guard" \
+		|| (echo "  ✗ slopguard plugin name mismatch" && exit 1)
+	@for s in plugins/slop-guard/bin/slopguard plugins/slop-guard/lib/*.sh \
+	          plugins/slop-guard/tests/run-tests; do \
 		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
 	done
-	@echo "  ✓ apguard shell syntax"
+	@echo "  ✓ slopguard shell syntax"
 	@command -v shellcheck > /dev/null 2>&1 && \
-		(shellcheck -S warning plugins/antipattern-guard/bin/apguard \
-		            plugins/antipattern-guard/lib/*.sh \
-		            plugins/antipattern-guard/tests/run-tests && echo "  ✓ apguard shellcheck clean") || \
+		(shellcheck -S warning plugins/slop-guard/bin/slopguard \
+		            plugins/slop-guard/lib/*.sh \
+		            plugins/slop-guard/tests/run-tests && echo "  ✓ slopguard shellcheck clean") || \
 		echo "  – shellcheck not installed, skipped"
-	@plugins/antipattern-guard/tests/run-tests
-	@command -v claude > /dev/null 2>&1 && claude plugin validate plugins/antipattern-guard --strict \
+	@plugins/slop-guard/tests/run-tests
+	@command -v claude > /dev/null 2>&1 && claude plugin validate plugins/slop-guard --strict \
 		|| echo "  – claude CLI not installed, plugin validate skipped"
 ```
 
@@ -618,8 +618,8 @@ tested.
 - [ ] **Step 2: Verify both ways**
 
 ```bash
-make validate && make validate-apguard          # with the plugin present
-mv plugins/antipattern-guard /tmp/ && make validate && make validate-apguard && mv /tmp/antipattern-guard plugins/
+make validate && make validate-slopguard          # with the plugin present
+mv plugins/slop-guard /tmp/ && make validate && make validate-slopguard && mv /tmp/slop-guard plugins/
 ```
 
 Expected: green in both states, with the skip message in the second.
@@ -634,15 +634,15 @@ git commit -m "build: validate the second plugin without coupling it to the sdlc
 ### Task H.3: One owner per guard, and what `ask` means with no human
 
 **Files:**
-- Modify: `plugins/antipattern-guard/rules/policies/bash.yaml` — drop the duplicated rows
-- Modify: `plugins/antipattern-guard/docs/` — state the boundary
+- Modify: `plugins/slop-guard/rules/policies/bash.yaml` — drop the duplicated rows
+- Modify: `plugins/slop-guard/docs/` — state the boundary
 - Modify: `plugins/sdlc/hooks/guard` — a comment naming the boundary, no behaviour change
 - Modify: `plugins/sdlc/bin/aisdlc` — export the headless marker in `invoke_claude`
 - Test: `evals/harness/selftest.sh`
 
 **Interfaces:**
 - Produces: the ownership split, and the environment variable `AISDLC_HEADLESS=1`, exported by
-  `invoke_claude` and read by `apguard` to resolve `ask` without a human.
+  `invoke_claude` and read by `slopguard` to resolve `ask` without a human.
 
 - [ ] **Step 1: Split ownership, and delete the duplicate**
 
@@ -650,12 +650,12 @@ git commit -m "build: validate the second plugin without coupling it to the sdlc
 |---|---|---|
 | Force push, `--no-verify`, `rm -rf` outside the tree | `sdlc` guard (`hooks/guard:33-74`) | Already shipped, already tested, and the queue depends on it |
 | Deleting or skipping a test at turn end | `sdlc` guard `stop` (`:84-148`) | Tied to the dense-testing non-negotiables and the spec's UC traceability |
-| Secrets, suppressions, protected configs, supply chain, lint findings | `antipattern-guard` | Its whole subject; no overlap with the above |
-| Framework-specific rules **inside** a file (Laravel `env()` outside config, `$request->all()` mass assignment, Django raw SQL, Express body limit) | `antipattern-guard` | Its detection already resolves the framework (§6.1) and picks the extensions and own Opengrep rules per framework |
+| Secrets, suppressions, protected configs, supply chain, lint findings | `slop-guard` | Its whole subject; no overlap with the above |
+| Framework-specific rules **inside** a file (Laravel `env()` outside config, `$request->all()` mass assignment, Django raw SQL, Express body limit) | `slop-guard` | Its detection already resolves the framework (§6.1) and picks the extensions and own Opengrep rules per framework |
 | Dependency **direction between** components (transport must not be imported by domain) | `sdlc`, as an architecture test | `specs/SDLC-004/spec.md`: the boundary is declared in `design.md` and enforced by the project's own arch-test tool inside `make verify`, so it fails in CI and not only in the agent's session |
 
 Remove from `bash.yaml` the rows that duplicate the `sdlc` guard: force push, `git commit
---no-verify`, and the test-file `rm`. Antipattern Guard keeps the lockfile-deletion and
+--no-verify`, and the test-file `rm`. Slop Guard keeps the lockfile-deletion and
 secret-file rows, which the `sdlc` guard does not cover. Two plugins blocking one act give the
 agent two reasons for one failure — it will argue with the weaker one.
 
@@ -680,7 +680,7 @@ into the runner's own environment.
 
 - [ ] **Step 4: Define the headless rule in the plugin**
 
-With `AISDLC_HEADLESS=1`, `apguard` resolves every `ask` as `deny` **with the same reason plus
+With `AISDLC_HEADLESS=1`, `slopguard` resolves every `ask` as `deny` **with the same reason plus
 "no human in this session"**, and never as a silent allow. Rationale, stated in the docs: the
 queue runs with `--permission-mode bypassPermissions` (`bin/aisdlc:302-319`), so an `ask` has
 nobody to answer it; denying with a reason produces a clean `BLOCKED.md`, while allowing would let
@@ -689,8 +689,8 @@ exactly the supply-chain acts this plugin exists to stop through unattended.
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-make selftest && make validate && make validate-apguard
-git add plugins/sdlc/bin/aisdlc evals/harness/selftest.sh plugins/antipattern-guard
+make selftest && make validate && make validate-slopguard
+git add plugins/sdlc/bin/aisdlc evals/harness/selftest.sh plugins/slop-guard
 git commit -m "feat: one owner per guard, and deny-with-reason for ask in headless runs (SDLC-003)"
 ```
 
@@ -733,7 +733,7 @@ recorded.
 
 **Spec coverage (`specs/SDLC-003/spec.md`).** UC-1, UC-2 → Task H.2. UC-3, UC-4 → Task H.1.
 UC-5, UC-6 → Task H.3 step 1. UC-7 → Task H.3 steps 2–4. UC-8 → already fixed: the
-project-agnostic CI grep matched `docs/antipattern-guard-spec.md:1789`, and that line no longer
+project-agnostic CI grep matched `docs/slop-guard-spec.md:1789`, and that line no longer
 names an organisation.
 
 **Placeholder scan.** No "TBD" and no "add error handling". Where the spec gives content verbatim
@@ -747,7 +747,7 @@ step says how they are pinned and what rejects a bad one.
 §4.4, in `hooks/hooks.json`, and in every task. Shell library names are `lib/hook.sh`,
 `lib/state.sh`, `lib/finding.sh`, `lib/tools.sh`, `lib/detect.sh`, `lib/shellsplit.sh`,
 `lib/secrets.sh`, `lib/typosquat.sh` — the same set in Tasks 0.2, 1.1–1.4 and in the
-`validate-apguard` glob. The helper names are `hook_input`, `hook_field`, `hook_deny`, `hook_ask`,
+`validate-slopguard` glob. The helper names are `hook_input`, `hook_field`, `hook_deny`, `hook_ask`,
 `hook_allow`, `hook_context`, `hook_message`, `resolve_tool`, `install_tool`, `finding_add`. The
 finding shape and its fingerprint are defined once, in Task 1.1, and used by Stages 2–4.
 `userConfig` keys reach hooks as `CLAUDE_PLUGIN_OPTION_<KEY>`. The headless marker is
@@ -755,7 +755,7 @@ finding shape and its fingerprint are defined once, in Task 1.1, and used by Sta
 
 **Ordering.** Stage D is answered, so Stage 0 starts immediately. Stage 0 has no dependency on
 Stage H. Stage H must land before Stage 1 ships, so CI lints the shell the moment it exists.
-Tasks 1.1 → 1.2 → 1.3/1.4/1.5 share `bin/apguard`, `hooks/hooks.json` and `lib/`, so they run
+Tasks 1.1 → 1.2 → 1.3/1.4/1.5 share `bin/slopguard`, `hooks/hooks.json` and `lib/`, so they run
 sequentially, not in parallel.
 
 **What D1 costs, recorded so nobody rediscovers it.** Three consequences of bash + `jq`, each
@@ -764,5 +764,5 @@ every response goes through `jq -n --arg` (Task 1.1 step 2); `jq` becomes a pinn
 dependency rather than an assumption, because a missing `jq` would turn fail-closed policies into
 no-ops (Task 0.2 step 2); and `flock` is unavailable on macOS, so locking is `mkdir`-based
 (Task 1.1 step 3). Windows remains a wrapper problem for Stage 6 — the spec's exec-form
-requirement (§3.1) means `bin/apguard` cannot be a shell script there, and the honest options are
+requirement (§3.1) means `bin/slopguard` cannot be a shell script there, and the honest options are
 a `.cmd` launcher calling Git Bash or declaring Windows unsupported in 1.0.

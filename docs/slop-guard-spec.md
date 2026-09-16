@@ -1,4 +1,4 @@
-# Antipattern Guard — specyfikacja implementacji pluginu Claude Code
+# Slop Guard — specyfikacja implementacji pluginu Claude Code
 
 **Wersja dokumentu:** 0.1 (2026-09-16)
 **Odbiorca:** agent kodujący (Claude Code) implementujący plugin + Max jako reviewer
@@ -100,7 +100,7 @@ Plugin, który na trzech warstwach:
 - Wszystko, co da się sprawdzić narzędziem, jest sprawdzane narzędziem.
 
 **Z6. Fail-open dla infrastruktury, fail-closed dla polityk.**
-- Brak narzędzia, timeout albo crash parsera nie blokuje agenta. Hook raportuje `apguard: tool X unavailable` raz na sesję i przepuszcza.
+- Brak narzędzia, timeout albo crash parsera nie blokuje agenta. Hook raportuje `slopguard: tool X unavailable` raz na sesję i przepuszcza.
 - Polityki (sekrety w treści, obchodzenie linterów, `curl | sh`) blokują zawsze.
 
 **Z7. Brak sieci w szybkiej ścieżce.**
@@ -183,7 +183,7 @@ Plugin, który na trzech warstwach:
 - Claude Security — skan całego codebase.
 - Wtyczki LSP (`pyright-lsp`, `typescript-lsp`) — wpychają diagnostyki do kontekstu po edycjach.
 
-Antipattern Guard musi działać obok nich bez duplikowania komunikatów (sekcja 12, decyzja D9).
+Slop Guard musi działać obok nich bez duplikowania komunikatów (sekcja 12, decyzja D9).
 
 ---
 
@@ -192,13 +192,13 @@ Antipattern Guard musi działać obok nich bez duplikowania komunikatów (sekcja
 ### 4.1 Układ katalogów
 
 ```text
-antipattern-guard/
+slop-guard/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── hooks/
 │   └── hooks.json
 ├── bin/
-│   └── apguard                     # dispatcher (decyzja D1: bash + jq; lib/*.sh obok)
+│   └── slopguard                     # dispatcher (decyzja D1: bash + jq; lib/*.sh obok)
 ├── skills/
 │   ├── php-antipatterns/           # paths: **/*.php, **/*.blade.php
 │   │   ├── SKILL.md                # GENEROWANY z rules/catalog.yaml
@@ -209,7 +209,7 @@ antipattern-guard/
 │   ├── node-antipatterns/
 │   ├── sql-antipatterns/
 │   ├── iac-antipatterns/           # terraform, k8s, helm, docker, CI
-│   └── secure-review/              # /antipattern-guard:secure-review (context: fork)
+│   └── secure-review/              # /slop-guard:secure-review (context: fork)
 ├── agents/
 │   └── security-reviewer.md
 ├── rules/
@@ -250,8 +250,8 @@ antipattern-guard/
 ```json
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "antipattern-guard",
-  "displayName": "Antipattern Guard",
+  "name": "slop-guard",
+  "displayName": "Slop Guard",
   "version": "0.1.0",
   "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code.",
   "license": "MIT",
@@ -295,13 +295,13 @@ antipattern-guard/
 
 ```json
 {
-  "description": "Antipattern Guard: prevention, detection and gating",
+  "description": "Slop Guard: prevention, detection and gating",
   "hooks": {
     "SessionStart": [
       {
         "matcher": "startup|resume|clear|compact",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/apguard", "args": ["session-start"], "timeout": 30 }
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["session-start"], "timeout": 30 }
         ]
       }
     ],
@@ -309,19 +309,19 @@ antipattern-guard/
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/apguard", "args": ["pre-bash"], "timeout": 10 }
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["pre-bash"], "timeout": 10 }
         ]
       },
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/apguard", "args": ["pre-write"], "timeout": 10 }
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["pre-write"], "timeout": 10 }
         ]
       },
       {
         "matcher": "Read",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/apguard", "args": ["pre-read"], "timeout": 5 }
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["pre-read"], "timeout": 5 }
         ]
       }
     ],
@@ -329,15 +329,15 @@ antipattern-guard/
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/apguard", "args": ["post-write", "--tier=fast"], "timeout": 20 },
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/apguard", "args": ["post-write", "--tier=medium"], "asyncRewake": true }
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["post-write", "--tier=fast"], "timeout": 20 },
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["post-write", "--tier=medium"], "asyncRewake": true }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/apguard", "args": ["stop-gate"], "timeout": 600 }
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["stop-gate"], "timeout": 600 }
         ]
       }
     ]
@@ -347,9 +347,9 @@ antipattern-guard/
 
 Uwagi:
 - Jeśli narzędzie `MultiEdit` lub `NotebookEdit` nie istnieje w danej wersji Claude Code, dokładny matcher po prostu nie zadziała — to bezpieczne.
-- `bin/apguard` na Windows musi wskazywać na `apguard.exe`. Rozwiązanie: launcher per platforma w `bin/` albo osobne wpisy z `shell` (decyzja w Etapie 1).
+- `bin/slopguard` na Windows musi wskazywać na `slopguard.exe`. Rozwiązanie: launcher per platforma w `bin/` albo osobne wpisy z `shell` (decyzja w Etapie 1).
 
-### 4.4 Dispatcher `apguard` — podkomendy
+### 4.4 Dispatcher `slopguard` — podkomendy
 
 | Podkomenda | Zdarzenie | Odpowiedzialność |
 |---|---|---|
@@ -409,7 +409,7 @@ Tryb `advisory`: wszystko idzie do `additionalContext`, nic nie blokuje (poza po
 Jedna linia na finding, grupowanie po pliku, bez kolorów i ANSI:
 
 ```text
-apguard: 2 blockers, 1 warning in changed code
+slopguard: 2 blockers, 1 warning in changed code
 app/Http/Controllers/UserSearchController.php
   BLOCKER L42 AP-PHP-SEC-001 CWE-89 [psalm:TaintedSql] SQL built from request input. Fix: bind parameters.
   WARN    L57 AP-PHP-PERF-001 [custom:loop-query] Query inside loop. Fix: eager load with ->with() or whereIn.
@@ -419,7 +419,7 @@ Details: skills php-antipatterns/reference/AP-PHP-SEC-001.md
 Zasady:
 - Nie cytuj całych bloków kodu z wyniku narzędzia.
 - Nie dołączaj stack trace narzędzi.
-- Powyżej limitu dodaj linię `+N more findings (run: apguard scan <file>)`.
+- Powyżej limitu dodaj linię `+N more findings (run: slopguard scan <file>)`.
 
 ### 4.8 Katalog antywzorców — `rules/catalog.yaml`
 
@@ -440,7 +440,7 @@ Każdy wpis:
     DB::select('SELECT * FROM users WHERE email = ?', [$email]);
   detect:
     - { tool: psalm, rule: TaintedSql }
-    - { tool: opengrep, rule: apguard.php.laravel.raw-sql-interpolation }
+    - { tool: opengrep, rule: slopguard.php.laravel.raw-sql-interpolation }
   prevent_in_skill: true        # trafia do SKILL.md
   references:
     - https://cwe.mitre.org/data/definitions/89.html
@@ -509,7 +509,7 @@ Legenda:
 **Opengrep zamiast Semgrep CE jako domyślny silnik**
 - Opengrep to fork Semgrep CE na LGPL-2.1. Przywraca analizę taint, analizę międzyproceduralną i fingerprinting usunięte z Community Edition. Jest wstecznie kompatybilny z formatem reguł i wyjściem JSON/SARIF.
 - **Reguły z `semgrep/semgrep-rules` nie mogą być dołączone do pluginu** (Semgrep Rules License v1.0 — tylko użytek wewnętrzny, zakaz dystrybucji).
-- Plugin dostarcza **własne reguły** w `rules/opengrep/`. Użytkownik może dodatkowo wskazać lokalny katalog reguł przez `APGUARD_EXTRA_RULES`.
+- Plugin dostarcza **własne reguły** w `rules/opengrep/`. Użytkownik może dodatkowo wskazać lokalny katalog reguł przez `SLOPGUARD_EXTRA_RULES`.
 
 **Betterleaks zamiast Gitleaks**
 - Nowy skaner autora Gitleaks, MIT, drop-in (te same flagi CLI i konfiguracja).
@@ -533,7 +533,7 @@ Wszystkie pliki trafiają do `configs/baseline/`. Dispatcher:
 
 1. szuka konfiguracji projektu (lista plików per narzędzie poniżej); jeśli istnieje — używa jej;
 2. w przeciwnym razie przekazuje bazową konfigurację flagą narzędzia (`-c`, `--config`) **bez kopiowania do repo**;
-3. zapisuje źródło konfiguracji w `profile.json` i pokazuje je w `apguard doctor`.
+3. zapisuje źródło konfiguracji w `profile.json` i pokazuje je w `slopguard doctor`.
 
 Wszystkie wywołania mają **format maszynowy** (JSON/SARIF), **bez kolorów**, **bez auto-fix**. Katalogi cache narzędzi wskazują na `${CLAUDE_PLUGIN_DATA}/cache/<tool>`.
 
@@ -578,7 +578,7 @@ includes:
 
 parameters:
     level: 8
-    tmpDir: %env.APGUARD_CACHE_DIR%/phpstan
+    tmpDir: %env.SLOPGUARD_CACHE_DIR%/phpstan
     reportUnmatchedIgnoredErrors: true
     treatPhpDocTypesAsCertain: false
 ```
@@ -607,7 +607,7 @@ Zasady:
     errorLevel="3"
     findUnusedCode="false"
     findUnusedBaselineEntry="true"
-    cacheDirectory="${APGUARD_CACHE_DIR}/psalm"
+    cacheDirectory="${SLOPGUARD_CACHE_DIR}/psalm"
     xmlns="https://getpsalm.org/schema/config">
     <projectFiles>
         <directory name="app"/>
@@ -639,11 +639,11 @@ Zasady:
 
 ```xml
 <?xml version="1.0"?>
-<ruleset name="apguard-baseline"
+<ruleset name="slopguard-baseline"
          xmlns="http://pmd.sf.net/ruleset/1.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://pmd.sf.net/ruleset/1.0.0 http://pmd.sf.net/ruleset_xml_schema.xsd">
-    <description>Antipattern Guard baseline</description>
+    <description>Slop Guard baseline</description>
     <rule ref="rulesets/cleancode.xml">
         <exclude name="StaticAccess"/>      <!-- fasady Laravel -->
         <exclude name="ElseExpression"/>
@@ -919,7 +919,7 @@ import n from 'eslint-plugin-n';
 
 // Pluginy rejestrowane jawnie + reguły wymienione jawnie:
 // nazwy presetów flat config zmieniają się między wersjami pluginów, nazwy reguł rzadko.
-const TYPED = process.env.APGUARD_TYPED_LINT === '1';
+const TYPED = process.env.SLOPGUARD_TYPED_LINT === '1';
 
 export default defineConfig(
   { ignores: ['**/dist/**', '**/build/**', '**/coverage/**', '**/*.min.js', '**/vendor/**'] },
@@ -993,9 +993,9 @@ export default defineConfig(
     },
   },
 
-  // --- Node.js (tylko gdy wykryto backend Node; dispatcher ustawia APGUARD_NODE_GLOBS) ---
+  // --- Node.js (tylko gdy wykryto backend Node; dispatcher ustawia SLOPGUARD_NODE_GLOBS) ---
   {
-    files: (process.env.APGUARD_NODE_GLOBS ?? 'server/**,api/**,src/server/**').split(','),
+    files: (process.env.SLOPGUARD_NODE_GLOBS ?? 'server/**,api/**,src/server/**').split(','),
     plugins: { n },
     rules: {
       'n/no-deprecated-api': 'error',
@@ -1022,7 +1022,7 @@ Wywołania:
 # tier F (bez type-info), plik:
 eslint --config "$CONFIG" --format json --no-warn-ignored "$FILE"
 # tier M (z type-info), zmienione pliki paczki:
-APGUARD_TYPED_LINT=1 eslint --config "$CONFIG" --format json --no-warn-ignored $FILES
+SLOPGUARD_TYPED_LINT=1 eslint --config "$CONFIG" --format json --no-warn-ignored $FILES
 # tier S:
 tsc --noEmit -p "$TSCONFIG" --pretty false   # parser formatu "file(line,col): error TSxxxx: msg"
 ```
@@ -1127,10 +1127,10 @@ plugin "aws" {
 ```
 
 ```bash
-TFLINT_PLUGIN_DIR="$APGUARD_CACHE_DIR/tflint" tflint --config "$CONFIG" --format json --chdir "$(dirname "$FILE")"
+TFLINT_PLUGIN_DIR="$SLOPGUARD_CACHE_DIR/tflint" tflint --config "$CONFIG" --format json --chdir "$(dirname "$FILE")"
 ```
 
-- `tflint --init` pobiera ruleset z sieci — wykonywane tylko w `session-start` przy `allow_network`, albo ręcznie przez `apguard doctor --install`.
+- `tflint --init` pobiera ruleset z sieci — wykonywane tylko w `session-start` przy `allow_network`, albo ręcznie przez `slopguard doctor --install`.
 
 `configs/baseline/.checkov.yaml`:
 
@@ -1185,7 +1185,7 @@ Helm (tier M):
 
 ```bash
 helm lint "$CHART_DIR"
-helm template apguard "$CHART_DIR" > "$TMP/rendered.yaml" && kube-linter lint --format json "$TMP/rendered.yaml"
+helm template slopguard "$CHART_DIR" > "$TMP/rendered.yaml" && kube-linter lint --format json "$TMP/rendered.yaml"
 ```
 
 Mapowanie severity (nazwy checków zweryfikuj przez `kube-linter checks list`):
@@ -1284,24 +1284,24 @@ Minimalny zestaw **własnych** reguł (MIT, pisane od zera; każda z fixture `ba
 
 | Plik | Reguła (id) | AP-id |
 |---|---|---|
-| `php-laravel.yaml` | `apguard.php.laravel.raw-sql-interpolation` (`DB::raw`, `whereRaw`, `selectRaw`, `orderByRaw` z interpolacją/konkatenacją) | AP-PHP-SEC-001 |
-| | `apguard.php.laravel.blade-unescaped-output` (`{!! $x !!}` poza allowlistą) | AP-PHP-SEC-004 |
-| | `apguard.php.laravel.mass-assignment-request-all` (`::create($request->all())`, `->fill($request->all())`, `$guarded = []`) | AP-PHP-SEC-005 |
-| | `apguard.php.laravel.query-in-loop` (`find`/`first`/`where()->get()` w `foreach`) | AP-PHP-PERF-003 |
-| | `apguard.php.laravel.unbounded-all` (`Model::all()` w kontrolerze/jobie) | AP-PHP-PERF-002 |
-| `php.yaml` | `apguard.php.weak-password-hash` (`md5`/`sha1` na zmiennych nazwanych *pass*) | AP-PHP-SEC-006 |
-| | `apguard.php.insecure-random-token` (`rand`/`mt_rand`/`uniqid` do tokenów) | AP-PHP-SEC-006 |
-| `go.yaml` | `apguard.go.http-client-without-timeout` (`http.Get`, `&http.Client{}` bez `Timeout`) | AP-GO-PERF-001 |
-| | `apguard.go.goroutine-per-item-unbounded` (`go func` w pętli po danych wejściowych bez limitu) | AP-GO-PERF-003 |
-| `python.yaml` | `apguard.py.django-raw-sql-format`, `apguard.py.sqlalchemy-text-fstring` | AP-PY-SEC-001 |
-| `node.yaml` | `apguard.node.exec-template-literal` (`exec(`/`execSync(` z template literal) | AP-NODE-SEC-002 |
-| | `apguard.node.prototype-pollution-merge` (rekurencyjny merge / `obj[key] = ` z `req.body`/`req.query`) | AP-NODE-SEC-001 |
-| | `apguard.node.math-random-token` | AP-NODE-SEC-006 |
-| | `apguard.node.express-no-body-limit` (`express.json()` bez `limit`) | AP-NODE-SEC-007 |
-| | `apguard.node.jwt-verify-without-algorithms` | AP-NODE-SEC-009 |
-| `react.yaml` | `apguard.react.token-in-localstorage` (`localStorage.setItem` z kluczem *token*/*jwt*) | AP-TS-SEC-003 |
-| `sql-migrations.yaml` | `apguard.laravel.migration-fk-without-index`, `apguard.migration.not-null-without-default` | AP-SQL-003/004 |
-| `docker-ci.yaml` | `apguard.docker.curl-pipe-shell`, `apguard.gitlab.image-without-digest`, `apguard.gitlab.include-remote` | AP-DOCKER-004, AP-CI-006 |
+| `php-laravel.yaml` | `slopguard.php.laravel.raw-sql-interpolation` (`DB::raw`, `whereRaw`, `selectRaw`, `orderByRaw` z interpolacją/konkatenacją) | AP-PHP-SEC-001 |
+| | `slopguard.php.laravel.blade-unescaped-output` (`{!! $x !!}` poza allowlistą) | AP-PHP-SEC-004 |
+| | `slopguard.php.laravel.mass-assignment-request-all` (`::create($request->all())`, `->fill($request->all())`, `$guarded = []`) | AP-PHP-SEC-005 |
+| | `slopguard.php.laravel.query-in-loop` (`find`/`first`/`where()->get()` w `foreach`) | AP-PHP-PERF-003 |
+| | `slopguard.php.laravel.unbounded-all` (`Model::all()` w kontrolerze/jobie) | AP-PHP-PERF-002 |
+| `php.yaml` | `slopguard.php.weak-password-hash` (`md5`/`sha1` na zmiennych nazwanych *pass*) | AP-PHP-SEC-006 |
+| | `slopguard.php.insecure-random-token` (`rand`/`mt_rand`/`uniqid` do tokenów) | AP-PHP-SEC-006 |
+| `go.yaml` | `slopguard.go.http-client-without-timeout` (`http.Get`, `&http.Client{}` bez `Timeout`) | AP-GO-PERF-001 |
+| | `slopguard.go.goroutine-per-item-unbounded` (`go func` w pętli po danych wejściowych bez limitu) | AP-GO-PERF-003 |
+| `python.yaml` | `slopguard.py.django-raw-sql-format`, `slopguard.py.sqlalchemy-text-fstring` | AP-PY-SEC-001 |
+| `node.yaml` | `slopguard.node.exec-template-literal` (`exec(`/`execSync(` z template literal) | AP-NODE-SEC-002 |
+| | `slopguard.node.prototype-pollution-merge` (rekurencyjny merge / `obj[key] = ` z `req.body`/`req.query`) | AP-NODE-SEC-001 |
+| | `slopguard.node.math-random-token` | AP-NODE-SEC-006 |
+| | `slopguard.node.express-no-body-limit` (`express.json()` bez `limit`) | AP-NODE-SEC-007 |
+| | `slopguard.node.jwt-verify-without-algorithms` | AP-NODE-SEC-009 |
+| `react.yaml` | `slopguard.react.token-in-localstorage` (`localStorage.setItem` z kluczem *token*/*jwt*) | AP-TS-SEC-003 |
+| `sql-migrations.yaml` | `slopguard.laravel.migration-fk-without-index`, `slopguard.migration.not-null-without-default` | AP-SQL-003/004 |
+| `docker-ci.yaml` | `slopguard.docker.curl-pipe-shell`, `slopguard.gitlab.image-without-digest`, `slopguard.gitlab.include-remote` | AP-DOCKER-004, AP-CI-006 |
 
 ---
 
@@ -1401,7 +1401,7 @@ Plugin nie może sam ustawić `permissions`, więc dostarczamy snippet do `.clau
     ]
   },
   "enabledPlugins": {
-    "antipattern-guard@<marketplace>": true
+    "slop-guard@<marketplace>": true
   }
 }
 ```
@@ -1649,7 +1649,7 @@ Zasady generatora:
 ```
 
 **Zasady instalacji**
-- Instalacja wyłącznie przez `apguard doctor --install`, uruchamiane ręcznie przez użytkownika albo w `session-start`, gdy `allow_network=true`. **Nigdy w hookach Pre/PostToolUse.**
+- Instalacja wyłącznie przez `slopguard doctor --install`, uruchamiane ręcznie przez użytkownika albo w `session-start`, gdy `allow_network=true`. **Nigdy w hookach Pre/PostToolUse.**
 - Binarki: pobranie → weryfikacja sha256 → rozpakowanie do katalogu wersji → atomowy symlink `current`.
   - Niezgodny hash = przerwanie, usunięcie pobranego pliku, `error` w `doctor`.
 - Python: `uv pip install --require-hashes -r tools/python/requirements.lock` do `${CLAUDE_PLUGIN_DATA}/tools/python-venv`.
@@ -1689,7 +1689,7 @@ Dodatkowo test spójności: każda reguła wymieniona w `rules/mapping/*.yaml` m
 | Kod pluginu, własne reguły Opengrep, katalog AP-* | MIT, treść pisana od zera |
 | Identyfikatory i nazwy CWE | Dozwolone komercyjnie; w `THIRD_PARTY_NOTICES.md` odtworzyć notę copyright MITRE zgodnie z CWE Terms of Use |
 | OWASP Cheat Sheets / ASVS, nodebestpractices (CC BY-SA 4.0) | Tylko parafraza + link w `references`; atrybucja w `THIRD_PARTY_NOTICES.md`; **nie kopiować fragmentów** — cytat uruchomiłby share-alike dla całego pliku |
-| Semgrep Registry (`semgrep-rules`) | **Nie dołączać, nie kopiować, nie parafrazować 1:1.** Użytkownik może sam wskazać reguły do użytku wewnętrznego przez `APGUARD_EXTRA_RULES` |
+| Semgrep Registry (`semgrep-rules`) | **Nie dołączać, nie kopiować, nie parafrazować 1:1.** Użytkownik może sam wskazać reguły do użytku wewnętrznego przez `SLOPGUARD_EXTRA_RULES` |
 | Reguły SonarSource | Nie dołączać ani nie kopiować |
 | njsscan (reguły LGPL) | Tylko uruchamiane jako narzędzie |
 | Narzędzia GPL (golangci-lint, hadolint) | Uruchamiane jako osobne procesy, nie dystrybuowane w repo pluginu (pobierane przez `doctor --install`) — brak wpływu na licencję pluginu |
@@ -1713,7 +1713,7 @@ Dodatkowo test spójności: każda reguła wymieniona w `rules/mapping/*.yaml` m
    - fast p95 < 2 s,
    - medium p95 < 60 s,
    - stop p95 < 5 min na zmianach sesji ≤ 30 plików.
-6. **Koszt kontekstu** — `claude plugin details antipattern-guard`:
+6. **Koszt kontekstu** — `claude plugin details slop-guard`:
    - always-on < 600 tokenów,
    - każdy skill on-invoke < 3000 tokenów.
 
@@ -1738,7 +1738,7 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 
 **Etap 0 — Fundament (bez hooków w działaniu)**
 - Szkielet katalogów, `plugin.json`, pusty `hooks.json`, `LICENSE`, `THIRD_PARTY_NOTICES.md`.
-- `tools.lock.json` z przypiętymi wersjami i hashami; `apguard doctor --install`.
+- `tools.lock.json` z przypiętymi wersjami i hashami; `slopguard doctor --install`.
 - Walidacja wszystkich konfiguracji bazowych (9.3) — poprawki nazw reguł odnotowane w `CHANGELOG.md`.
 - ✅ `claude plugin validate --strict` zielone; `doctor` pokazuje wszystkie narzędzia na Linux amd64/arm64 i macOS arm64.
 
@@ -1785,7 +1785,7 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 | D6 | Lint JS/TS | **ESLint + typescript-eslint** (reguły type-aware jak `no-floating-promises`); Biome/Oxlint jako szybki tier F później, jeśli wydajność będzie problemem | nie |
 | D7 | Type checker Pythona | wg projektu; fallback **Pyright standard** | nie |
 | D8 | Sieć | `allow_network=false` domyślnie; SCA w CI zamiast w pluginie, dopóki nie ma lokalnego mirrora baz podatności | nie |
-| D9 | Nakładanie z `security-guidance` / Claude Security / wtyczkami LSP | Antipattern Guard nie powiela przeglądu LLM; jeśli `security-guidance` jest włączony, `/secure-review` tylko odsyła do niego | nie |
+| D9 | Nakładanie z `security-guidance` / Claude Security / wtyczkami LSP | Slop Guard nie powiela przeglądu LLM; jeśli `security-guidance` jest włączony, `/secure-review` tylko odsyła do niego | nie |
 | D10 | CI | **POTWIERDZONE: GitHub Actions.** Etap 2 dowozi `actionlint` + `zizmor` z `unpinned-uses: hash-pin`; GitLab CI (6.9) i AP-CI-006 schodzą za Etap 2 | tak (dla zakresu Etapu 2) |
 | D11 | Dialekt SQL domyślny | Czy dominuje MySQL czy PostgreSQL? MySQL nie ma odpowiednika squawk — więcej reguł własnych i skill | nie |
 
