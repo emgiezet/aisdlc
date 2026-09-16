@@ -1,7 +1,11 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "sdlc",
-  "description": "AI SDLC harness — spec-driven delivery for agents: a task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests",
+  "displayName": "AI SDLC",
   "version": "0.1.0",
+  "description": "AI SDLC harness — spec-driven delivery for agents: a task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests",
+  "license": "MIT",
+  "author": { "name": "Maksymilian Małecki" },
   "homepage": "https://github.com/emgiezet/aisdlc",
   "repository": "https://github.com/emgiezet/aisdlc",
   "keywords": [

@@ -1,5 +1,10 @@
 ---
-description: Independently verify an implementation against its spec and close the test gaps — runs the auto-qa agent to build a UC×test coverage matrix, closes the gaps it finds, and writes specs/<TICKET>/qa-report.md with a PASS/GAPS verdict. Use after /sdlc:implement, before opening a PR or reviewing agent-written code.
+name: sdlc-qa
+description: >
+  Independently verify an implementation against its spec and close the test gaps — runs the
+  auto-qa agent to build a UC×test coverage matrix, closes the gaps it finds, and writes
+  specs/<TICKET>/qa-report.md with a PASS/GAPS verdict. Use after /sdlc:implement, before
+  opening a PR or reviewing agent-written code.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 
@@ -8,7 +13,7 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 The step that decides whether a human should spend attention on this branch. It runs before
 anyone reads the code, and its verdict is what they read first.
 
-`$ARGUMENTS` is the ticket id. Read `.claude/sdlc.md` for the specs directory and the
+The invocation input is the ticket id. Read `.claude/sdlc.md` for the specs directory and the
 verification commands; paths below assume the default `specs/`.
 
 **First action, before anything else:** check that `specs/<TICKET>/spec.md` exists. If it does not,
@@ -33,6 +38,21 @@ then tests, then run everything, then hand-verify the UCs no test covers. The or
 method; reading the implementation first makes you agree with it.
 
 Either way the output is a UC×test matrix, real suite output, and a findings list.
+
+**Optional capabilities (read from `.claude/sdlc.md`):**
+- If Slop Guard is recorded as `available`: its enforcement domain covers secrets, SAST, and
+  supply-chain. Your QA report **must** include an explicit statement of what Slop Guard's hooks
+  covered and what the workflow did not check, so the reviewer understands the security coverage
+  boundary. Do not duplicate Slop Guard checks; note the boundary.
+- If Superpowers is recorded as `available`: load the `requesting-code-review` skill — its
+  structured code review disciplines supplement the UC coverage matrix with quality and security
+  analysis findings.
+- If Ponytail is recorded as `available`: load the `ponytail-review` skill — it identifies
+  over-engineering to flag as non-blocking findings in the QA report.
+- AISDLC fallback when any optional capability is absent or unknown: apply the `dense-testing`
+  review framework, and include an explicit "Security checks not run" note in the report's
+  "Not verified" section to show the reviewer what was outside the coverage boundary.
+  Headroom is never loaded by this workflow.
 
 ---
 
@@ -66,6 +86,11 @@ Then re-run the affected suites and refresh the matrix with the real numbers.
 Write `specs/<TICKET>/qa-report.md` in the `auto-qa` format: verdict on the first line, UC
 coverage table, exact suite output with skip counts, numbered findings with file and line, and
 an explicit "Not verified" section.
+
+The "Not verified" section must explicitly state:
+- Which UCs, if any, were verified only by hand (making the verdict `GAPS`)
+- Which security/policy checks were outside this QA run's scope (Slop Guard boundary if installed,
+  or the AISDLC fallback note if not)
 
 Verdict rules:
 
@@ -104,6 +129,7 @@ it prints anything, you are not done.
 Verdict: PASS | GAPS (<n> findings, <n> blocking)
 UC coverage: <n>/<n> automated · Tests: <before> → <after> · Skipped: 0
 Report: specs/<TICKET>/qa-report.md (committed as <sha>)
+Security boundary: <Slop Guard domain covered, or "no hook enforcement — see Not verified">
 
 ## Next
 PASS → /sdlc:ship <TICKET>

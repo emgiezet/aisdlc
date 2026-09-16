@@ -69,3 +69,16 @@ Things an unattended run must never touch, whatever a spec says. Additive to eac
 - Generated files and lock files, unless the spec names them
 - CI configuration, unless the spec is about CI
 - <!-- add yours: vendored code, legacy modules mid-migration, anything under a freeze -->
+
+## Optional capabilities
+
+Populated by `/sdlc:init` from detection at setup time. Edit when a capability is added or
+removed. Detection was side-effect-free; binary probes used only `command -v`. All are optional
+and manually installed; none is installed or required by this pipeline.
+
+| Capability | Status | Integration |
+|------------|--------|-------------|
+| Slop Guard | `<!-- available \| unavailable \| unknown -->` | Deterministic hook enforcement — PreToolUse gates on Bash and Write at the host level; not replicated inside workflow steps. |
+| Superpowers | `<!-- available \| unavailable \| unknown -->` | Brainstorming, planning, TDD, systematic-debugging, and code-review disciplines in spec, implement, and qa. Falls back to explicit AISDLC instructions when absent. |
+| Ponytail | `<!-- available \| unavailable \| unknown -->` | Minimal implementation and over-engineering review in implement and qa. Falls back to "Implement the minimum" instruction when absent. |
+| Headroom | `<!-- installed \| absent -->` | External transport compression/memory — never invoked by any workflow step. |

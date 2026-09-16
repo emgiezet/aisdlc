@@ -1,5 +1,9 @@
 ---
-description: Generate a clickable single-file mockup from a spec's UI use cases at specs/<TICKET>/mockup/index.html — no build, no install, opens in a browser. Use to validate a spec with the people who asked for it, in minutes, before any production code is written.
+name: sdlc-mockup
+description: >
+  Generate a clickable single-file mockup from a spec's UI use cases at
+  specs/<TICKET>/mockup/index.html — no build, no install, opens in a browser. Use to validate
+  a spec with the people who asked for it, in minutes, before any production code is written.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 ---
 
@@ -9,7 +13,7 @@ Validation before implementation. Reading a spec back to a stakeholder proves no
 agree with the words and disagree with the screen. A clickable mockup surfaces the
 misunderstanding while changing it is still free.
 
-`$ARGUMENTS` is the ticket id. Read `.claude/sdlc.md` for the specs directory, then
+The invocation input is the ticket id. Read `.claude/sdlc.md` for the specs directory, then
 `<specs dir>/<TICKET>/spec.md`. No spec → stop and point at `/sdlc:spec <TICKET>`. Works on a
 `draft` spec — that is the point.
 

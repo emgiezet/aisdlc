@@ -1,5 +1,10 @@
 ---
-description: Turn a ticket, URL, file, or description into an agent-executable spec at specs/<TICKET>/spec.md — a use-case table with observable acceptance criteria, grounded in the codebase. The artefact that /sdlc:implement, /sdlc:qa and the aisdlc queue consume. Use to write, refresh, or readiness-check a spec before queueing unattended work.
+name: sdlc-spec
+description: >
+  Turn a ticket, URL, file, or description into an agent-executable spec at
+  specs/<TICKET>/spec.md — a use-case table with observable acceptance criteria, grounded in the
+  codebase. The artefact that /sdlc:implement, /sdlc:qa and the aisdlc queue consume. Use to
+  write, refresh, or readiness-check a spec before queueing unattended work.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, Agent
 ---
 
@@ -9,7 +14,7 @@ Produces the one artefact that makes unattended execution possible. `/sdlc:imple
 no human gates, so **this spec is the only approval point** — whatever it leaves unsaid, the
 agent will invent.
 
-`$ARGUMENTS` contains the ticket reference. Detect its format:
+The invocation input is the ticket reference. Detect its format:
 
 - Matches the project's ticket id pattern (default `[A-Z]+-[0-9]+`, e.g. `ABC-123`) → **ticket**
 - `http(s)://…` → **URL** · starts with `/` or `./` → **file path** · else → **free text**
@@ -23,6 +28,15 @@ assumption you had to make. Missing `/sdlc:init` is worth one line of advice, no
 
 **Load the `spec-authoring` skill** — it holds the section layout, the use-case rules, the sizing
 limits, and the review checklist this command applies.
+
+**Optional capabilities (read from `.claude/sdlc.md`):**
+- If Superpowers is recorded as `available`: load the `brainstorming` skill before Phase 2 to
+  apply structured requirement exploration before committing to the use-case table shape.
+- Slop Guard operates at the hook layer during implementation and does not participate in spec
+  authoring.
+- Ponytail is not invoked during spec authoring; it applies at implementation time.
+- AISDLC fallback when Superpowers is absent or unknown: use the survey and Phase 1 structure
+  defined below as your requirement exploration framework.
 
 ---
 

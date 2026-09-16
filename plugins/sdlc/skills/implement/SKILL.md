@@ -1,11 +1,16 @@
 ---
-description: Deliver an approved spec end-to-end with no human gates — reads specs/<TICKET>/spec.md, routes through the matching playbook, writes one test per UC before its implementation, runs the full CI matrix, and stops hard with BLOCKED.md if it cannot finish. The unattended half of the pipeline, built to be run by the aisdlc queue.
+name: sdlc-implement
+description: >
+  Deliver an approved spec end-to-end with no human gates — reads specs/<TICKET>/spec.md, routes
+  through the matching playbook, writes one test per UC before its implementation, runs the full
+  CI matrix, and stops hard with BLOCKED.md if it cannot finish. The unattended half of the
+  pipeline, built to be run by the aisdlc queue.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 
 # /sdlc:implement
 
-`$ARGUMENTS` is the ticket id (e.g. `ABC-123`), matching `<specs dir>/<TICKET>/spec.md`.
+The invocation input is the ticket id (e.g. `ABC-123`), matching `<specs dir>/<TICKET>/spec.md`.
 
 **Read `.claude/sdlc.md` first** — it names the specs directory, the verification commands,
 the contract directory, and what is out of bounds repo-wide. No profile → detect what you can
@@ -54,6 +59,20 @@ and the wandering that precedes the guess costs more than the whole task should.
    only. Verify each tool is actually installed now — discovering a missing binary after
    writing the code wastes the whole run.
 4. Create the working branch if not already on one: `ai/<TICKET>-<slug>`.
+
+**Optional capabilities (read from `.claude/sdlc.md`):**
+- If Slop Guard is recorded as `available`: its PreToolUse hooks are active and enforce
+  secrets/SAST/supply-chain policy on Bash and Write operations. Do not replicate that enforcement.
+  State in your Phase 5 handoff what Slop Guard's domain covers and what it does not, so the
+  reviewer understands the boundary. The SDLC-specific guards (no force-push, no test deletion)
+  remain in this workflow regardless of Slop Guard's presence.
+- If Superpowers is recorded as `available`: load the `test-driven-development` skill for the
+  test-first discipline in Phase 2, and keep the `systematic-debugging` skill available for Phase 4.
+- If Ponytail is recorded as `available`: load the `ponytail` skill for YAGNI and minimalism
+  constraints before Phase 2. Let its guidance govern scope decisions in "Implement the minimum".
+- AISDLC fallback when Superpowers or Ponytail is absent or unknown: follow the `dense-testing`
+  skill's floors as your test discipline, and treat "Implement the minimum" in Phase 2 as your
+  explicit minimalism constraint. Headroom is never loaded by this workflow.
 
 Output a 3–5 bullet grounding summary. Then start writing code — there is no gate here.
 
@@ -135,6 +154,7 @@ Branch: ai/<TICKET>-<slug> · <n> commits
 UCs: <n>/<n> with tests carrying their ids
 Tests: <before> → <after> · skipped: 0
 CI matrix: <command> ✓ · <command> ✓ · …
+Slop Guard domain: <what its hooks covered, or "not installed — no hook enforcement">
 
 ## Next
 /sdlc:qa <TICKET>     — independent verification against the spec

@@ -1,6 +1,11 @@
 ---
-description: Turn a verified branch into a reviewable draft PR without a human in the loop — pushes, opens the PR with the spec and QA verdict up front, labels it ai-sdlc, and posts the QA report as a comment so the PR list doubles as the review inbox. Use as the last step after /sdlc:qa, or from the aisdlc queue.
-allowed-tools: Bash(git:*), Bash(gh:*), Read, Grep, Glob
+name: sdlc-ship
+description: >
+  Turn a verified branch into a reviewable draft PR without a human in the loop — pushes, opens
+  the PR with the spec and QA verdict up front, labels it ai-sdlc, and posts the QA report as a
+  comment so the PR list doubles as the review inbox. Use as the last step after /sdlc:qa, or
+  from the aisdlc queue.
+allowed-tools: Bash(git:*), Bash(gh:*), Read, Write, Grep, Glob
 ---
 
 # /sdlc:ship
@@ -8,8 +13,9 @@ allowed-tools: Bash(git:*), Bash(gh:*), Read, Grep, Glob
 The delivery end of the unattended pipeline. Its job is to make a human's next two minutes
 efficient: the PR must say what was asked, what the QA verdict is, and where to look first.
 
-`$ARGUMENTS` is the ticket id. Read `.claude/sdlc.md` for the specs directory, the pull request
-label, and the branch convention; paths below assume the default `specs/` and label `ai-sdlc`.
+The invocation input is the ticket id. Read `.claude/sdlc.md` for the specs directory, the pull
+request label, and the branch convention; paths below assume the default `specs/` and label
+`ai-sdlc`.
 
 Requires `specs/<TICKET>/spec.md` and, unless `--no-qa` is passed, `specs/<TICKET>/qa-report.md`.
 

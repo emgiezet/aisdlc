@@ -1,5 +1,10 @@
 ---
-description: Set this repository up for the AI SDLC pipeline — survey the stacks, directories, CI commands and conventions, then generate a CLAUDE.md task router, task-scoped playbooks, path-scoped rules, and the .claude/sdlc.md project profile. Run once per repository, before the first spec. Use also to refresh the setup after the repo's shape changes.
+name: sdlc-init
+description: >
+  Set this repository up for the AI SDLC pipeline — survey the stacks, directories, CI commands
+  and conventions, then generate a CLAUDE.md task router, task-scoped playbooks, path-scoped
+  rules, and the .claude/sdlc.md project profile. Run once per repository, before the first spec.
+  Use also to refresh the setup after the repo's shape changes.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 
@@ -12,8 +17,8 @@ conventions, which is the failure mode that makes generic harnesses useless.
 
 ## Arguments
 
-`$ARGUMENTS` may contain a hint about what this repo is, if the code makes it ambiguous, and may
-contain the flag `--yes`.
+The invocation input may contain a hint about what this repo is, if the code makes it ambiguous,
+and may contain the flag `--yes`.
 
 **Check for `--yes` before you start, and decide now which mode you are in:**
 
@@ -44,7 +49,8 @@ the placeholders still in is a failure, not a partial success.
 
 Gather facts. Do not write anything yet. In subagent mode, dispatch up to three `Explore` agents in
 parallel — one for stacks and layout, one for CI and test conventions, one for contracts,
-decisions and existing agent configuration.
+decisions and existing agent configuration. Run the optional capabilities survey in parallel with
+these agents.
 
 **Stacks and layout.** Which languages, where. Manifest files (`go.mod`, `package.json`,
 `pyproject.toml`, `Cargo.toml`, `composer.json`, `*.csproj`, `Gemfile`, …), top-level directories,
@@ -72,6 +78,24 @@ decisions (an `adr/` directory, a decisions file) or none. A skill holding domai
 **Existing configuration.** An existing `CLAUDE.md`, `AGENTS.md`, `.claude/rules/`, or
 `.cursor/rules`. **Read them.** Whatever conventions they already encode are inputs, not obstacles.
 
+**Optional capabilities survey** — run this in parallel with the exploration agents above.
+Detection must be side-effect-free; never inspect user home files, never install anything, never
+make network calls.
+
+- **Slop Guard** — if the host exposes a plugin or skill inventory (for example, `codex plugins
+  list` in Codex, or the Claude Code plugin registry), query it for `slop-guard` first. If no
+  inventory API is accessible in this session, run `command -v slopguard 2>/dev/null`. Report
+  `available` if found in inventory or the binary exists, `unavailable` if explicitly absent from
+  an inventory that was successfully queried, or `unknown` if no reliable check was possible.
+- **Superpowers** — query the host skill or plugin inventory for `superpowers`. Report `available`,
+  `unavailable`, or `unknown` by the same rules. Do not run a binary check; Superpowers has no
+  standalone executable.
+- **Ponytail** — query the host skill or plugin inventory for `ponytail`. Same rules. No binary
+  check.
+- **Headroom** — `command -v headroom 2>/dev/null`. Report `installed` or `absent`. Never state
+  that Headroom is actively compressing context from binary presence alone; Headroom is external
+  transport and is never invoked inside any workflow step.
+
 Report the survey as a compact summary. Flag every fact you could not establish.
 
 ---
@@ -92,6 +116,16 @@ Present, for approval, before writing anything:
    is where the pipeline writes, it defaults to `specs/`, and it is never `none`.
 5. **What you will not create** and why — a playbook for work this repo does not do is noise that
    makes the router worse.
+6. **Optional capabilities table** — the results of the Phase 1 survey, with the selected
+   integration for each capability. Show every status explicitly; `unknown` is the answer when
+   detection was not possible, not a gap to fill by guessing.
+
+   | Capability | Status | Integration |
+   |------------|--------|-------------|
+   | Slop Guard | `<available\|unavailable\|unknown>` | Deterministic hook enforcement (PreToolUse gates on Bash/Write). Active when installed; workflow does not replicate it when absent. |
+   | Superpowers | `<available\|unavailable\|unknown>` | Brainstorming/planning/TDD/debug/review disciplines in spec, implement, qa. Falls back to explicit AISDLC instructions when absent. |
+   | Ponytail | `<available\|unavailable\|unknown>` | Minimal implementation and over-engineering review in implement and qa. Falls back to "Implement the minimum" instruction when absent. |
+   | Headroom | `<installed\|absent>` | External transport only — never invoked by any workflow step. |
 
 **Interactive mode** — stop here:
 
@@ -126,7 +160,8 @@ Router near the top, and leave the rest alone.
 - `.claude/rules/<stack>.md` — `paths:` frontmatter, this stack's conventions as observed in the
   code, and a copy-pasteable verification block at the end. ≤ 70 lines each.
 - `.claude/sdlc.md` — from `templates/sdlc.md`, every field answered, `none` where that is the
-  truth.
+  truth. **Include the Optional capabilities section** with the exact status values from Phase 1
+  and the integration selected in Phase 2. Do not leave the template placeholders.
 - `.aisdlc/config.json` — runner defaults: `{"model", "budget", "base", "workers", "label",
   "specs_dir"}`. Pick `base` from the actual default branch.
 - `specs/.gitkeep` — so the directory exists before the first spec.
@@ -149,6 +184,8 @@ because a duplicated instruction that drifts is worse than a missing one.
 3. **Check the budgets** — report the line count of every file you wrote against its limit.
 4. **Check the routing works.** State which single row a sample task from this repo would match. If
    two rows both plausibly match it, the wording is wrong: fix it now.
+5. **Confirm the Optional capabilities section** in `.claude/sdlc.md` is present and every row has
+   a real status value — no template placeholder remains.
 
 Report the outcome as `COMPLETE` only when step 1 finds every file. Otherwise report `INCOMPLETE`
 with the exact list of what is missing and the one command the developer should run to finish it.
@@ -156,6 +193,9 @@ with the exact list of what is missing and the one command the developer should 
 ```
 ## Set up for AI SDLC
 CLAUDE.md (<n> lines) · <n> playbooks · <n> rules files · .claude/sdlc.md · .aisdlc/config.json
+
+## Optional capabilities
+Slop Guard: <status> · Superpowers: <status> · Ponytail: <status> · Headroom: <status>
 
 ## Verification
 <each command and its real result>
