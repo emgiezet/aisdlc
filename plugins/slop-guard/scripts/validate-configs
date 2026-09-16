@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+# validate-configs — validate every baseline config against the pinned tool version.
+# See spec §9.3.
+#
+# Run from plugins/slop-guard/ or any path; the script resolves its own root.
+#
+# Outcomes per tool:
+#   PASS — tool present and accepted the config.
+#   FAIL — tool present and rejected the config or named an unknown rule.
+#   SKIP — tool absent, or installed version lacks the required validation subcommand.
+#
+# Exits non-zero only when K (failures) > 0.
+# A SKIP is never reported as green; the summary makes unvalidated configs visible.
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${PLUGIN_ROOT}" || { printf "error: cannot cd to plugin root: %s\n" "${PLUGIN_ROOT}" >&2; exit 1; }
+
+PASS=0
+SKIP=0
+FAIL=0
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+tool_present() {
+    command -v "$1" > /dev/null 2>&1
+}
+
+_pass() {
+    printf "PASS  %s\n" "$1"
+    PASS=$(( PASS + 1 ))
+}
+
+_skip() {
+    printf "SKIP  %-35s  (%s)\n" "$1" "$2"
+    SKIP=$(( SKIP + 1 ))
+}
+
+_fail() {
+    printf "FAIL  %-35s  %s\n" "$1" "$2"
+    FAIL=$(( FAIL + 1 ))
+}
+
+# Run a validation command; PASS on exit-0, FAIL otherwise.
+# First arg is the label; remaining args are the command.
+run_check() {
+    local label="$1"
+    shift
+    local out
+    if out=$("$@" 2>&1); then
+        _pass "${label}"
+    else
+        _fail "${label}" "${out}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# §9.3 — one row per tool
+# ---------------------------------------------------------------------------
+
+printf "=== Slop Guard: baseline config validation ===\n"
+printf "Plugin root: %s\n\n" "${PLUGIN_ROOT}"
+
+# --- golangci-lint ----------------------------------------------------------
+# Spec: golangci-lint config verify --config configs/baseline/.golangci.yml
+# The installed golangci-lint v1 does not have a 'config verify' subcommand;
+# that command was added in golangci-lint v2. The config uses 'version: "2"' format.
+if ! tool_present golangci-lint; then
+    _skip "golangci-lint" "tool not installed"
+elif golangci-lint config --help 2>&1 | grep -qF "verify"; then
+    run_check "golangci-lint" \
+        golangci-lint config verify --config configs/baseline/.golangci.yml
+else
+    _gl_ver=$(golangci-lint --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+    _skip "golangci-lint" \
+        "v${_gl_ver} lacks 'config verify'; requires golangci-lint v2 (config uses version:\"2\" format)"
+fi
+
+# --- PHPStan ----------------------------------------------------------------
+# Spec: vendor/bin/phpstan analyse -c configs/baseline/phpstan.neon --debug tests/fixtures/php/good
+if ! tool_present vendor/bin/phpstan; then
+    _skip "PHPStan" "tool not installed"
+else
+    run_check "PHPStan" \
+        vendor/bin/phpstan analyse \
+        -c configs/baseline/phpstan.neon \
+        --debug \
+        tests/fixtures/php/good
+fi
+
+# --- Psalm ------------------------------------------------------------------
+# Spec: vendor/bin/psalm -c configs/baseline/psalm.xml --no-cache tests/fixtures/php/good
+if ! tool_present vendor/bin/psalm; then
+    _skip "Psalm" "tool not installed"
+else
+    run_check "Psalm" \
+        vendor/bin/psalm \
+        -c configs/baseline/psalm.xml \
+        --no-cache \
+        tests/fixtures/php/good
+fi
+
+# --- Ruff -------------------------------------------------------------------
+# Spec: ruff check --config configs/baseline/ruff.toml --show-settings tests/fixtures/python/good
+if ! tool_present ruff; then
+    _skip "ruff" "tool not installed"
+else
+    run_check "ruff" \
+        ruff check \
+        --config configs/baseline/ruff.toml \
+        --show-settings \
+        tests/fixtures/python/good
+fi
+
+# --- ESLint -----------------------------------------------------------------
+# Spec: eslint --config configs/baseline/eslint.config.mjs --print-config tests/fixtures/ts/good/sample.tsx
+if ! tool_present eslint; then
+    _skip "ESLint" "tool not installed"
+else
+    run_check "ESLint" \
+        eslint \
+        --config configs/baseline/eslint.config.mjs \
+        --print-config tests/fixtures/ts/good/sample.tsx
+fi
+
+# --- tflint -----------------------------------------------------------------
+# Spec: tflint --config configs/baseline/.tflint.hcl --init && tflint --chdir tests/fixtures/terraform/good
+# Note: --init fetches plugins from the network; validation here skips --init and only verifies the
+# config is syntactically accepted. Network operations belong in session-start / doctor --install.
+if ! tool_present tflint; then
+    _skip "tflint" "tool not installed"
+else
+    run_check "tflint" \
+        tflint \
+        --config configs/baseline/.tflint.hcl \
+        --chdir tests/fixtures/terraform/good
+fi
+
+# --- Checkov ----------------------------------------------------------------
+# Spec: checkov --config-file configs/baseline/.checkov.yaml -d tests/fixtures/terraform/good
+if ! tool_present checkov; then
+    _skip "Checkov" "tool not installed"
+else
+    run_check "Checkov" \
+        checkov \
+        --config-file configs/baseline/.checkov.yaml \
+        -d tests/fixtures/terraform/good
+fi
+
+# --- kube-linter ------------------------------------------------------------
+# Spec: kube-linter checks list (each name from mapping exists) + lint fixtures
+if ! tool_present kube-linter; then
+    _skip "kube-linter" "tool not installed"
+else
+    run_check "kube-linter (checks list)" \
+        kube-linter checks list
+    run_check "kube-linter (lint fixtures)" \
+        kube-linter lint \
+        --config configs/baseline/.kube-linter.yaml \
+        --format json \
+        tests/fixtures/kubernetes/good
+fi
+
+# --- hadolint ---------------------------------------------------------------
+# Spec: hadolint --config configs/baseline/.hadolint.yaml tests/fixtures/docker/good/Dockerfile
+if ! tool_present hadolint; then
+    _skip "hadolint" "tool not installed"
+else
+    run_check "hadolint" \
+        hadolint \
+        --config configs/baseline/.hadolint.yaml \
+        tests/fixtures/docker/good/Dockerfile
+fi
+
+# --- zizmor -----------------------------------------------------------------
+# Spec: zizmor --config configs/baseline/zizmor.yml --format json --offline tests/fixtures/ci/good
+if ! tool_present zizmor; then
+    _skip "zizmor" "tool not installed"
+else
+    run_check "zizmor" \
+        zizmor \
+        --config configs/baseline/zizmor.yml \
+        --format json \
+        --offline \
+        tests/fixtures/ci/good
+fi
+
+# --- Opengrep ---------------------------------------------------------------
+# Spec: opengrep --validate --config rules/opengrep + opengrep --test rules/opengrep
+# rules/opengrep is currently empty (gitkeep only); skip if no rule files are present.
+if ! tool_present opengrep; then
+    _skip "Opengrep" "tool not installed"
+else
+    _og_files=$(find rules/opengrep -name "*.yaml" -o -name "*.yml" 2>/dev/null | grep -v '.gitkeep' | wc -l || echo 0)
+    if [[ "${_og_files}" -eq 0 ]]; then
+        _skip "Opengrep" "rules/opengrep has no rule files yet — validation deferred"
+    else
+        run_check "Opengrep (validate)" \
+            opengrep --validate --config rules/opengrep
+        run_check "Opengrep (test)" \
+            opengrep --test rules/opengrep
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Consistency check: every rule id named in rules/mapping/*.yaml must exist
+# in the tool. Enumeration: ruff rule --all, golangci-lint linters,
+# kube-linter checks list. Currently empty — report as no-op.
+# ---------------------------------------------------------------------------
+
+printf "\n--- Consistency check: rules/mapping/ ---\n"
+
+mapfile -d '' _mapping_files < <(find rules/mapping -name "*.yaml" -print0 2>/dev/null || true)
+
+_has_mappings=0
+for _f in "${_mapping_files[@]+"${_mapping_files[@]}"}"; do
+    [[ "${_f##*/}" == ".gitkeep" ]] && continue
+    _has_mappings=1
+    break
+done
+
+if [[ ${_has_mappings} -eq 0 ]]; then
+    printf "INFO  no mappings yet — consistency check skipped (rules/mapping/ contains only .gitkeep)\n"
+else
+    # --- ruff rule id consistency ---
+    if tool_present ruff; then
+        _ruff_ids=$(ruff rule --all --output-format json 2>/dev/null \
+            | jq -r '.[].code' 2>/dev/null || true)
+        for _f in "${_mapping_files[@]}"; do
+            [[ "${_f##*/}" == ".gitkeep" ]] && continue
+            # Extract ruff rule codes tagged as  ruff_rule: RXXX  or  rule: RXXX  under a ruff section
+            while IFS= read -r _code; do
+                [[ -z "${_code}" ]] && continue
+                if ! printf '%s\n' "${_ruff_ids}" | grep -qxF "${_code}"; then
+                    _fail "ruff mapping: ${_code}" \
+                        "(from ${_f}) not found in ruff rule --all"
+                fi
+            done < <(grep -oP '(?<=ruff_rule:\s{0,8})[A-Z][A-Z0-9]+[0-9]+' "${_f}" 2>/dev/null || true)
+        done
+    fi
+
+    # --- golangci-lint linter name consistency ---
+    if tool_present golangci-lint; then
+        _gl_linters=$(golangci-lint linters 2>/dev/null || true)
+        for _f in "${_mapping_files[@]}"; do
+            [[ "${_f##*/}" == ".gitkeep" ]] && continue
+            while IFS= read -r _linter; do
+                [[ -z "${_linter}" ]] && continue
+                if ! printf '%s\n' "${_gl_linters}" | grep -qF "${_linter}"; then
+                    _fail "golangci-lint mapping: ${_linter}" \
+                        "(from ${_f}) not found in golangci-lint linters"
+                fi
+            done < <(grep -oP '(?<=golangci_linter:\s{0,8})[a-z_-]+' "${_f}" 2>/dev/null || true)
+        done
+    fi
+
+    # --- kube-linter check name consistency ---
+    if tool_present kube-linter; then
+        _kl_checks=$(kube-linter checks list 2>/dev/null || true)
+        for _f in "${_mapping_files[@]}"; do
+            [[ "${_f##*/}" == ".gitkeep" ]] && continue
+            while IFS= read -r _check; do
+                [[ -z "${_check}" ]] && continue
+                if ! printf '%s\n' "${_kl_checks}" | grep -qF "${_check}"; then
+                    _fail "kube-linter mapping: ${_check}" \
+                        "(from ${_f}) not found in kube-linter checks list"
+                fi
+            done < <(grep -oP '(?<=kube_linter_check:\s{0,8})[a-z-]+' "${_f}" 2>/dev/null || true)
+        done
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+_total=$(( PASS + FAIL ))
+printf "\n%d validated, %d skipped (tool not installed), %d failed\n" \
+    "${_total}" "${SKIP}" "${FAIL}"
+
+if [[ ${FAIL} -gt 0 ]]; then
+    exit 1
+fi
