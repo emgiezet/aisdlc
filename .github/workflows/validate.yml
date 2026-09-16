@@ -13,10 +13,12 @@ jobs:
 
       - name: Version consistency
         run: |
-          P=$(jq -r '.version' plugins/sdlc/.claude-plugin/plugin.json)
-          M=$(jq -r '.plugins[] | select(.name == "sdlc") | .version' .claude-plugin/marketplace.json)
-          [ "$P" = "$M" ] || (echo "Version mismatch: plugin=$P marketplace=$M" && exit 1)
-          echo "✓ $P"
+          for plugin in sdlc slop-guard; do
+            P=$(jq -r '.version' "plugins/$plugin/.claude-plugin/plugin.json")
+            M=$(jq -r ".plugins[] | select(.name == \"$plugin\") | .version" .claude-plugin/marketplace.json)
+            [ "$P" = "$M" ] || (echo "Version mismatch for $plugin: plugin=$P marketplace=$M" && exit 1)
+            echo "✓ $plugin $P"
+          done
 
       - name: Skill frontmatter and trigger sets
         run: |
@@ -58,6 +60,9 @@ jobs:
       # Owns the required-file lists and the instruction budgets.
       - name: make validate
         run: make validate
+
+      - name: make validate-slopguard
+        run: make validate-slopguard
 
   runner-and-fixture:
     runs-on: ubuntu-latest

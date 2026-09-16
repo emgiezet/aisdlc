@@ -1,7 +1,8 @@
-.PHONY: help validate selftest sandbox harness-eval eval-dry templates \
-        bump-patch bump-minor bump-major
+.PHONY: help validate validate-slopguard selftest sandbox harness-eval eval-dry templates \
+        bump-patch bump-minor bump-major bump-slopguard
 
 PLUGIN_JSON := plugins/sdlc/.claude-plugin/plugin.json
+SLOPGUARD_PLUGIN_JSON := plugins/slop-guard/.claude-plugin/plugin.json
 MARKETPLACE_JSON := .claude-plugin/marketplace.json
 SANDBOX_DIR := $(or $(TMPDIR),/tmp)/aisdlc-sandbox
 SCRIPTS := plugins/sdlc/hooks/run-hook.cmd plugins/sdlc/hooks/session-start \
@@ -15,7 +16,7 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
 
-validate: ## Validate manifests, required files, and shell scripts
+validate: validate-slopguard ## Validate manifests, required files, and shell scripts
 	@echo "Validating JSON..."
 	@jq . $(MARKETPLACE_JSON) > /dev/null && echo "  ✓ marketplace.json"
 	@jq . $(PLUGIN_JSON) > /dev/null && echo "  ✓ plugin.json"
@@ -67,6 +68,28 @@ validate: ## Validate manifests, required files, and shell scripts
 		            evals/harness/stub-claude && echo "  ✓ shellcheck clean") || \
 		echo "  – shellcheck not installed, skipped"
 	@echo "All checks passed."
+
+validate-slopguard: ## Validate the slop-guard plugin, if present
+	@set -e; \
+	test -d plugins/slop-guard || { echo "  – slop-guard not present, skipped"; exit 0; }; \
+	jq . plugins/slop-guard/.claude-plugin/plugin.json > /dev/null && echo "  ✓ slopguard plugin.json"; \
+	jq . plugins/slop-guard/hooks/hooks.json > /dev/null && echo "  ✓ slopguard hooks.json"; \
+	jq . plugins/slop-guard/tools/tools.lock.json > /dev/null && echo "  ✓ slopguard tools.lock.json"; \
+	test "$$(jq -r '.name' plugins/slop-guard/.claude-plugin/plugin.json)" = "slop-guard" \
+		|| (echo "  ✗ slopguard plugin name mismatch" && exit 1); \
+	for s in plugins/slop-guard/bin/slopguard plugins/slop-guard/lib/*.sh \
+	          plugins/slop-guard/tests/run-tests; do \
+		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
+	done; \
+	echo "  ✓ slopguard shell syntax"; \
+	command -v shellcheck > /dev/null 2>&1 && \
+		(shellcheck -S warning plugins/slop-guard/bin/slopguard \
+		            plugins/slop-guard/lib/*.sh \
+		            plugins/slop-guard/tests/run-tests && echo "  ✓ slopguard shellcheck clean") || \
+		echo "  – shellcheck not installed, skipped"; \
+	plugins/slop-guard/tests/run-tests; \
+	command -v claude > /dev/null 2>&1 && claude plugin validate plugins/slop-guard --strict \
+		|| echo "  – claude CLI not installed, plugin validate skipped"
 
 selftest: ## Verify the queue runner against a stub claude (no API calls, no cost)
 	@evals/harness/selftest.sh
@@ -138,3 +161,15 @@ endif
 	@jq '(.plugins[] | select(.name == "sdlc") | .version) = "$(VERSION)" | .metadata.version = "$(VERSION)"' \
 		$(MARKETPLACE_JSON) > /tmp/marketplace.json && mv /tmp/marketplace.json $(MARKETPLACE_JSON)
 	@echo "Version bumped to $(VERSION)"
+
+bump-slopguard: ## Bump the slop-guard plugin patch version (make bump-slopguard VERSION=x.y.z)
+	@$(MAKE) _bump-slopguard VERSION=$$(jq -r '.version' $(SLOPGUARD_PLUGIN_JSON) | awk -F. '{print $$1"."$$2"."$$3+1}')
+
+_bump-slopguard:
+ifndef VERSION
+	$(error VERSION is required)
+endif
+	@jq '.version = "$(VERSION)"' $(SLOPGUARD_PLUGIN_JSON) > /tmp/plugin-sg.json && mv /tmp/plugin-sg.json $(SLOPGUARD_PLUGIN_JSON)
+	@jq '(.plugins[] | select(.name == "slop-guard") | .version) = "$(VERSION)"' \
+		$(MARKETPLACE_JSON) > /tmp/marketplace-sg.json && mv /tmp/marketplace-sg.json $(MARKETPLACE_JSON)
+	@echo "slop-guard version bumped to $(VERSION)"
