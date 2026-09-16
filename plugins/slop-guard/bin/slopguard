@@ -117,8 +117,15 @@ cmd_doctor() {
             if [ "$do_install" -eq 1 ]; then
                 say "    → installing..."
                 if install_tool "$tool"; then
-                    say "    → installed ${tool} ${expected_version}"
-                    fail_count=$((fail_count - 1))
+                    # Re-resolve: a higher-priority binary (e.g. a project binary at the wrong
+                    # version) can still win after install, making the tool effectively absent.
+                    local re_resolved; re_resolved="$(resolve_tool "$tool")"
+                    if [ -n "$re_resolved" ] && tool_version_matches "$tool" "$re_resolved"; then
+                        say "    → installed ${tool} ${expected_version}"
+                        fail_count=$((fail_count - 1))
+                    else
+                        say "    → installed ${tool} ${expected_version} but a higher-priority binary still wins — see above"
+                    fi
                 else
                     say "    → install FAILED"
                 fi

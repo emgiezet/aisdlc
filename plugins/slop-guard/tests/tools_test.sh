@@ -108,7 +108,7 @@ FAKE_DATA_BAD="${TEST_WORK}/plugin-data-bad"
 CONTROLLED_TMPDIR="${TEST_WORK}/tmpdir-bad"
 mkdir -p "$CONTROLLED_TMPDIR"
 (
-    TMPDIR="$CONTROLLED_TMPDIR"
+    export TMPDIR="$CONTROLLED_TMPDIR"
     TOOLS_LOCK="$BAD_LOCK"
     CLAUDE_PLUGIN_DATA="$FAKE_DATA_BAD"
     install_tool "fake-tool" >/dev/null 2>&1
@@ -212,16 +212,22 @@ expected_plugin="${FAKE_DATA_PREC}/tools/fake-tool/current/fake-tool"
 printf '\nresolver: project-only mode ignores plugin binary\n'
 # --------------------------------------------------------------------------- #
 
+# Arrange: CLAUDE_PROJECT_DIR has no fake-tool, so step 1 finds nothing.
+# With the step-2 guard intact, resolve_tool must return empty (plugin skipped).
+# Without the guard, step 2 would return the plugin binary — the test goes red.
+EMPTY_PROJECT_DIR="${TEST_WORK}/empty-project"
+mkdir -p "$EMPTY_PROJECT_DIR"
+
 resolved_proj=$(
     TOOLS_LOCK="$FAKE_LOCK"
     CLAUDE_PLUGIN_DATA="$FAKE_DATA_PREC"
-    CLAUDE_PROJECT_DIR="$PROJECT_DIR"
+    CLAUDE_PROJECT_DIR="$EMPTY_PROJECT_DIR"
     CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="project-only"
     resolve_tool "fake-tool"
 )
-[ "$resolved_proj" = "${PROJECT_DIR}/vendor/bin/fake-tool" ] \
-    && ok "project-only: returns project binary" \
-    || bad "project-only" "got '${resolved_proj}'"
+[ -z "$resolved_proj" ] \
+    && ok "project-only: plugin binary ignored when project has none" \
+    || bad "project-only guard" "got '${resolved_proj}', want empty"
 
 # --------------------------------------------------------------------------- #
 printf '\nresolver: plugin binary with wrong version is not accepted; install repairs it\n'

@@ -270,10 +270,13 @@ install_tool() {
                 rm -rf "$version_dir" "$download_dir"
                 return 1
             fi
+            local zip_top_count; zip_top_count="$(ls -1 "$zip_scratch" | wc -l | tr -d ' ')"
             local zip_top; zip_top="$(ls -1 "$zip_scratch" | head -1)"
-            if [ -n "$zip_top" ] && [ -d "${zip_scratch}/${zip_top}" ]; then
+            if [ "$zip_top_count" -eq 1 ] && [ -d "${zip_scratch}/${zip_top}" ]; then
+                # Single top-level directory — strip it (mirrors --strip-components=1).
                 cp -a "${zip_scratch}/${zip_top}/." "$version_dir/"
             else
+                # Flat or multi-entry archive — copy as-is.
                 cp -a "${zip_scratch}/." "$version_dir/"
             fi
             ;;
@@ -299,7 +302,12 @@ install_tool() {
     # the destination symlink without following it into the old version dir.
     local new_link="${tools_base}/current.new.$$"
     ln -snf "$version_dir" "$new_link"
-    _mv_atomic_symlink "$new_link" "$current_link"
+    if ! _mv_atomic_symlink "$new_link" "$current_link"; then
+        printf 'slopguard: failed to repoint current symlink for %s\n' "$name" >&2
+        rm -f "$new_link"
+        rm -rf "$version_dir"
+        return 1
+    fi
 
     printf 'slopguard: installed %s %s at %s\n' "$name" "$version" "$version_dir" >&2
     return 0
