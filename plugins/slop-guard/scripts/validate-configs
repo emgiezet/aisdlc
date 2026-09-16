@@ -23,10 +23,12 @@ PASS=0
 SKIP=0
 FAIL=0
 
-# Temp dir for harness files (psalm config, phpstan cache); cleaned on exit.
-_TMPDIR="${PLUGIN_ROOT}/.validate-tmp-$$"
-mkdir -p "${_TMPDIR}"
-trap 'rm -rf "${_TMPDIR}"' EXIT
+# Temp dir for harness files (psalm config, phpstan cache).
+# Placed under ${TMPDIR:-/tmp} so it is outside the repository working tree.
+# Trap covers EXIT, INT, TERM, and HUP so Ctrl-C does not leave leftovers.
+_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/slopguard-validate.XXXXXX")
+_cleanup() { rm -rf "${_TMPDIR}"; }
+trap _cleanup EXIT INT TERM HUP
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -109,16 +111,19 @@ fi
 # psalm.xml declares projectFiles app/ and src/ (consumer defaults); the dispatcher generates
 # a per-project config with paths from composer.json autoload.psr-4 at runtime. Here we use
 # a harness config pointing at the fixture tree so the row measures the config, not the harness.
+# Psalm resolves <directory name="…"/> relative to the config file's own location
+# (resolveFromConfigFile defaults true), so we write an absolute path.
 if ! tool_present vendor/bin/psalm; then
     _skip "Psalm" "tool not installed"
 else
     _psalm_cfg="${_TMPDIR}/psalm-harness.xml"
-    cat > "${_psalm_cfg}" <<'PSALMEOF'
+    # Heredoc delimiter unquoted → ${PLUGIN_ROOT} expands here.
+    cat > "${_psalm_cfg}" <<PSALMEOF
 <?xml version="1.0"?>
 <psalm errorLevel="3" findUnusedCode="false" findUnusedBaselineEntry="true"
        xmlns="https://getpsalm.org/schema/config">
     <projectFiles>
-        <directory name="tests/fixtures/php/good"/>
+        <directory name="${PLUGIN_ROOT}/tests/fixtures/php/good"/>
     </projectFiles>
 </psalm>
 PSALMEOF
@@ -155,10 +160,7 @@ fi
 # --- tflint -----------------------------------------------------------------
 # Spec: tflint --config configs/baseline/.tflint.hcl --init && tflint --chdir tests/fixtures/terraform/good
 # The plugin "aws" block in .tflint.hcl is currently commented out (pending tflint pin in
-# tools.lock.json). When the block is re-enabled, activate the cache gate below:
-#   _tflint_pd="${TFLINT_PLUGIN_DIR:-${HOME}/.tflint.d/plugins}"
-#   find "${_tflint_pd}" -path "*/tflint-ruleset-aws*" 2>/dev/null | grep -q . || {
-#     _skip "tflint" "AWS ruleset not installed in ${_tflint_pd} (run slopguard doctor --install)"; }
+# tools.lock.json). When the block is re-enabled, the cache gate below activates automatically.
 # --init fetches plugins from the network; it belongs in session-start / doctor --install, not here.
 if ! tool_present tflint; then
     _skip "tflint" "tool not installed"
@@ -265,10 +267,18 @@ _info "eslint.security-overlay.mjs — no §9.3 validation row (covered by the E
 # in the tool. Enumeration: ruff rule --all, golangci-lint linters,
 # kube-linter checks list.
 #
+# Mapping files are named per tool (spec §9, e.g. golangci.yaml, checkov.yaml).
+# Each file is checked ONLY against its own tool's extractor, so a golangci.yaml
+# with only golangci_linter: keys does not trip the ruff or kube-linter guards.
+#
 # Key names (ruff_rule:, golangci_linter:, kube_linter_check:) are provisional —
-# they will be revised when the mapping schema is finalized (rules/mapping/ schema
-# not yet written). If a mapping file does not use these field names, zero ids are
-# extracted and the check fails loudly below rather than silently passing.
+# they will be revised when the mapping schema is finalized. If a mapping file's
+# own tool key yields zero ids, the check fails loudly — not silently passes —
+# so a wrong key name cannot masquerade as a passing check.
+#
+# Lines are split on commas before extraction so multiple ids on one YAML line
+# (e.g. [ruff_rule: S101, ruff_rule: B904]) are all captured. sed BRE is used
+# throughout for portability (GNU and BSD/macOS sed).
 # ---------------------------------------------------------------------------
 
 printf "\n--- Consistency check: rules/mapping/ ---\n"
@@ -289,79 +299,83 @@ done
 if [ "${_has_mappings}" -eq 0 ]; then
     printf "INFO  no mappings yet — consistency check skipped (rules/mapping/ contains only .gitkeep)\n"
 else
-    # --- ruff rule id consistency ---
-    if tool_present ruff; then
-        _ruff_ids=$(ruff rule --all --output-format json 2>/dev/null \
-            | jq -r '.[].code' 2>/dev/null)
-        for _mf in "${_mapping_files[@]}"; do
-            [ "${_mf##*/}" = ".gitkeep" ] && continue
-            # Portable extraction: sed BRE, works on GNU and BSD/macOS sed.
-            # Key name 'ruff_rule:' is provisional — see note above.
-            _codes=$(sed -n \
-                's/.*ruff_rule:[[:space:]]*\([A-Z][A-Z0-9]*[0-9][0-9]*\).*/\1/p' \
-                "${_mf}" 2>/dev/null)
-            if [ -z "${_codes}" ]; then
-                _fail "ruff mapping consistency" \
-                    "${_mf}: zero ruff rule codes extracted (key 'ruff_rule:' absent — provisional key name; check mapping schema)"
-            else
-                while IFS= read -r _code; do
-                    [ -z "${_code}" ] && continue
-                    if ! printf '%s\n' "${_ruff_ids}" | grep -qxF "${_code}"; then
-                        _fail "ruff mapping: ${_code}" \
-                            "(from ${_mf}) not found in ruff rule --all"
-                    fi
-                done <<< "${_codes}"
-            fi
-        done
-    fi
+    for _mf in "${_mapping_files[@]}"; do
+        [ "${_mf##*/}" = ".gitkeep" ] && continue
+        _fname="${_mf##*/}"
 
-    # --- golangci-lint linter name consistency ---
-    if tool_present golangci-lint; then
-        _gl_linters=$(golangci-lint linters 2>/dev/null)
-        for _mf in "${_mapping_files[@]}"; do
-            [ "${_mf##*/}" = ".gitkeep" ] && continue
-            # Key name 'golangci_linter:' is provisional — see note above.
-            _linters=$(sed -n \
-                's/.*golangci_linter:[[:space:]]*\([a-z][a-z_-]*\).*/\1/p' \
-                "${_mf}" 2>/dev/null)
-            if [ -z "${_linters}" ]; then
-                _fail "golangci-lint mapping consistency" \
-                    "${_mf}: zero linter names extracted (key 'golangci_linter:' absent — provisional key name; check mapping schema)"
-            else
-                while IFS= read -r _linter; do
-                    [ -z "${_linter}" ] && continue
-                    if ! printf '%s\n' "${_gl_linters}" | grep -qF "${_linter}"; then
-                        _fail "golangci-lint mapping: ${_linter}" \
-                            "(from ${_mf}) not found in golangci-lint linters"
+        # Select extractor by filename (spec: one file per tool, named after the tool).
+        case "${_fname}" in
+            ruff*|*python*)
+                # Ruff mapping: check ruff_rule: keys.
+                if tool_present ruff; then
+                    _ruff_ids=$(ruff rule --all --output-format json 2>/dev/null \
+                        | jq -r '.[].code' 2>/dev/null)
+                    # Split on commas first so multiple ids on one line are all captured.
+                    _codes=$(tr ',' '\n' < "${_mf}" \
+                        | sed -n 's/.*ruff_rule:[[:space:]]*\([A-Z][A-Z0-9]*[0-9][0-9]*\).*/\1/p' \
+                        2>/dev/null)
+                    if [ -z "${_codes}" ]; then
+                        _fail "ruff mapping consistency" \
+                            "${_mf}: zero ruff rule codes extracted (key 'ruff_rule:' absent — provisional)"
+                    else
+                        while IFS= read -r _code; do
+                            [ -z "${_code}" ] && continue
+                            if ! printf '%s\n' "${_ruff_ids}" | grep -qxF "${_code}"; then
+                                _fail "ruff rule: ${_code}" \
+                                    "(from ${_mf}) not found in ruff rule --all"
+                            fi
+                        done <<< "${_codes}"
                     fi
-                done <<< "${_linters}"
-            fi
-        done
-    fi
-
-    # --- kube-linter check name consistency ---
-    if tool_present kube-linter; then
-        _kl_checks=$(kube-linter checks list 2>/dev/null)
-        for _mf in "${_mapping_files[@]}"; do
-            [ "${_mf##*/}" = ".gitkeep" ] && continue
-            # Key name 'kube_linter_check:' is provisional — see note above.
-            _checks=$(sed -n \
-                's/.*kube_linter_check:[[:space:]]*\([a-z][a-z-]*\).*/\1/p' \
-                "${_mf}" 2>/dev/null)
-            if [ -z "${_checks}" ]; then
-                _fail "kube-linter mapping consistency" \
-                    "${_mf}: zero check names extracted (key 'kube_linter_check:' absent — provisional key name; check mapping schema)"
-            else
-                while IFS= read -r _check; do
-                    [ -z "${_check}" ] && continue
-                    if ! printf '%s\n' "${_kl_checks}" | grep -qF "${_check}"; then
-                        _fail "kube-linter mapping: ${_check}" \
-                            "(from ${_mf}) not found in kube-linter checks list"
+                fi
+                ;;
+            golangci*)
+                # golangci-lint mapping: check golangci_linter: keys.
+                if tool_present golangci-lint; then
+                    _gl_linters=$(golangci-lint linters 2>/dev/null)
+                    _linters=$(tr ',' '\n' < "${_mf}" \
+                        | sed -n 's/.*golangci_linter:[[:space:]]*\([a-z][a-z_-]*\).*/\1/p' \
+                        2>/dev/null)
+                    if [ -z "${_linters}" ]; then
+                        _fail "golangci-lint mapping consistency" \
+                            "${_mf}: zero linter names extracted (key 'golangci_linter:' absent — provisional)"
+                    else
+                        while IFS= read -r _linter; do
+                            [ -z "${_linter}" ] && continue
+                            if ! printf '%s\n' "${_gl_linters}" | grep -qF "${_linter}"; then
+                                _fail "golangci-lint linter: ${_linter}" \
+                                    "(from ${_mf}) not found in golangci-lint linters"
+                            fi
+                        done <<< "${_linters}"
                     fi
-                done <<< "${_checks}"
-            fi
-        done
-    fi
+                fi
+                ;;
+            kube*)
+                # kube-linter mapping: check kube_linter_check: keys.
+                if tool_present kube-linter; then
+                    _kl_checks=$(kube-linter checks list 2>/dev/null)
+                    _checks=$(tr ',' '\n' < "${_mf}" \
+                        | sed -n 's/.*kube_linter_check:[[:space:]]*\([a-z][a-z-]*\).*/\1/p' \
+                        2>/dev/null)
+                    if [ -z "${_checks}" ]; then
+                        _fail "kube-linter mapping consistency" \
+                            "${_mf}: zero check names extracted (key 'kube_linter_check:' absent — provisional)"
+                    else
+                        while IFS= read -r _check; do
+                            [ -z "${_check}" ] && continue
+                            if ! printf '%s\n' "${_kl_checks}" | grep -qF "${_check}"; then
+                                _fail "kube-linter check: ${_check}" \
+                                    "(from ${_mf}) not found in kube-linter checks list"
+                            fi
+                        done <<< "${_checks}"
+                    fi
+                fi
+                ;;
+            *)
+                # No automated consistency check for this tool (checkov, sqlfluff, etc.).
+                _info "consistency check: no extractor for ${_fname} — not ruff/golangci/kube-linter"
+                ;;
+        esac
+    done
 fi
 
 # ---------------------------------------------------------------------------
