@@ -32,74 +32,109 @@ file_path="$(hook_field .tool_input.file_path)"
 # No file_path (should not happen for a Read event) — pass through.
 [ -n "$file_path" ] || exit 0
 
-# Lowercase basename for case-insensitive pattern matching.
-base="$(basename "$file_path")"
-base_lc="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
-
-# ── Allow list ─────────────────────────────────────────────────────────────
-# These template/example env files are safe to read. Must be checked before
-# the .env.* deny pattern below.
-case "$base_lc" in
-    .env.example|.env.dist|.env.template)
-        exit 0 ;;
-esac
-
-# ── Deny: environment files ────────────────────────────────────────────────
-case "$base_lc" in
-    .env|.env.*)
-        hook_secret_deny "Reading environment files is not allowed — they may contain secrets (database passwords, API keys, …). Use .env.example for templates."
-        exit 0 ;;
-esac
-
-# ── Deny: private key and certificate material ────────────────────────────
-case "$base_lc" in
-    *.pem|*.key|*.p12|*.pfx)
-        hook_secret_deny "Reading private key and certificate files is not allowed."
-        exit 0 ;;
-esac
-
-# ── Deny: SSH private keys ────────────────────────────────────────────────
-case "$base_lc" in
-    id_rsa*|id_ed25519*)
-        hook_secret_deny "Reading SSH key files is not allowed."
-        exit 0 ;;
-esac
-
-# ── Deny: credential stores — path-level patterns ─────────────────────────
-# Covers **/credentials, **/credentials.*, **/.aws/credentials,
-# **/.kube/config, and **/secrets/**.
-case "$file_path" in
-    */.aws/credentials)
-        hook_secret_deny "Reading the AWS credentials file is not allowed."
-        exit 0 ;;
-    */.kube/config)
-        hook_secret_deny "Reading the Kubernetes config file is not allowed — it may contain embedded cluster credentials."
-        exit 0 ;;
-    */secrets/*)
-        hook_secret_deny "Reading files inside a secrets/ directory is not allowed."
-        exit 0 ;;
-esac
-
-# Basename-level credentials catch-all (covers generic credentials files
-# not under .aws/ or .kube/, e.g. /path/to/credentials or credentials.json).
-case "$base_lc" in
-    credentials|credentials.*)
-        hook_secret_deny "Reading credentials files is not allowed."
-        exit 0 ;;
-esac
-
-# ── Ask: Terraform variable files with sensitive names ────────────────────
-# Triggered when the stem (basename without .tfvars) contains 'secret' or 'prod'.
-case "$base_lc" in
-    *.tfvars)
-        stem="${base_lc%.tfvars}"
-        case "$stem" in
-            *secret*|*prod*)
-                hook_ask "The Terraform variable file '${base}' may contain production or secret values. Confirm that reading it is intentional."
-                exit 0 ;;
+# _physical_path <path> — follow symlinks and make the path absolute.
+# A link with an innocuous name (ln -s ~/.ssh/id_rsa notes.txt) would otherwise
+# launder credential material past every pattern below. readlink -f is not
+# portable to older BSD userland, so walk the links manually.
+_physical_path() {
+    local p="$1" target dir hops=0
+    while [ -L "$p" ] && [ "$hops" -lt 8 ]; do
+        target="$(readlink "$p")" || break
+        case "$target" in
+            /*) p="$target" ;;
+            *)  p="$(dirname "$p")/${target}" ;;
         esac
-        ;;
-esac
+        hops=$((hops + 1))
+    done
+    dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)"
+    if [ -n "$dir" ]; then
+        printf '%s/%s' "${dir%/}" "$(basename "$p")"
+    else
+        printf '%s' "$p"
+    fi
+}
+
+# _check_path <path> — apply the read policy to one spelling of the path.
+# Denials exit the hook directly; returning means "nothing matched here".
+_check_path() {
+    local candidate="$1" base base_lc stem
+
+    # Lowercase basename for case-insensitive pattern matching.
+    base="$(basename "$candidate")"
+    base_lc="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
+
+    # ── Allow list ─────────────────────────────────────────────────────────
+    # These template/example env files are safe to read. Must be checked before
+    # the .env.* deny pattern below.
+    case "$base_lc" in
+        .env.example|.env.dist|.env.template)
+            return 0 ;;
+    esac
+
+    # ── Deny: environment files ────────────────────────────────────────────
+    case "$base_lc" in
+        .env|.env.*)
+            hook_secret_deny "Reading environment files is not allowed — they may contain secrets (database passwords, API keys, …). Use .env.example for templates."
+            exit 0 ;;
+    esac
+
+    # ── Deny: private key and certificate material ────────────────────────
+    case "$base_lc" in
+        *.pem|*.key|*.p12|*.pfx)
+            hook_secret_deny "Reading private key and certificate files is not allowed."
+            exit 0 ;;
+    esac
+
+    # ── Deny: SSH private keys ────────────────────────────────────────────
+    case "$base_lc" in
+        id_rsa*|id_ed25519*)
+            hook_secret_deny "Reading SSH key files is not allowed."
+            exit 0 ;;
+    esac
+
+    # ── Deny: credential stores — path-level patterns ─────────────────────
+    # Covers **/credentials, **/credentials.*, **/.aws/credentials,
+    # **/.kube/config, and **/secrets/**. Each pattern needs a leading-anchor
+    # twin because a workspace-relative path has nothing before the directory.
+    case "$candidate" in
+        .aws/credentials|*/.aws/credentials)
+            hook_secret_deny "Reading the AWS credentials file is not allowed."
+            exit 0 ;;
+        .kube/config|*/.kube/config)
+            hook_secret_deny "Reading the Kubernetes config file is not allowed — it may contain embedded cluster credentials."
+            exit 0 ;;
+        secrets/*|*/secrets/*)
+            hook_secret_deny "Reading files inside a secrets/ directory is not allowed."
+            exit 0 ;;
+    esac
+
+    # Basename-level credentials catch-all (covers generic credentials files
+    # not under .aws/ or .kube/, e.g. /path/to/credentials or credentials.json).
+    case "$base_lc" in
+        credentials|credentials.*)
+            hook_secret_deny "Reading credentials files is not allowed."
+            exit 0 ;;
+    esac
+
+    # ── Ask: Terraform variable files with sensitive names ────────────────
+    # Triggered when the stem (basename without .tfvars) contains 'secret' or 'prod'.
+    case "$base_lc" in
+        *.tfvars)
+            stem="${base_lc%.tfvars}"
+            case "$stem" in
+                *secret*|*prod*)
+                    hook_ask "The Terraform variable file '${base}' may contain production or secret values. Confirm that reading it is intentional."
+                    exit 0 ;;
+            esac
+            ;;
+    esac
+}
+
+_check_path "$file_path"
+physical_path="$(_physical_path "$file_path")"
+if [ "$physical_path" != "$file_path" ]; then
+    _check_path "$physical_path"
+fi
 
 # Default: allow (exit 0, no JSON output → hook passes).
 exit 0
