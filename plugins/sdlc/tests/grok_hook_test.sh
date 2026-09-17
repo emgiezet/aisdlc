@@ -27,15 +27,18 @@ trap 'rm -rf "$_SDLC_GROK_WORK"' EXIT INT TERM
 
 # _run CMD PAYLOAD
 #   Execute CMD via Grok env (CLAUDE_PLUGIN_ROOT unset, GROK_PLUGIN_ROOT set),
-#   piping PAYLOAD to stdin.  Captures stdout into _run_out, exit code into
-#   _run_rc.  Stderr is discarded: assertions target only the contract surface.
+#   piping PAYLOAD to stdin.  Captures stdout into _run_out, stderr into _run_err,
+#   and exit code into _run_rc.
 _run_out=""
+_run_err=""
 _run_rc=0
 _run() {
     local cmd="$1" payload="$2"
     _run_out="$(printf '%s' "$payload" \
-        | env -u CLAUDE_PLUGIN_ROOT GROK_PLUGIN_ROOT="${PLUGIN_ROOT}" bash -c "$cmd" 2>/dev/null
+        | env -u CLAUDE_PLUGIN_ROOT GROK_PLUGIN_ROOT="${PLUGIN_ROOT}" bash -c "$cmd" \
+            2>"${_SDLC_GROK_WORK}/run.err"
     )" && _run_rc=0 || _run_rc=$?
+    _run_err="$(cat "${_SDLC_GROK_WORK}/run.err" 2>/dev/null || true)"
 }
 
 # _run_in DIR CMD PAYLOAD — same as _run but executes from DIR.
@@ -44,8 +47,10 @@ _run_in() {
     _run_out="$(
         cd "$dir" || exit 1
         printf '%s' "$payload" \
-        | env -u CLAUDE_PLUGIN_ROOT GROK_PLUGIN_ROOT="${PLUGIN_ROOT}" bash -c "$cmd" 2>/dev/null
+        | env -u CLAUDE_PLUGIN_ROOT GROK_PLUGIN_ROOT="${PLUGIN_ROOT}" bash -c "$cmd" \
+            2>"${_SDLC_GROK_WORK}/run.err"
     )" && _run_rc=0 || _run_rc=$?
+    _run_err="$(cat "${_SDLC_GROK_WORK}/run.err" 2>/dev/null || true)"
 }
 
 # ─── Grok camelCase fixtures ─────────────────────────────────────────────────
@@ -128,14 +133,23 @@ unset _cmd
 # before reading the re-entry flag.  On Grok, Stop hooks are passive: the hook
 # exits 0 and sends any findings to stderr as an advisory warning rather than
 # emitting a blocking decision.  Claude/Codex retain the blocking exit-2 behavior.
+#
+# Assertions:
+#   1. exit 0 — Stop hooks on Grok must never block.
+#   2. No {"decision":"deny"} on stdout — no Grok blocking JSON.
+#   3. "guard [advisory]" on stderr — the advisory marker must be present.
+#   4. "test_sample.py" on stderr — the specific deleted file must be named.
 # ─────────────────────────────────────────────────────────────────────────────
 _cmd="$(jq -r '.hooks.Stop[0].hooks[0].command' "$HOOKS_JSON")"
 _run_in "$_STOP_REPO" "$_cmd" "$_FX_STOP"
 _decision="$(printf '%s' "$_run_out" | jq -r '.decision // empty' 2>/dev/null)"
-[ "$_run_rc" -eq 0 ] && [ -z "$_decision" ] \
-    && ok  "Stop: deleted test file is advisory on Grok — exits 0 and emits no blocking decision" \
+[ "$_run_rc" -eq 0 ] \
+    && [ -z "$_decision" ] \
+    && printf '%s' "$_run_err" | grep -qF 'guard [advisory]' \
+    && printf '%s' "$_run_err" | grep -qF 'test_sample.py' \
+    && ok  "Stop: deleted test file is advisory on Grok — exits 0, no block, guard [advisory] with file evidence" \
     || bad "Stop: deleted test file is advisory on Grok" \
-           "exit=${_run_rc} decision='${_decision:-<empty>}' (Stop must exit 0 on Grok; guard must not block)"
+           "exit=${_run_rc} decision='${_decision:-<empty>}' advisory='${_run_err:-<empty>}'"
 unset _cmd _decision
 
 # ─── Standalone summary ──────────────────────────────────────────────────────
