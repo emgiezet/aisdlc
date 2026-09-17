@@ -7,11 +7,11 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 [ -n "${GROK_PLUGIN_ROOT:-}" ] && : "${CLAUDE_PLUGIN_ROOT:=$GROK_PLUGIN_ROOT}"
 : "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
 # shellcheck source=../lib/hook.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/hook.sh"
+. "${PLUGIN_ROOT}/lib/hook.sh"
 # shellcheck source=../lib/shellsplit.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/shellsplit.sh"
+. "${PLUGIN_ROOT}/lib/shellsplit.sh"
 # shellcheck source=../lib/typosquat.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/typosquat.sh"
+. "${PLUGIN_ROOT}/lib/typosquat.sh"
 
 hook_input
 command="$(hook_field .tool_input.command)"

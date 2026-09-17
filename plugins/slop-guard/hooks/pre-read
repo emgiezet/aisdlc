@@ -24,7 +24,7 @@ PLUGIN_ROOT="$(cd "${HOOKS_DIR}/.." && pwd)"
 : "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
 
 # shellcheck source=../lib/hook.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/hook.sh"
+. "${PLUGIN_ROOT}/lib/hook.sh"
 
 hook_input
 file_path="$(hook_field .tool_input.file_path)"

@@ -10,8 +10,8 @@
 #   hook_deny   <reason>     — deny, or add context in advisory mode
 #   hook_secret_deny <reason> — always deny secret access/content
 #   hook_allow               — permit explicitly; silent on Grok (exit 0 = allow)
-#   hook_context <text>      — print additionalContext JSON to stdout (silent on Grok)
-#   hook_message <text>      — print systemMessage JSON to stdout (no-op on Grok)
+#   hook_context <text>      — additionalContext JSON on stdout (stderr on Grok)
+#   hook_message <text>      — systemMessage JSON on stdout (stderr on Grok)
 #
 # Exit-code contract (§3.2):
 #   exit 0 + JSON on stdout  — structured decision (use these helpers)
@@ -26,10 +26,17 @@
 # order — prompt-injection defences may trigger on imperative text (§3.2).
 
 # Runtime detection — set once when this library is sourced.
-# Grok injects GROK_PLUGIN_ROOT (and GROK_PLUGIN_DATA, GROK_WORKSPACE_ROOT).
-# It does not set CLAUDE_PLUGIN_ROOT; slopguard normalizes that before invoking hooks.
+# Grok injects GROK_PLUGIN_ROOT (and GROK_PLUGIN_DATA, GROK_WORKSPACE_ROOT) and
+# does not set CLAUDE_PLUGIN_ROOT; bin/slopguard seeds the latter from the
+# former before invoking a hook, so on Grok the two agree.
+# Presence of GROK_PLUGIN_ROOT alone is NOT sufficient evidence: a Claude
+# session that inherited a stale GROK_PLUGIN_ROOT would then be answered in the
+# Grok envelope, which Claude ignores — every deny would become a silent allow.
 _SLOPGUARD_RUNTIME=""
-[ -n "${GROK_PLUGIN_ROOT:-}" ] && _SLOPGUARD_RUNTIME="grok"
+if [ -n "${GROK_PLUGIN_ROOT:-}" ] \
+    && { [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ "${CLAUDE_PLUGIN_ROOT}" = "${GROK_PLUGIN_ROOT}" ]; }; then
+    _SLOPGUARD_RUNTIME="grok"
+fi
 
 # jq bootstrap: SessionStart installs jq into plugin data; hook processes do not
 # inherit that environment, so find the managed binary explicitly.
@@ -53,7 +60,10 @@ _HOOK_INPUT=""
 # so all downstream policy code uses the same field paths.
 hook_input() {
     _HOOK_INPUT="$(cat)"
-    [ "$_SLOPGUARD_RUNTIME" = "grok" ] && _hook_normalize_grok
+    if [ "$_SLOPGUARD_RUNTIME" = "grok" ]; then
+        _hook_normalize_grok
+    fi
+    return 0
 }
 
 # _hook_normalize_grok — map Grok camelCase fields to canonical snake_case.
@@ -61,7 +71,11 @@ hook_input() {
 # workspaceRoot.  Policies reference snake_case names throughout; normalize once
 # at the boundary rather than adding fallbacks to every hook script.
 _hook_normalize_grok() {
-    _HOOK_INPUT="$(printf '%s' "$_HOOK_INPUT" | jq -c '
+    local normalized
+    # Best effort: a payload jq cannot parse keeps its original form rather
+    # than being replaced by jq's empty output, which would blank every field
+    # the policy hooks read and turn the gate into a no-op.
+    normalized="$(printf '%s' "$_HOOK_INPUT" | jq -c '
         if (.sessionId != null) and (.session_id == null)
             then .session_id = .sessionId else . end
         | if (.hookEventName != null) and (.hook_event_name == null)
@@ -70,7 +84,9 @@ _hook_normalize_grok() {
             then .tool_name = .toolName else . end
         | if (.toolInput != null) and (.tool_input == null)
             then .tool_input = .toolInput else . end
-    ')"
+    ')" || return 0
+    [ -n "$normalized" ] || return 0
+    _HOOK_INPUT="$normalized"
 }
 
 # hook_field <jq-path>
@@ -138,18 +154,26 @@ hook_allow() {
 # Add context that Claude sees alongside the tool result (PreToolUse,
 # PostToolUse, PostToolBatch) or at turn end (Stop).
 # Write as a statement of fact, not as a command (§3.2).
-# On Grok, passive context has no equivalent; return silently (fail-open).
+# Grok has no passive-context channel, so the text goes to stderr — which Grok
+# records — instead of being dropped. This matches the sdlc plugin's Stop
+# advisory and keeps advisory mode observable on every host.
 hook_context() {
-    [ "$_SLOPGUARD_RUNTIME" = "grok" ] && return 0
+    if [ "$_SLOPGUARD_RUNTIME" = "grok" ]; then
+        printf 'slopguard [advisory]: %s\n' "$1" >&2
+        return 0
+    fi
     jq -n --arg text "$1" \
         '{"hookSpecificOutput":{"additionalContext":$text}}'
 }
 
 # hook_message <text>
 # Surface a warning visible to the user (systemMessage).
-# No equivalent on Grok; return silently.
+# Grok has no systemMessage channel; stderr is the closest equivalent.
 hook_message() {
-    [ "$_SLOPGUARD_RUNTIME" = "grok" ] && return 0
+    if [ "$_SLOPGUARD_RUNTIME" = "grok" ]; then
+        printf 'slopguard: %s\n' "$1" >&2
+        return 0
+    fi
     jq -n --arg text "$1" \
         '{"systemMessage":$text}'
 }

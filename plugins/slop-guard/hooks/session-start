@@ -13,13 +13,13 @@ PLUGIN_ROOT="$(cd "${HOOKS_DIR}/.." && pwd)"
 : "${CLAUDE_PROJECT_DIR:=${PWD}}"
 
 # shellcheck source=../lib/hook.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/hook.sh"
+. "${PLUGIN_ROOT}/lib/hook.sh"
 # shellcheck source=../lib/state.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/state.sh"
+. "${PLUGIN_ROOT}/lib/state.sh"
 # shellcheck source=../lib/tools.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/tools.sh"
+. "${PLUGIN_ROOT}/lib/tools.sh"
 # shellcheck source=../lib/detect.sh
-. "${CLAUDE_PLUGIN_ROOT}/lib/detect.sh"
+. "${PLUGIN_ROOT}/lib/detect.sh"
 
 main() {
     hook_input
