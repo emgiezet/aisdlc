@@ -315,12 +315,22 @@ tool_version_output() {
 # --------------------------------------------------------------------------- #
 
 # tool_version_matches <name> <binary_path>
-# Returns 0 when the binary's --version output contains any maximal 2- or
+# Returns 0 when the binary's --version output contains any exactly 2- or
 # 3-component dotted-integer token that exactly equals the lockfile version
-# (leading 'v' stripped from both sides). Tokens are collected into a variable
-# first (no-match tolerated with || true), then matched via here-string rather
-# than a producer→grep -q pipeline: an early match in the latter causes the
-# producer to receive SIGPIPE (exit 141) which pipefail reports as failure.
+# (leading 'v' stripped from both sides).
+#
+# Extraction is two-stage to ensure boundary correctness: first, every
+# contiguous dotted-integer sequence of ANY length is collected with
+# grep -oE '[0-9]+(\.[0-9]+)+'; then the resulting lines are filtered with
+# a full-line pattern that accepts only 2- or 3-component forms.  A 4+-
+# component version (e.g. 1.2.3.4) fails the second filter and is NOT
+# accepted as a match for 1.2.3.  Exactness is preserved: 1.8.20 never
+# matches 1.8.2.
+#
+# Tokens are collected into a variable first (no-match tolerated with
+# || true), then matched via here-string rather than a live
+# producer→grep -q pipeline: early exit in -q would send SIGPIPE (141)
+# to the producer; under pipefail that makes the pipeline itself fail.
 tool_version_matches() {
     local name="$1" binary="$2"
     local expected; expected="$(lock_version "$name")" || return 1
@@ -328,9 +338,14 @@ tool_version_matches() {
     expected="${expected#v}"   # strip leading 'v' (e.g. v0.11.0 → 0.11.0)
 
     local actual; actual="$(tool_version_output "$name" "$binary" || true)"
-    # Collect every maximal 2- or 3-component token; tolerate no-match.
+    # Two-stage extraction: collect all dotted-integer sequences, then keep
+    # only exact 2- or 3-component ones.  The second grep uses full-line
+    # anchors so 1.2.3.4 does not survive as 1.2.3.
     local tokens
-    tokens="$(printf '%s\n' "$actual" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' || true)"
+    tokens="$(printf '%s\n' "$actual" \
+        | grep -oE '[0-9]+(\.[0-9]+)+' \
+        | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+        || true)"
     [ -n "$tokens" ] || return 1
     # Here-string avoids the producer→grep -q pipe that triggers SIGPIPE.
     grep -qxF "$expected" <<< "$tokens" || return 1
@@ -364,19 +379,39 @@ resolve_tool() {
     bin_name="$(lock_bin "$name")"
 
     # 1. Project binary (skipped in plugin-only mode).
+    #    A project binary whose --version output contains a version token that
+    #    conflicts with the lockfile pin is rejected and logged (same message
+    #    shape as the PATH rejection in slopguard doctor).  A binary that emits
+    #    no recognisable dotted-integer token is still accepted; the regex
+    #    fallback in lib/secrets.sh handles the credential-bypass risk for
+    #    scanner tools regardless of which source resolved them.
     if [ "$source" != "plugin-only" ]; then
         local project_dir="${CLAUDE_PROJECT_DIR:-}"
         if [ -n "$project_dir" ]; then
-            local candidate
+            local candidate proj_lock_ver proj_actual proj_tokens
+            proj_lock_ver="$(lock_version "$name" 2>/dev/null || true)"
+            proj_lock_ver="${proj_lock_ver#v}"
             for candidate in \
                 "${project_dir}/vendor/bin/${bin_name}" \
                 "${project_dir}/node_modules/.bin/${bin_name}" \
                 "${project_dir}/.venv/bin/${bin_name}"
             do
-                if [ -x "$candidate" ]; then
-                    found="$candidate"
-                    break
+                [ -x "$candidate" ] || continue
+                if [ -n "$proj_lock_ver" ]; then
+                    proj_actual="$(tool_version_output "$name" "$candidate" 2>/dev/null || true)"
+                    proj_tokens="$(printf '%s\n' "$proj_actual" \
+                        | grep -oE '[0-9]+(\.[0-9]+)+' \
+                        | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+                        || true)"
+                    if [ -n "$proj_tokens" ] \
+                        && ! grep -qxF "$proj_lock_ver" <<< "$proj_tokens"; then
+                        printf '%s: project binary %s — rejected: version mismatch (want %s)\n' \
+                            "$name" "$candidate" "$proj_lock_ver" >&2
+                        continue
+                    fi
                 fi
+                found="$candidate"
+                break
             done
         fi
         # go tool -n prints the path without executing the tool (Go 1.24+).
