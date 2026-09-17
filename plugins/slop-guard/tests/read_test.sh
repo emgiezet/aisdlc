@@ -168,6 +168,51 @@ HOOK_EXIT=$?
     && ok  "allow: missing file_path → pass through" \
     || bad "allow: missing file_path" "expected exit 0, got ${HOOK_EXIT}"
 
+# workspace-relative secrets/ path: nothing precedes 'secrets/', so a pattern
+# anchored on '*/secrets/*' alone misses it
+_json='{"session_id":"s","cwd":"/p","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"secrets/deploy.token"},"tool_use_id":"t7","agent_id":null,"agent_type":null}'
+HOOK_OUTPUT="$(printf '%s' "$_json" | "$HOOK" 2>/dev/null)"
+HOOK_EXIT=$?
+_got="$(last_decision)"
+[ "$_got" = "deny" ] \
+    && ok  "deny: relative secrets/ path" \
+    || bad "deny: relative secrets/ path" "expected deny, got '${_got}'"
+
+# relative .aws/credentials and .kube/config, same anchoring gap
+_json='{"session_id":"s","cwd":"/p","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":".aws/credentials"},"tool_use_id":"t8","agent_id":null,"agent_type":null}'
+HOOK_OUTPUT="$(printf '%s' "$_json" | "$HOOK" 2>/dev/null)"
+HOOK_EXIT=$?
+_got="$(last_decision)"
+[ "$_got" = "deny" ] \
+    && ok  "deny: relative .aws/credentials" \
+    || bad "deny: relative .aws/credentials" "expected deny, got '${_got}'"
+
+# symlink laundering: the link has an innocuous name, the target is a key
+_link_dir="${TMPDIR:-/tmp}/slop-guard-read-test-$$"
+mkdir -p "${_link_dir}/.ssh"
+printf 'PRIVATE KEY\n' > "${_link_dir}/.ssh/id_rsa"
+ln -sf "${_link_dir}/.ssh/id_rsa" "${_link_dir}/notes.txt"
+_json="$(jq -n --arg p "${_link_dir}/notes.txt" \
+    '{session_id:"s",cwd:"/p",hook_event_name:"PreToolUse",tool_name:"Read",tool_input:{file_path:$p},tool_use_id:"t9",agent_id:null,agent_type:null}')"
+HOOK_OUTPUT="$(printf '%s' "$_json" | "$HOOK" 2>/dev/null)"
+HOOK_EXIT=$?
+_got="$(last_decision)"
+[ "$_got" = "deny" ] \
+    && ok  "deny: symlink whose target is an SSH key" \
+    || bad "deny: symlink to SSH key" "expected deny, got '${_got}'"
+
+# near miss: a regular file that merely mentions secrets in its name stays allowed
+printf 'notes\n' > "${_link_dir}/secrets-policy.md"
+_json="$(jq -n --arg p "${_link_dir}/secrets-policy.md" \
+    '{session_id:"s",cwd:"/p",hook_event_name:"PreToolUse",tool_name:"Read",tool_input:{file_path:$p},tool_use_id:"t10",agent_id:null,agent_type:null}')"
+HOOK_OUTPUT="$(printf '%s' "$_json" | "$HOOK" 2>/dev/null)"
+HOOK_EXIT=$?
+_got="$(last_decision)"
+[ "$HOOK_EXIT" -eq 0 ] && [ "$_got" = "allow" ] \
+    && ok  "allow: secrets-policy.md is not a secrets/ path" \
+    || bad "allow: secrets-policy.md" "expected allow, got '${_got}' exit=${HOOK_EXIT}"
+rm -rf "$_link_dir"
+
 # --------------------------------------------------------------------------- #
 # Summary
 # --------------------------------------------------------------------------- #
