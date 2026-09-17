@@ -5,11 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+# The jobs only read the repository, and both of them execute third-party
+# artifacts (npm packages, pip wheels, downloaded linter binaries) in the
+# workspace — so the token must be read-only and must not be left in .git/config.
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Version consistency
         run: |
@@ -85,6 +93,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@v5
         with:
