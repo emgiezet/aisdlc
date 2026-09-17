@@ -43,7 +43,7 @@ Work down this list. The answer is almost always in the first three.
 | Invented a convention that exists in the repo | The rule file implies it instead of stating it — add the explicit line, with an example |
 | Missed a requirement entirely | The UC is not observable enough (`spec-authoring`) — it had nothing to assert on |
 | Wrote code with no test, or a test with no UC id | The playbook's test requirements are not imperative enough |
-| Weakened or deleted a test to get green | Expected — check the `Stop` guard hook fired; if it did not, the pattern list needs the case |
+| Weakened or deleted a test to get green | Expected — check the Stop guard hook fired (blocks on Claude/Codex; advisory on Grok); if it did not fire, the pattern list needs the case |
 | Overstepped into unrelated code | The spec's `Out:` scope is thin |
 | Ran out of budget mid-run | Too many UCs for one task — split the spec, do not raise the cap |
 | Passes on Opus, fails on Haiku | The instruction relies on inference. Replace prose with a command, a table, or an example |

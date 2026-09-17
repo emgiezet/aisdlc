@@ -31,7 +31,7 @@
       "interface": {
         "displayName": "Slop Guard"
       },
-      "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code"
+      "description": "PreToolUse policy enforcement for agent-written code: credential access guards, supply-chain install blocks, linter-suppression gates, and hard-coded secret detection"
     }
   ]
 }

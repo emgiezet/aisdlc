@@ -1,7 +1,7 @@
 # Playbook — API endpoint
 
 Task-scoped. Reached from the Task Router in `CLAUDE.md`. Do not read sibling playbooks.
-The `.claude/rules/` file for the paths you edit attaches on its own — do not open it from here.
+Load the `.claude/rules/` file for the paths you touch (Claude/Grok auto-attach it; on Codex, open it explicitly).
 
 ## Sequence
 

@@ -22,9 +22,9 @@
         "type": "local",
         "path": "./plugins/slop-guard"
       },
-      "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code",
+      "description": "PreToolUse policy enforcement for agent-written code: credential access guards, supply-chain install blocks, linter-suppression gates, and hard-coded secret detection",
       "category": "security",
-      "keywords": ["security", "sast", "linting", "anti-patterns", "supply-chain"],
+      "keywords": ["security", "linting", "anti-patterns", "supply-chain"],
       "version": "0.1.0"
     }
   ]

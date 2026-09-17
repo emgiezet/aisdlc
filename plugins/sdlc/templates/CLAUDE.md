@@ -18,8 +18,8 @@ will need for the code.
 | Turn a ticket into a spec | invoke the `spec` skill for the ticket |
 | Anything else | this file plus the `.claude/rules/` file for the paths you touch |
 
-`.claude/rules/*.md` are **path-scoped** — they attach automatically to the files you edit, so
-you never need to open them from here. Playbooks are **task-scoped**: this table is the only way
+`.claude/rules/*.md` are **path-scoped** — load the applicable file(s) for the paths you touch.
+Claude and Grok attach them automatically; on Codex, open them explicitly. Playbooks are **task-scoped**: this table is the only way
 in. Keep this table under 12 rows; past that the rows stop being distinguishable and the wrong
 one gets picked, which is worse than picking none.
 

@@ -27,8 +27,7 @@ this playbook enforces.
 - Never write a test that asserts current buggy behaviour just to get a green run.
 - A flaky test is a defect: fix the race or the fixture, never retry around it.
 
-The `Stop` hook enforces the first rule automatically and will block a session that removed tests
-or added skips.
+On Claude and Codex, the `Stop` hook enforces the first rule and blocks a session that removed tests or added skips. On Grok, Stop is passive — the check fires as an advisory warning instead. The no-delete/no-skip invariants remain mandatory on every host.
 
 ## Verify
 

@@ -79,7 +79,7 @@ your own database or your own service layer in an integration test.
 
 ## Non-negotiable
 
-These are enforced by the `Stop` hook, which blocks a session that violates them:
+The no-delete/no-skip/no-weaken invariants are mandatory on every host. On Claude and Codex, the `Stop` hook blocks a session that violates them. On Grok, Stop is passive — the same check fires as an advisory warning:
 
 1. **Never delete a test** to make a suite green.
 2. **Never skip a test** — `t.Skip`, `.skip(`, `.only(`, `markTestSkipped`,

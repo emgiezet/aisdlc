@@ -1,7 +1,7 @@
 # Playbook — UI feature
 
 Task-scoped. Reached from the Task Router in `CLAUDE.md`. Do not read sibling playbooks.
-The `.claude/rules/` file for the frontend attaches on its own.
+Load the `.claude/rules/` file for the frontend stack (Claude/Grok auto-attach it; on Codex, open it explicitly).
 
 ## Sequence
 

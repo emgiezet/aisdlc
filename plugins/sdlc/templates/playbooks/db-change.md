@@ -1,7 +1,7 @@
 # Playbook — Database change
 
 Task-scoped. Reached from the Task Router in `CLAUDE.md`. Do not read sibling playbooks.
-The `.claude/rules/` file covering migrations attaches on its own.
+Load the `.claude/rules/` file covering migrations (Claude/Grok auto-attach it; on Codex, open it explicitly).
 
 ## Sequence
 

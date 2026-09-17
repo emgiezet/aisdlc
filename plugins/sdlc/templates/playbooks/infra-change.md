@@ -1,7 +1,7 @@
 # Playbook — Infrastructure change
 
 Task-scoped. Reached from the Task Router in `CLAUDE.md`. Do not read sibling playbooks.
-The infrastructure and security rules files attach on their own.
+Load the applicable infrastructure and security rules files (Claude/Grok auto-attach them; on Codex, open them explicitly).
 
 ## Sequence
 

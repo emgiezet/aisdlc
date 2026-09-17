@@ -18,7 +18,7 @@
     {
       "name": "slop-guard",
       "source": "./plugins/slop-guard",
-      "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code: per-language prevention skills, deterministic checks after each edit, and a Stop gate that blocks on unresolved blockers",
+      "description": "PreToolUse policy enforcement for agent-written code: credential access guards, supply-chain install blocks, linter-suppression gates, and hard-coded secret detection — hooks fire at the tool boundary",
       "version": "0.1.0",
       "strict": true
     }
