@@ -260,17 +260,31 @@ actual="$(hook_allow)"
     || bad "grok: hook_allow silent" "got: $actual"
 
 # --------------------------------------------------------------------------- #
-# 12. Grok advisory mode: non-blocking, no output
+# 12. Grok advisory mode: nothing on stdout (no context channel), reason on
+# stderr so the advisory is not lost entirely.
 # --------------------------------------------------------------------------- #
-actual="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_deny "advisory policy violation")"
+_sg_adv_err="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_deny "advisory policy violation" 2>&1 1>/dev/null)"
+actual="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_deny "advisory policy violation" 2>/dev/null)"
 [ -z "$actual" ] \
-    && ok  "grok: advisory hook_deny is silent (fail-open)" \
-    || bad "grok: advisory hook_deny silent" "got: $actual"
+    && ok  "grok: advisory hook_deny writes nothing to stdout" \
+    || bad "grok: advisory hook_deny stdout" "got: $actual"
+case "$_sg_adv_err" in
+    *"advisory policy violation"*)
+        ok  "grok: advisory hook_deny reports the reason on stderr" ;;
+    *)  bad "grok: advisory hook_deny stderr" "got: ${_sg_adv_err:-<empty>}" ;;
+esac
 
-actual="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_ask "advisory ask")"
+_sg_adv_err="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_ask "advisory ask" 2>&1 1>/dev/null)"
+actual="$(CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory hook_ask "advisory ask" 2>/dev/null)"
 [ -z "$actual" ] \
-    && ok  "grok: advisory hook_ask is silent (fail-open)" \
-    || bad "grok: advisory hook_ask silent" "got: $actual"
+    && ok  "grok: advisory hook_ask writes nothing to stdout" \
+    || bad "grok: advisory hook_ask stdout" "got: $actual"
+case "$_sg_adv_err" in
+    *"advisory ask"*)
+        ok  "grok: advisory hook_ask reports the reason on stderr" ;;
+    *)  bad "grok: advisory hook_ask stderr" "got: ${_sg_adv_err:-<empty>}" ;;
+esac
+unset _sg_adv_err
 
 # Secret denials remain blocking on Grok even in advisory mode
 _cmp_json "grok: hook_secret_deny always denies in advisory mode" \
@@ -296,3 +310,50 @@ _sg_integ_decision="$(printf '%s' "$_sg_integ_out" | jq -r '.decision // empty' 
     && ok  "grok integration: blocked Bash command denied via registered hook command with GROK_PLUGIN_ROOT, no CLAUDE_PLUGIN_ROOT" \
     || bad "grok integration: registered Bash PreToolUse command" "decision=${_sg_integ_decision:-<empty>}, output=${_sg_integ_out:-<empty>}"
 unset _sg_hook_cmd _sg_blocked_fixture _sg_integ_out _sg_integ_decision
+
+# --------------------------------------------------------------------------- #
+# 14. Host identity: a stale GROK_PLUGIN_ROOT inside a Claude session must not
+# switch the response envelope. Claude ignores {"decision":…}, so emitting the
+# Grok shape there turns every denial into a silent allow.
+# --------------------------------------------------------------------------- #
+_sg_read_cmd="$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Read") | .hooks[0].command' "${PLUGIN_ROOT}/hooks/hooks.json")"
+_sg_secret_fixture='{"hook_event_name":"PreToolUse","session_id":"host-mix-001","cwd":"/tmp","tool_name":"Read","tool_input":{"file_path":"/tmp/project/.env"}}'
+_sg_mixed_out="$(
+    printf '%s\n' "$_sg_secret_fixture" \
+    | env CLAUDE_PLUGIN_ROOT="${PLUGIN_ROOT}" GROK_PLUGIN_ROOT="/nonexistent/stale-grok-root" \
+        bash -c "$_sg_read_cmd"
+)"
+_sg_mixed_decision="$(printf '%s' "$_sg_mixed_out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)"
+[ "$_sg_mixed_decision" = "deny" ] \
+    && ok  "host identity: stale GROK_PLUGIN_ROOT still yields a Claude hookSpecificOutput deny" \
+    || bad "host identity: stale GROK_PLUGIN_ROOT" "decision=${_sg_mixed_decision:-<empty>}, output=${_sg_mixed_out:-<empty>}"
+unset _sg_read_cmd _sg_secret_fixture _sg_mixed_out _sg_mixed_decision
+
+# --------------------------------------------------------------------------- #
+# 15. hook_input reports success on Claude/Codex. Its last command used to be a
+# Grok-only test, so it returned 1 on the majority host: any caller adding
+# `set -e` or writing `hook_input && …` would skip policy evaluation entirely.
+# --------------------------------------------------------------------------- #
+_HOOK_INPUT=""
+hook_input <<'__JSON__'
+{"session_id":"rc-check","hook_event_name":"PreToolUse"}
+__JSON__
+_sg_rc=$?
+[ "$_sg_rc" -eq 0 ] \
+    && ok  "hook_input: returns 0 on Claude/Codex" \
+    || bad "hook_input: returns 0 on Claude/Codex" "rc=$_sg_rc"
+
+# A payload jq cannot parse must not destroy the cached input: normalization is
+# best-effort, and wiping _HOOK_INPUT would make every gate see empty fields.
+_save_runtime="$_SLOPGUARD_RUNTIME"
+_SLOPGUARD_RUNTIME="grok"
+_HOOK_INPUT=""
+hook_input <<'__JSON__' 2>/dev/null
+this is not json
+__JSON__
+_sg_rc=$?
+[ "$_HOOK_INPUT" = "this is not json" ] && [ "$_sg_rc" -eq 0 ] \
+    && ok  "grok: unparseable payload is preserved, not wiped" \
+    || bad "grok: unparseable payload preserved" "rc=${_sg_rc}, input=${_HOOK_INPUT:-<empty>}"
+_SLOPGUARD_RUNTIME="$_save_runtime"
+unset _sg_rc
