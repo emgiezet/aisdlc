@@ -75,6 +75,26 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 	jq . plugins/slop-guard/.claude-plugin/plugin.json > /dev/null && echo "  ✓ slopguard plugin.json"; \
 	jq . plugins/slop-guard/hooks/hooks.json > /dev/null && echo "  ✓ slopguard hooks.json"; \
 	jq . plugins/slop-guard/tools/tools.lock.json > /dev/null && echo "  ✓ slopguard tools.lock.json"; \
+	if [ -f plugins/slop-guard/rules/stacks.json ]; then \
+		jq . plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ slopguard stacks.json"; \
+		jq -e '[to_entries[] | select(.value.tier != 1 and .value.tier != 2)] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: all tiers valid (1 or 2)" \
+			|| (echo "  ✗ stacks.json: entry with invalid tier found" && exit 1); \
+		jq -e '[to_entries[] | select((.value.anchors.files // [] | length == 0) and (.value.anchors.globs // [] | length == 0) and (.value.anchors.dirs // [] | length == 0) and (.value.anchors.manifest // {} | length == 0))] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: all entries have non-empty anchors" \
+			|| (echo "  ✗ stacks.json: entry with empty or missing anchors found" && exit 1); \
+		jq -e '(keys | map({(.): true}) | add) as $$known | [to_entries[] | select(.value.requires != null and .value.requires != "") | select($$known[.value.requires] == null)] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: requires refs are valid" \
+			|| (echo "  ✗ stacks.json: requires references an unknown tag" && exit 1); \
+		jq -e '(keys | map({(.): true}) | add) as $$known | [to_entries[] | (.value.implies // [])[] | select($$known[.] == null)] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: implies refs are valid" \
+			|| (echo "  ✗ stacks.json: implies references an unknown tag" && exit 1); \
+	fi; \
 	test "$$(jq -r '.name' plugins/slop-guard/.claude-plugin/plugin.json)" = "slop-guard" \
 		|| (echo "  ✗ slopguard plugin name mismatch" && exit 1); \
 	test "$$(jq -r '.version' plugins/slop-guard/.claude-plugin/plugin.json)" = \

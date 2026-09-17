@@ -1,8 +1,9 @@
 # Slop Guard — specyfikacja implementacji pluginu Claude Code
 
-**Wersja dokumentu:** 0.1 (2026-09-16)
+**Wersja dokumentu:** 0.2 (2026-09-17)
 **Odbiorca:** agent kodujący (Claude Code) implementujący plugin + Max jako reviewer
-**Stack docelowy:** PHP (Laravel/Symfony), Go, Python, TypeScript/React, Node.js, SQL (MySQL/PostgreSQL), Terraform, Kubernetes/Helm, Docker, CI (GitHub Actions/GitLab CI)
+**Stack docelowy (tier 1):** PHP (Laravel/Symfony), Go, Python, TypeScript/React, Node.js, SQL (MySQL/PostgreSQL), Terraform, Kubernetes/Helm, Docker, CI (GitHub Actions/GitLab CI)
+**Stack docelowy (tier 2):** JVM (Java + Kotlin), C#, Ruby, Rust
 
 ---
 
@@ -12,10 +13,10 @@
 1. Cel i zakres
 2. Zasady architektury
 3. Fakty o platformie Claude Code (zweryfikowane 2026-09)
-4. Architektura pluginu (układ, manifest, hooki, dispatcher, stan, format findingów, katalog)
-5. Macierz narzędzi per technologia
+4. Architektura pluginu (układ, manifest, hooki, dispatcher, stan, format findingów, `rules/stacks.json`, katalog)
+5. Macierz narzędzi per technologia (pokrycie tier 1 / tier 2)
 6. Domyślne ustawienia narzędzi — PHP, Go, Python, TS/React/Node, SQL, Terraform, Kubernetes/Helm, Docker, CI, sekrety, SAST
-7. Polityki (Bash, zapis, odczyt, ustawienia projektu)
+7. Polityki (Bash, zapis, odczyt, ustawienia projektu, konfiguracja `.slopguard.json`)
 8. Katalog antywzorców — zestaw startowy
 9. Instalacja narzędzi, pinowanie, integralność
 10. Licencje i pochodzenie treści
@@ -209,10 +210,15 @@ slop-guard/
 │   ├── node-antipatterns/
 │   ├── sql-antipatterns/
 │   ├── iac-antipatterns/           # terraform, k8s, helm, docker, CI
-│   └── secure-review/              # /slop-guard:secure-review (context: fork)
+│   ├── secure-review/              # /slop-guard:secure-review (context: fork)
+│   ├── jvm-antipatterns/           # tier 2: Java + Kotlin
+│   ├── csharp-antipatterns/        # tier 2: C#
+│   ├── ruby-antipatterns/          # tier 2: Ruby
+│   └── rust-antipatterns/          # tier 2: Rust
 ├── agents/
 │   └── security-reviewer.md
 ├── rules/
+│   ├── stacks.json                 # ŹRÓDŁO PRAWDY: tagi stosu, tiers, kotwice detekcji, globs, skill
 │   ├── catalog.yaml                # ŹRÓDŁO PRAWDY: definicje AP-*
 │   ├── mapping/                    # regułę narzędzia → AP-id, severity, CWE
 │   │   ├── phpstan.yaml
@@ -366,7 +372,7 @@ Uwagi:
 ### 4.5 Stan sesji
 
 - Katalog: `${CLAUDE_PLUGIN_DATA}/sessions/<session_id>/`. Klucz uzupełniany o `agent_id`, gdy jest obecny.
-  - `profile.json` — wykryte stosy, narzędzia, źródła konfiguracji.
+  - `profile.json` — wykryte stosy, narzędzia, źródła konfiguracji; od Etapu 1 zawiera pola `.stacks` (tablica tagów), `.stacks_source` (`"auto"` | `"file"` | `"file-paths"`) i `.stacks_warnings` (tablica ostrzeżeń, pusta gdy brak).
   - `touched.json` — pliki zmienione w sesji wraz z hashem treści.
   - `findings.json` — findings z fingerprintem `sha256(tool|rule|file|normalized_snippet)`, licznik blokad, status.
   - `stop-iterations` — licznik iteracji bramki.
@@ -421,14 +427,80 @@ Zasady:
 - Nie dołączaj stack trace narzędzi.
 - Powyżej limitu dodaj linię `+N more findings (run: slopguard scan <file>)`.
 
-### 4.8 Katalog antywzorców — `rules/catalog.yaml`
+### 4.8 Plik konfiguracyjny stosu — `rules/stacks.json`
+
+Jeden obiekt JSON kluczowany tagami stosu. Jest to **jedyne źródło prawdy** dla tagów stosu — `lib/detect.sh`, walidacja `.slopguard.json`, routing skilli i dobór reguł Opengrep czytają ten plik zamiast twardych kodowań w każdym z handlerów. Ścieżka nadpisywalna przez zmienną `SLOPGUARD_STACKS_JSON`, co pozwala testom wskazać inny plik bez modyfikacji kodu.
+
+Schemat wpisu:
+
+```json
+{
+  "tier": 1,
+  "anchors": {
+    "files": ["go.mod"],
+    "globs": [],
+    "dirs": [],
+    "manifest": {}
+  },
+  "requires": null,
+  "implies": [],
+  "globs": ["**/*.go"],
+  "skill": "go-antipatterns"
+}
+```
+
+Pola:
+- `tier` — `1` (natywne linery + analiza typów/dataflow) lub `2` (skill prewencyjny + Opengrep SAST, bez analizy typów). Wymagane.
+- `anchors` — co najmniej jedno z: `files` (dokładne nazwy pliku w katalogu głównym), `globs` (glob shella w katalogu głównym), `dirs` (katalogi w katalogu głównym), `manifest` (mapa plik → lista podciągów; wykrycie gdy dowolny podciąg pasuje). Wpisy `anchors` są zestawiane operatorem **OR** — wystarczy, że jeden pasuje. Wymagane.
+- `requires` (opcjonalne) — tag musi być niezależnie wykryty, żeby ten tag był aktywny. Bramka detekcji dla `laravel`/`symfony`/`doctrine` → `php` oraz `typescript`/`react`/`vite`/`express` → `node`.
+- `implies` (opcjonalne) — tagi aktywowane automatycznie po wykryciu tego tagu. Stosowane dla `helm` → `["kubernetes"]`. `implies` nie jest bramką detekcji — nie blokuje wykrycia tagu nadrzędnego.
+- `globs` — wzorce plików należące do stosu, używane w Etapie 5 do routingu skilli i reguł Opengrep.
+- `skill` — nazwa katalogu skilla pod `plugins/slop-guard/skills/`.
+
+Przykładowy plik obejmujący jeden język tier 1, framework z `requires`, tag z `implies` i język tier 2:
+
+```json
+{
+  "go": {
+    "tier": 1,
+    "anchors": { "files": ["go.mod"] },
+    "globs": ["**/*.go"],
+    "skill": "go-antipatterns"
+  },
+  "laravel": {
+    "tier": 1,
+    "requires": "php",
+    "anchors": { "manifest": { "composer.json": ["laravel/framework"] } },
+    "globs": ["**/*.php", "**/*.blade.php"],
+    "skill": "php-antipatterns"
+  },
+  "helm": {
+    "tier": 1,
+    "anchors": { "files": ["Chart.yaml"] },
+    "implies": ["kubernetes"],
+    "globs": ["**/*.yaml", "**/*.yml"],
+    "skill": "iac-antipatterns"
+  },
+  "java": {
+    "tier": 2,
+    "anchors": {
+      "files": ["pom.xml"],
+      "globs": ["*.gradle", "*.gradle.kts"]
+    },
+    "globs": ["**/*.java"],
+    "skill": "jvm-antipatterns"
+  }
+}
+```
+
+### 4.9 Katalog antywzorców — `rules/catalog.yaml`
 
 Każdy wpis:
 
 ```yaml
 - id: AP-PHP-SEC-001
   title: SQL built by string interpolation or concatenation
-  language: php
+  language: php            # skalar albo lista, np. language: [java, kotlin]
   frameworks: [laravel, symfony, plain]
   category: security            # security | performance | maintainability | supply-chain | agent
   severity: blocker
@@ -445,7 +517,30 @@ Każdy wpis:
   references:
     - https://cwe.mitre.org/data/definitions/89.html
     - https://cheatsheetseries.owasp.org/cheatsheets/Query_Parameterization_Cheat_Sheet.html
+
+- id: AP-JVM-SEC-001
+  title: JDBC query built by string concatenation or format
+  language: [java, kotlin]
+  frameworks: [plain, spring, quarkus]
+  category: security
+  severity: blocker
+  cwe: [CWE-89]
+  summary: Never build SQL by concatenating or formatting user input; always use PreparedStatement or a query builder with parameter placeholders.
+  bad: |
+    String q = "SELECT * FROM users WHERE email = '" + email + "'";
+    conn.createStatement().executeQuery(q);
+  good: |
+    PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE email = ?");
+    ps.setString(1, email);
+  detect:
+    - { tool: opengrep, rule: slopguard.jvm.jdbc-string-concat }
+  prevent_in_skill: true
+  references:
+    - https://cwe.mitre.org/data/definitions/89.html
+    - https://owasp.org/www-community/attacks/SQL_Injection
 ```
+
+Pole `language` jest skalarem albo listą. Gdy jest listą, wpis opisuje antywzorzec wspólny dla kilku języków (np. JVM: Java i Kotlin mają te same sterowniki JDBC i Jacksona). Generator skilli umieszcza wpis we wszystkich skilach odpowiadających danym językom.
 
 Zasady katalogu:
 - Treść (`title`, `summary`, `bad`, `good`) jest **pisana własnymi słowami**, nie kopiowana ze źródeł.
@@ -524,6 +619,30 @@ Legenda:
 - Fallback: Pyright w trybie `standard`.
 - ty (Astral) jest w becie. Pyrefly (Meta) osiągnął stabilne 1.0 w maju 2026.
 - Oba jako opcja szybkiego checkera w tierze fast, nie domyślnie.
+
+### 5.2 Poziomy pokrycia: tier 1 i tier 2
+
+| Narzędzie / działanie | Tier 1 (PHP, Go, Python, TS/Node, IaC, CI) | Tier 2 (JVM, C#, Ruby, Rust) |
+|---|---|---|
+| Skill prewencyjny | tak | tak |
+| Detekcja syntaktyczna | tak (linter per stos) | Opengrep — własne reguły MIT |
+| Analiza typów / dataflow | tak (PHPStan, Psalm, Pyright, `tsc --noEmit`, golangci-lint) | nie |
+| Skan sekretów | tak (Betterleaks) | tak (Betterleaks) |
+| Polityki agenta (pre-bash, pre-write, pre-read) | tak | tak |
+| SCA (podatne zależności) | tak (`composer audit`, `govulncheck`, `npm audit`, `pip-audit`) | nie w Etapie 1 |
+
+Tier 2 pokrywa kategorie `security` i `supply-chain` przez skill prewencyjny i reguły Opengrep. Kategorie `maintainability` i `performance` mają tam cieńsze pokrycie z powodu braku analizy typów — findings będą rzadsze i mniej precyzyjne niż w tierze 1.
+
+`SessionStart` informuje o tierze wykrytych stosów, żeby cisza detektora nie była mylona z czystością kodu:
+
+```text
+slop-guard: stacks (auto): java ruby docker
+slop-guard: java, ruby — tier 2: prevention + SAST only, no type analysis
+slop-guard: warning: unknown stack "rubi" — ignored (valid: csharp docker express …)
+```
+
+Pierwszy wiersz zawiera `(auto)` przy autodetekcji albo `(.slopguard.json)` gdy stos pochodzi z pliku konfiguracyjnego (§7.5). Drugi wiersz pojawia się tylko gdy co najmniej jeden wykryty stos ma `tier` 2. Wiersze ostrzeżeń — po jednym na ostrzeżenie z `SG_STACKS_WARNINGS`.
+
 
 ---
 
@@ -1358,7 +1477,7 @@ Decyzja:
 - Wyciszenia z uzasadnieniem dla `warn`/`error` przechodzą i trafiają do raportu Stop jako `info` („suppressions added this session").
 
 **C. Chronione pliki** (`rules/policies/protected-files.yaml`) → `ask` z powodem „lowering quality gates must be reviewed by a human":
-- konfiguracje narzędzi: `phpstan*.neon*`, `psalm*.xml*`, `.golangci.*`, `eslint.config.*`, `.eslintrc*`, `ruff.toml`, `.ruff.toml`, `pyproject.toml` (tylko gdy diff dotyka sekcji `[tool.ruff]`/`[tool.mypy]`/`[tool.pyright]`), `tsconfig*.json` (tylko gdy wyłącza `strict`/flagi strict), `.tflint.hcl`, `.checkov.yaml`, `.kube-linter.yaml`, `.hadolint.yaml`, `zizmor.yml`, `.gitleaks.toml`, `.sqlfluff`;
+- konfiguracje narzędzi: `phpstan*.neon*`, `psalm*.xml*`, `.golangci.*`, `eslint.config.*`, `.eslintrc*`, `ruff.toml`, `.ruff.toml`, `pyproject.toml` (tylko gdy diff dotyka sekcji `[tool.ruff]`/`[tool.mypy]`/`[tool.pyright]`), `tsconfig*.json` (tylko gdy wyłącza `strict`/flagi strict), `.tflint.hcl`, `.checkov.yaml`, `.kube-linter.yaml`, `.hadolint.yaml`, `zizmor.yml`, `.gitleaks.toml`, `.sqlfluff`, `.slopguard.json`;
 - baseline'y: `phpstan-baseline.neon`, `psalm-baseline.xml`, `.eslintcache`, `*.baseline.json`;
 - pliki CI: `.github/workflows/*`, `.gitlab-ci.yml` — tylko gdy diff usuwa kroki lint/test/security.
 
@@ -1409,6 +1528,76 @@ Plugin nie może sam ustawić `permissions`, więc dostarczamy snippet do `.clau
 - Składnię reguł zweryfikuj z [Configure permissions](https://code.claude.com/docs/en/permissions).
 - Wyjątki `.env.example` ustaw regułami `allow`, jeśli są potrzebne.
 
+### 7.5 Konfiguracja per projekt — `.slopguard.json`
+
+Opcjonalny plik JSON w katalogu głównym projektu. Pozwala nadpisać automatyczne wykrywanie stosu: zadeklarować listę tagów wprost lub przypisać tagi do podkatalogów w monorepo.
+
+**Dlaczego JSON, nie YAML**
+
+Decyzja D1 przypina dispatcher do `bash + jq`. Narzędzie `yq` nie jest w `tools.lock.json` i dodanie zależności parsera dla jednego pliku autorstwa użytkownika byłoby nieproporcjonalne — patrz D12. Własne pliki polityk pluginu (np. `rules/policies/bash.yaml`) są czytane przez `awk`/`sed`, bo ich format jest przez plugin kontrolowany. Plik projektu tworzony ręcznie przez ludzi wymaga prawdziwego parsera, a `jq` to wymaganie spełnia bezpośrednio.
+
+**Schemat**
+
+```json
+{
+  "stacks": ["java", "kotlin", "docker"],
+  "paths": {
+    "backend/": ["java", "kotlin"],
+    "infra/":   ["terraform", "kubernetes"]
+  }
+}
+```
+
+Oba pola są opcjonalne. Przykład monorepo:
+
+```json
+{
+  "paths": {
+    "api/":      ["java", "docker"],
+    "frontend/": ["node", "typescript", "react"],
+    "ops/":      ["terraform", "kubernetes", "helm"]
+  }
+}
+```
+
+**Semantyka rozwiązywania stosu**
+
+| Wejście | Wynik | Źródło (`SG_STACKS_SOURCE`) |
+|---|---|---|
+| Brak pliku, `{}` albo brak obu pól | `detect_stacks` z katalogu projektu | `auto` |
+| Nieparsowalne JSON | `detect_stacks` (fallback) + ostrzeżenie | `auto` |
+| Pole `stacks` obecne | Autorytatywna lista, zastępuje autodetekcję | `file` |
+| Pole `paths` bez `stacks` | Tagi zadeklarowane dla istniejących podkatalogów, brane dosłownie | `file-paths` |
+| Oba pola | Suma `stacks` + zadeklarowanych tagów z `paths` | `file` |
+| Nieznany tag w którymkolwiek polu | Tag pomijany + ostrzeżenie | (jak powyżej) |
+| Klucz w `paths` wskazujący nieistniejący katalog | Wpis pomijany + ostrzeżenie | (jak powyżej) |
+| Wartość w `paths` nie jest tablicą | Wpis pomijany + ostrzeżenie | (jak powyżej) |
+| `stacks: []` wprost | Honorowane — zero warstw językowych | `file` |
+
+Wartości w `paths` są **deklaratywne**: wymienione tagi są stosowane dosłownie dla danego poddrzewa, a autodetekcja **nie jest** w nim uruchamiana. To jest sens tego pola — poddrzewa, których manifestów detekcja z katalogu głównego nie widzi (`services/api/go.mod` przy pustym rootcie), nie dałyby się opisać inaczej.
+
+`implies` z `rules/stacks.json` jest stosowane do list jawnych — `helm` w pliku nadal aktywuje `kubernetes`. Bramki `requires` nie są stosowane do list jawnych: lista podana wprost jest brana dosłownie, nie przetwarzana przez logikę autodetekcji.
+
+**Zachowanie przy błędach (fail-safe)**
+
+Uszkodzony plik `.slopguard.json` powoduje fallback do autodetekcji, **nigdy** do braku stosu. Cel: uszkodzenie pliku konfiguracyjnego nie może wyłączyć pluginu w cichym trybie. Ostrzeżenia trafiają do `session-start` stdout i do pola `stacks_warnings` w `profile.json`.
+
+| Sytuacja | Zachowanie | Ostrzeżenie |
+|---|---|---|
+| Nieparsowalne JSON | Fallback do `detect_stacks` | `invalid JSON in .slopguard.json — falling back to autodetection` |
+| Nieznany tag `"rubi"` | Tag pomijany, reszta listy stosowana | `unknown stack "rubi" — ignored (valid: csharp docker …)` |
+| Nieistniejący klucz `paths` | Wpis pomijany, reszta `paths` stosowana | `.slopguard.json: path "missing/" does not exist — ignored` |
+| Puste JSON `{}` | Traktowane jak brak pliku — autodetekcja | brak |
+| `stacks: []` | Honorowane — zero warstw językowych | `stacks: [] — no language layer is active` |
+
+**Pierwszeństwo**
+
+`permissions.deny` z `.claude/settings.json` (platforma, wykonywana przed hookami) → `enforcement_mode`/`stop_gate`/`allow_network` z `userConfig` (siła egzekwowania, definiowana poza repozytorium) → `.slopguard.json` (co projekt zawiera, wewnątrz repozytorium) → autodetekcja.
+
+**Ochrona zapisu**
+
+`.slopguard.json` jest chroniony przez `pre-write` jako bezwarunkowe `ask` (§7.2C, lista `tool_configs`). Uzasadnienie: nieautoryzowana zmiana listy stosu może cicho zredukować pokrycie — np. usunięcie `java` z listy wyłączyłoby skill i reguły Opengrep dla plików Java na czas całej sesji. Użytkownik musi jawnie potwierdzić każdą zmianę.
+
 ---
 
 ## 8. Katalog antywzorców — zestaw startowy (seed dla `rules/catalog.yaml`)
@@ -1416,7 +1605,7 @@ Plugin nie może sam ustawić `permissions`, więc dostarczamy snippet do `.clau
 Tabele poniżej to minimalny zakres wersji 1.0.
 - „Detektor" wskazuje regułę narzędzia lub własną regułę Opengrep (`og:`).
 - „Skill" = czy wpis trafia do prewencji w SKILL.md.
-- Treść `bad`/`good` agent pisze sam, zgodnie z 4.8.
+- Treść `bad`/`good` agent pisze sam, zgodnie z §4.9.
 
 ### 8.1 PHP (Laravel/Symfony)
 
@@ -1610,6 +1799,29 @@ Zasady generatora:
 - Twardy limit 150 linii — przekroczenie przerywa generowanie z błędem.
 - `reference/<ID>.md` zawiera pełne `bad`/`good`, uzasadnienie, CWE i linki.
 
+### 8.10 Planowane zestawy tier 2 (Etap 3 + Etap 5)
+
+Zestawy poniżej są zaplanowane na Etap 3 (reguły Opengrep) i Etap 5 (wpisy katalogu, generowane skille). Każdy wpis wymaga:
+- własnoręcznie napisanej reguły Opengrep w MIT — §10 zakazuje dołączania lub parafrazowania reguł z Semgrep Registry,
+- pary fixture `bad`/`good` per regułę (§11.1.3),
+- walidacji przez `opengrep --validate` i `opengrep --test`.
+
+Identyfikatory reguł indywidualnych zostaną nadane w Etapie 5. Poniżej podano tylko zestawy i ich uzasadnienie.
+
+**AP-JVM-\* (Java + Kotlin, 8–12 reguł, security-first)**
+Java i Kotlin współdzielą sterowniki JDBC, deserializację Jackson i wywołania `Runtime.exec` — jeden zestaw `AP-JVM-*` obsługuje oba języki zamiast duplikowania wpisów. Przykładowy wpis katalogu (§4.9): `AP-JVM-SEC-001`. Kotlin jest traktowany jako JVM, więc detektor `jvm` obejmuje pliki `*.java` i `*.kt`.
+
+**AP-CS-\* (C#, 8–12 reguł, security-first)**
+Ukierunkowany na luki typowe dla ekosystemu .NET: SQL przez interpolowane `$"..."` do `SqlCommand`, deserializacja `BinaryFormatter`/`NetDataContractSerializer`, `Process.Start` z inputem użytkownika, brak nagłówków bezpieczeństwa w kontrolerach ASP.NET Core.
+
+**AP-RB-\* (Ruby, 8–12 reguł, security-first)**
+Ukierunkowany na luki typowe dla Rails i czystego Ruby: `eval`/`send`/`constantize` z inputem zewnętrznym, `YAML.load` (gadget Psych), mass assignment bez `permit`, shell injection przez string interpolację w `` ` `` lub `system`.
+
+**AP-RS-\* (Rust, 8–12 reguł, security-first)**
+Ukierunkowany na niebezpieczne wzorce nawet w bezpiecznym Ruscie: bloki `unsafe { }` bez komentarza uzasadnienia, `unwrap()`/`expect()` bez kontekstu w kodzie bibliotecznym, brak limitów rozmiaru przy deserializacji Serde (`deny_unknown_fields` i `serde(bound)`), arytmetyka liczb całkowitych bez ochrony przed przepełnieniem poza trybem release.
+
+Warunkiem wejścia do Etapu 3 dla każdego języka jest przejście sondy Opengrep z Etapu 0 (§11.3): język niezaliczający sondy jest pomijany i odnotowywany w `docs/ideas.md` zamiast wysyłki reguł, które nie działają.
+
 ---
 
 ## 9. Instalacja narzędzi, pinowanie, integralność
@@ -1740,12 +1952,15 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 - Szkielet katalogów, `plugin.json`, pusty `hooks.json`, `LICENSE`, `THIRD_PARTY_NOTICES.md`.
 - `tools.lock.json` z przypiętymi wersjami i hashami; `slopguard doctor --install`.
 - Walidacja wszystkich konfiguracji bazowych (9.3) — poprawki nazw reguł odnotowane w `CHANGELOG.md`.
-- ✅ `claude plugin validate --strict` zielone; `doctor` pokazuje wszystkie narzędzia na Linux amd64/arm64 i macOS arm64.
+- **Sonda parsera Opengrep** dla pięciu języków tier 2: JVM (Java + Kotlin), C#, Ruby, Rust. Sonda parsuje plik testowy `tests/fixtures/<lang>/good/<ext>` silnikiem Opengrep na przypiętej wersji. Język niezaliczający sondy → pomijany w `rules/stacks.json` i odnotowywany w `docs/ideas.md` zamiast wbudowania reguł, które nie działają.
+- ✅ `claude plugin validate --strict` zielone; `doctor` pokazuje wszystkie narzędzia na Linux amd64/arm64 i macOS arm64; sonda Opengrep zalogowana dla każdego języka tier 2.
 
 **Etap 1 — Dispatcher + polityki (największy zwrot najniższym kosztem)**
 - `session-start` (detekcja stosu, profil, kontekst AP-AGENT), `pre-bash`, `pre-write` (sekrety, suppressions, protected files, testy), `pre-read`.
+- `rules/stacks.json` z pełną listą tagów tier 1 i tier 2 (te, które przeszły sondę z Etapu 0); `lib/detect.sh` czyta `stacks.json` zamiast twardokodować stosy; `stacks_all`, `stack_known`, `stack_tier` dostępne dla innych modułów.
+- Obsługa `.slopguard.json` per projekt (§7.5): pola `stacks` i `paths`, fallback do autodetekcji przy błędzie parsowania, globalne `SG_STACKS`/`SG_STACKS_SOURCE`/`SG_STACKS_WARNINGS`; `.slopguard.json` dodany do listy chronionych plików (§7.2C).
 - Stan sesji, deduplikacja, logowanie do `${CLAUDE_PLUGIN_DATA}/logs/`.
-- ✅ Wszystkie przypadki kontraktu hooków dla polityk przechodzą; eval `agent-suppression-bait` i `dependency-bait` ≥ 0.8 z pluginem.
+- ✅ Wszystkie przypadki kontraktu hooków dla polityk przechodzą; `detect_test.sh` zielony z i bez `SLOPGUARD_STACKS_JSON`; eval `agent-suppression-bait` i `dependency-bait` ≥ 0.8 z pluginem.
 
 **Etap 2 — Detekcja tier fast**
 - `post-write --tier=fast`: Ruff, ESLint (bez type-info), pint/php-cs-fixer (raport), hadolint, kube-linter, kubeconform, actionlint, zizmor, sqlfluff, squawk, `terraform fmt`.
@@ -1754,7 +1969,8 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 
 **Etap 3 — Detekcja tier medium (asyncRewake)**
 - PHPStan (w tym `max` dla nowych plików), golangci-lint (`--new-from-rev`), ESLint z type-info, Pyright, tflint, Checkov (plik), Opengrep z pierwszym zestawem własnych reguł (6.11), debounce paczek edycji, własny timeout dispatchera.
-- ✅ Findings medium docierają do agenta przez rewake tylko przy nowych problemach ≥ `error`; brak zapętleń (Z8) w testach.
+- Reguły Opengrep tier 2 (AP-JVM-*, AP-CS-*, AP-RB-*, AP-RS-*) dla języków, które przeszły sondę w Etapie 0; wywołanie przez ten sam `opengrep scan --config rules/opengrep` co tier 1 (§6.11).
+- ✅ Findings medium docierają do agenta przez rewake tylko przy nowych problemach ≥ `error`; brak zapętleń (Z8) w testach; `opengrep --test rules/opengrep` zielony dla każdego nowego pliku reguł.
 
 **Etap 4 — Bramka Stop**
 - Psalm taint, `tsc --noEmit`, Checkov na katalogach, skan sekretów diffu sesji, SCA (govulncheck, composer/npm audit, pip-audit/osv-scanner) przy `allow_network`.
@@ -1762,9 +1978,10 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 - ✅ Kontrakt `stop-gate`; p95 < 5 min; tryby `advisory`/`balanced`/`strict` zachowują się zgodnie z 4.6.
 
 **Etap 5 — Prewencja: katalog + skille + subagent**
-- `rules/catalog.yaml` z pełnym seedem z sekcji 8.
-- Generator `scripts/gen-skills`, skille per język z `paths`, `reference/*.md`, `agent-discipline`, subagent `security-reviewer` + skill `/secure-review` (`context: fork`, `disallowedTools: Write, Edit` w agencie).
-- ✅ Limity linii/tokenów skilli; eval przypadków security ≥ 0.8 i wyraźnie lepszy niż bez pluginu.
+- `rules/catalog.yaml` z pełnym seedem z sekcji 8 (tier 1 + tier 2).
+- Wpisy katalogu tier 2 (AP-JVM-*, AP-CS-*, AP-RB-*, AP-RS-*) dla języków, które przeszły sondę w Etapie 0 — każdy z fixture `bad`/`good` per reguła (§11.1.3).
+- Generator `scripts/gen-skills`, skille per język z `paths`, `reference/*.md`, w tym skille tier 2 (`jvm-antipatterns`, `csharp-antipatterns`, `ruby-antipatterns`, `rust-antipatterns`); `agent-discipline`; subagent `security-reviewer` + skill `/secure-review` (`context: fork`, `disallowedTools: Write, Edit` w agencie).
+- ✅ Limity linii/tokenów skilli (w tym tier 2); eval przypadków security ≥ 0.8 i wyraźnie lepszy niż bez pluginu.
 
 **Etap 6 — Utwardzenie i dystrybucja**
 - Windows (exec form z `.exe`), dokumentacja użytkownika, `docs/recommended-project-settings.json`, benchmark na repo referencyjnych.
@@ -1773,7 +1990,7 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 
 ---
 
-## 12. Decyzje (D1, D2, D10 potwierdzone 2026-09-16)
+## 12. Decyzje (D1, D2, D10 potwierdzone 2026-09-16; D13 potwierdzone 2026-09-17)
 
 | # | Decyzja | Rozstrzygnięcie | Blokująca |
 |---|---|---|---|
@@ -1788,6 +2005,11 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 | D9 | Nakładanie z `security-guidance` / Claude Security / wtyczkami LSP | Slop Guard nie powiela przeglądu LLM; jeśli `security-guidance` jest włączony, `/secure-review` tylko odsyła do niego | nie |
 | D10 | CI | **POTWIERDZONE: GitHub Actions.** Etap 2 dowozi `actionlint` + `zizmor` z `unpinned-uses: hash-pin`; GitLab CI (6.9) i AP-CI-006 schodzą za Etap 2 | tak (dla zakresu Etapu 2) |
 | D11 | Dialekt SQL domyślny | Czy dominuje MySQL czy PostgreSQL? MySQL nie ma odpowiednika squawk — więcej reguł własnych i skill | nie |
+| D12 | Format pliku konfiguracji projektu | **JSON** (`.slopguard.json`), nie YAML. D1 przypina dispatcher do `bash + jq`; `yq` nie jest w `tools.lock.json`. Dodanie zależności parsera dla jednego pliku autorstwa użytkownika jest nieproporcjonalne. Własne pliki polityk pluginu (np. `bash.yaml`) są czytane przez `awk`/`sed`, bo ich format jest przez plugin kontrolowany — plik projektu tworzony ręcznie wymaga prawdziwego parsera, a `jq` to wymaganie spełnia bezpośrednio | nie |
+| D13 | Jedyne źródło prawdy tagów stosu | **`rules/stacks.json`**. `lib/detect.sh`, walidacja `.slopguard.json`, routing skilli i wybór reguł Opengrep czytają ten plik zamiast twardych kodowań w każdym handlerze. Ścieżka nadpisywalna przez `SLOPGUARD_STACKS_JSON` na potrzeby testów. Blokuje Etap 1 — bez tego pliku `detect_stacks` nie może dodać języków tier 2 | tak |
+| D14 | Dwupoziomowy model pokrycia | **Tier 1** (PHP, Go, Python, TS/Node, IaC, CI): natywne linery, analiza typów/dataflow. **Tier 2** (JVM, C#, Ruby, Rust): skill prewencyjny + Opengrep SAST, bez analizy typów — dobór według tego, co jest dostępne bez dodatkowego kompilatora. `SessionStart` informuje o tierze, żeby cisza detektora nie była mylona z czystością kodu | nie |
+| D15 | C/C++ | **Odłożone.** Sensowna analiza statyczna C/C++ wymaga `compile_commands.json` (generowanego przez cmake/bear) — narzędzia nieobecnego w macierzy pluginu. Reguły czysto syntaktyczne dawałyby fałszywe poczucie bezpieczeństwa ze względu na typy definiowane przez użytkownika i makra. Odnotowane w `docs/ideas.md` jako przyszła praca wymagająca oddzielnego projektu | nie |
+| D16 | `osv-scanner` | **Odłożone do Etapu 4.** `hooks/hooks.json` ma na razie tylko `SessionStart` i `PreToolUse`; bramka Stop, która wywołałaby `osv-scanner`, jeszcze nie istnieje. Pinowanie narzędzia teraz dodałoby nieużywaną zależność do `tools.lock.json`. `osv-scanner` wejdzie do `tools.lock.json` w tym samym commicie co handler Stop w Etapie 4 | nie |
 
 ---
 
