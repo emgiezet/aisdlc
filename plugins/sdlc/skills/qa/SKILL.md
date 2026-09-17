@@ -38,18 +38,23 @@ method; reading the implementation first makes you agree with it.
 Either way the output is a UC×test matrix, real suite output, and a findings list.
 
 **Optional capabilities (read from `.claude/sdlc.md`):**
-- If Slop Guard is recorded as `available`: its enforcement domain covers secrets, SAST, and
-  supply-chain. Your QA report **must** include an explicit statement of what Slop Guard's hooks
-  covered and what the workflow did not check, so the reviewer understands the security coverage
-  boundary. Do not duplicate Slop Guard checks; note the boundary.
+- Also read the `.claude/rules/<stack>.md` file for each stack in scope — Codex does not
+  auto-attach path-scoped rules; load them explicitly before running verification.
+- If Slop Guard is recorded as `available`: its PreToolUse hooks enforce secret access/content,
+  dependency/lockfile operations, and suppression/config weakening at the tool boundary. Your QA
+  report **must** include an explicit statement of what Slop Guard's hook boundary covers and what
+  it does not, so the reviewer understands the security scope. Do not duplicate Slop Guard checks;
+  note the boundary. Continue any configured security/static-analysis commands from the CI matrix
+  regardless of Slop Guard's presence.
 - If Superpowers is recorded as `available`: load the `requesting-code-review` skill — its
   structured code review disciplines supplement the UC coverage matrix with quality and security
   analysis findings.
 - If Ponytail is recorded as `available`: load the `ponytail-review` skill — it identifies
   over-engineering to flag as non-blocking findings in the QA report.
 - AISDLC fallback when any optional capability is absent or unknown: apply the `dense-testing`
-  review framework, and include an explicit "Security checks not run" note in the report's
-  "Not verified" section to show the reviewer what was outside the coverage boundary.
+  review framework, and include an explicit "Security checks not run — no hook enforcement active"
+  note in the report's "Not verified" section to show the reviewer what was outside the coverage
+  boundary. Continue configured security/static-analysis commands from the CI matrix.
   Headroom is never loaded by this workflow.
 
 ---
@@ -130,8 +135,8 @@ Report: specs/<TICKET>/qa-report.md (committed as <sha>)
 Security boundary: <Slop Guard domain covered, or "no hook enforcement — see Not verified">
 
 ## Next
-PASS → /sdlc:ship <TICKET>
-GAPS → fix the blocking findings, then re-run /sdlc:qa <TICKET>
+PASS → ship (Claude: `/sdlc:ship <TICKET>` · Codex: `$ship <TICKET>` · Grok: `/ship <TICKET>`)
+GAPS → fix the blocking findings, then re-run qa (Claude: `/sdlc:qa` · Codex: `$qa` · Grok: `/qa`)
 ```
 
 ---

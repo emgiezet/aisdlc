@@ -85,7 +85,8 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 		(echo "  ✗ templates/playbooks/$$p.md MISSING" && exit 1); \
 	done
 	@test -f plugins/sdlc/templates/CLAUDE.md && test -f plugins/sdlc/templates/sdlc.md \
-		&& echo "  ✓ templates/CLAUDE.md + templates/sdlc.md" \
+		&& test -f plugins/sdlc/templates/AGENTS.md \
+		&& echo "  ✓ templates/CLAUDE.md + templates/sdlc.md + templates/AGENTS.md" \
 		|| (echo "  ✗ a template is MISSING" && exit 1)
 	@echo "Checking instruction budgets (task-router skill)..."
 	@awk 'END { if (NR > 90) { print "  ✗ templates/CLAUDE.md is " NR " lines, budget 90"; exit 1 } \
@@ -213,6 +214,8 @@ endif
 	@cp -n plugins/sdlc/templates/sdlc.md "$(TARGET)/.claude/sdlc.md" 2>/dev/null || \
 		echo "  kept existing $(TARGET)/.claude/sdlc.md"
 	@cp -n plugins/sdlc/templates/playbooks/*.md "$(TARGET)/.claude/playbooks/" 2>/dev/null || true
+	@cp -n plugins/sdlc/templates/AGENTS.md "$(TARGET)/AGENTS.md" 2>/dev/null || \
+		echo "  kept existing $(TARGET)/AGENTS.md"
 	@echo "Templates copied to $(TARGET) — they still contain placeholders."
 	@echo "Fill them in, delete the playbooks this repo has no use for, and write .claude/rules/."
 	@echo "The better path is /sdlc:init, which writes all of this calibrated to the repo."

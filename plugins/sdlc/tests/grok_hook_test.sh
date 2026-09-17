@@ -2,9 +2,7 @@
 # grok_hook_test.sh — Grok portability contract for plugins/sdlc hooks.
 #
 # Reads every command under test from hooks/hooks.json so the exact registered
-# command string is what is under test, not a duplicated path.  All four
-# assertions are currently RED; each comment states the production change
-# required to make it GREEN.
+# command string is what is under test, not a duplicated path.
 #
 # Standalone:  ./grok_hook_test.sh  — defines ok()/bad() and exits 1 on failure.
 # Sourced:     test runner must define ok()/bad() before sourcing this file.
@@ -79,15 +77,9 @@ mkdir -p "$_STOP_REPO"
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 1 — SessionStart: registered command resolves with GROK_PLUGIN_ROOT only
 #
-# Defect: hooks.json registers
-#   "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd" session-start
-# On Grok, CLAUDE_PLUGIN_ROOT is unset.  Bash expands it to the empty string,
-# producing the literal path "/hooks/run-hook.cmd" which does not exist — the
-# hook cannot be invoked at all.
-#
-# Fix required: replace ${CLAUDE_PLUGIN_ROOT} in the hooks.json command string
-# with ${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}} (or a runtime-agnostic shim)
-# so the command resolves from whichever root variable the runtime supplies.
+# hooks.json registers the command with ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}}
+# so it resolves from whichever root variable the runtime supplies.  On Grok,
+# CLAUDE_PLUGIN_ROOT is unset and GROK_PLUGIN_ROOT carries the plugin directory.
 # ─────────────────────────────────────────────────────────────────────────────
 _cmd="$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$HOOKS_JSON")"
 _run "$_cmd" "$_FX_SESSION"
@@ -100,21 +92,10 @@ unset _cmd
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 2 — PreToolUse: camelCase force-push payload returns native Grok deny
 #
-# Defects:
-#   a) Registered command uses ${CLAUDE_PLUGIN_ROOT} — hook is not invokable
-#      on Grok (same root as Test 1).
-#   b) guard reads .tool_input.command (snake_case); Grok sends
-#      toolInput.command (camelCase).  The jq path resolves to null so guard
-#      exits 0 — force push is silently allowed.
-#   c) guard's deny() writes the reason to stderr and exits 2.  Grok's
-#      PreToolUse blocking contract requires exit 0 + stdout JSON
-#      {"decision":"deny","reason":"<text>"}.
-#
-# Fix required (all three):
-#   a) Resolve command via GROK_PLUGIN_ROOT (same fix as Test 1).
-#   b) Normalise camelCase toolInput → .tool_input before field access in guard.
-#   c) Detect Grok runtime in guard and emit native stdout JSON deny instead of
-#      exiting 2 with stderr output.
+# Grok sends camelCase toolInput.command; guard normalizes it to tool_input.command
+# before field access.  On Grok, PreToolUse blocking requires exit 0 plus a JSON
+# {"decision":"deny","reason":"..."} on stdout; guard detects Grok via the presence
+# of GROK_PLUGIN_ROOT with CLAUDE_PLUGIN_ROOT absent and emits the native format.
 # ─────────────────────────────────────────────────────────────────────────────
 _cmd="$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$HOOKS_JSON")"
 _run "$_cmd" "$_FX_FORCE_PUSH"
@@ -128,12 +109,9 @@ unset _cmd _decision
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 3 — PreToolUse: safe Grok Bash command allows silently (exit 0, no stdout)
 #
-# Defect: same as Test 1 defect (a) — the registered command cannot be invoked
-# on Grok because it uses ${CLAUDE_PLUGIN_ROOT}.  Once the invocation fix
-# lands, no additional change is needed: guard already exits 0 with empty
-# stdout when cmd is null, so the allow path works without further changes.
-#
-# Fix required: resolve command via GROK_PLUGIN_ROOT (same fix as Test 1).
+# When the command is safe, guard exits 0 with no stdout on all hosts.
+# Command resolution via ${CLAUDE_PLUGIN_ROOT:-${GROK_PLUGIN_ROOT}} ensures
+# the hook is reachable on Grok (same fix as Test 1).
 # ─────────────────────────────────────────────────────────────────────────────
 _cmd="$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$HOOKS_JSON")"
 _run "$_cmd" "$_FX_SAFE_BASH"
@@ -146,25 +124,10 @@ unset _cmd
 # ─────────────────────────────────────────────────────────────────────────────
 # Test 4 — Stop: deleted test file triggers advisory warning, exits 0, no block
 #
-# The git fixture above stages the deletion of test_sample.py, which matches
-# guard's TEST_PATH_RE ('test_[^/]*\.py').  The Grok Stop payload uses
-# camelCase field names.
-#
-# Defects:
-#   a) Registered command uses ${CLAUDE_PLUGIN_ROOT} — hook is not invokable on Grok.
-#   b) guard reads .stop_hook_active (snake_case); Grok sends stopHookActive
-#      (camelCase).  The reentered flag always resolves false on Grok, so the
-#      guard always proceeds to deny() regardless of prior stop_hook_active state.
-#   c) guard's stop_check() calls deny() which exits 2 with stderr output.  On
-#      Grok, Stop hooks are passive: the hook MUST exit 0, MUST NOT emit a
-#      blocking decision, and advisory output MUST go to stderr only.
-#
-# Fix required (all three):
-#   a) Resolve command via GROK_PLUGIN_ROOT (same fix as Test 1).
-#   b) Normalise camelCase stopHookActive → .stop_hook_active before reading
-#      the reentered flag.
-#   c) Detect Grok runtime in stop_check and, when running on Grok, emit an
-#      advisory warning to stderr then exit 0 instead of calling deny().
+# Grok sends camelCase stopHookActive; guard normalizes it to stop_hook_active
+# before reading the re-entry flag.  On Grok, Stop hooks are passive: the hook
+# exits 0 and sends any findings to stderr as an advisory warning rather than
+# emitting a blocking decision.  Claude/Codex retain the blocking exit-2 behavior.
 # ─────────────────────────────────────────────────────────────────────────────
 _cmd="$(jq -r '.hooks.Stop[0].hooks[0].command' "$HOOKS_JSON")"
 _run_in "$_STOP_REPO" "$_cmd" "$_FX_STOP"

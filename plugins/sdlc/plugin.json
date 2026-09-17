@@ -22,9 +22,9 @@
         "category": "Productivity",
         "capabilities": ["Write", "Interactive"],
         "defaultPrompt": [
-          "/sdlc:init — set up this repo for the SDLC pipeline",
-          "/sdlc:spec <TICKET> — turn a ticket into an executable spec",
-          "/sdlc:implement <TICKET> — deliver an approved spec unattended"
+          "$init — set up this repo for the SDLC pipeline",
+          "$spec <TICKET> — turn a ticket into an executable spec",
+          "$implement <TICKET> — deliver an approved spec unattended"
         ]
       }
     }

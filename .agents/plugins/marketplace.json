@@ -15,7 +15,7 @@
       "interface": {
         "displayName": "AI SDLC"
       },
-      "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy for your repo, then spec → mockup → implement → qa → ship runs unattended and lands a draft PR"
+      "description": "Spec-driven delivery for agents: $init generates the instruction hierarchy for your repo, then $spec → $mockup → $implement → $qa → $ship runs unattended and lands a draft PR"
     },
     {
       "name": "slop-guard",

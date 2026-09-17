@@ -38,8 +38,8 @@ playbooks and rules to be refused; Phase 4 will tell you so rather than claiming
 must respect, and the rules for writing a router row that a weak model matches correctly.
 
 The templates to start from live in this plugin's `templates/` directory: `CLAUDE.md`,
-`playbooks/*.md`, and `sdlc.md`. Read them, then **rewrite** them for this repo. Copying them with
-the placeholders still in is a failure, not a partial success.
+`AGENTS.md`, `playbooks/*.md`, and `sdlc.md`. Read them, then **rewrite** them for this repo.
+Copying them with the placeholders still in is a failure, not a partial success.
 
 ---
 
@@ -121,7 +121,7 @@ Present, for approval, before writing anything:
 
    | Capability | Status | Integration |
    |------------|--------|-------------|
-   | Slop Guard | `<available\|unavailable\|unknown>` | Deterministic hook enforcement (PreToolUse gates on Bash/Write). Active when installed; workflow does not replicate it when absent. |
+   | Slop Guard | `<available\|unavailable\|unknown>` | PreToolUse hook enforcement: secret access/content, dependency/lockfile operations, suppression/config weakening. Active when installed; workflow does not replicate it when absent. Stop gate is not registered. |
    | Superpowers | `<available\|unavailable\|unknown>` | Brainstorming/planning/TDD/debug/review disciplines in spec, implement, qa. Falls back to explicit AISDLC instructions when absent. |
    | Ponytail | `<available\|unavailable\|unknown>` | Minimal implementation and over-engineering review in implement and qa. Falls back to "Implement the minimum" instruction when absent. |
    | Headroom | `<installed\|absent>` | External transport only — never invoked by any workflow step. |
@@ -153,6 +153,9 @@ Router near the top, and leave the rest alone.
 
 - `CLAUDE.md` — from `templates/CLAUDE.md`. ≤ 90 lines. No stack conventions here; they belong in
   the rules files.
+- `AGENTS.md` — from `templates/AGENTS.md`. Codex adapter: points Codex to CLAUDE.md, the
+  matched playbook, and applicable rules. If an `AGENTS.md` already exists, add an `## AI SDLC
+  workflow` section and preserve the existing content — never replace it wholesale.
 - `.claude/playbooks/<name>.md` — one per router row, from the matching template, rewritten with
   this repo's real directories, real layering, and real verification commands. ≤ 70 lines each.
   Delete template steps that do not apply here rather than leaving a hedge.
@@ -173,7 +176,7 @@ because a duplicated instruction that drifts is worse than a missing one.
 
 ## Phase 4: Verify and hand over
 
-1. **List what actually exists on disk.** `ls CLAUDE.md .claude/playbooks/ .claude/rules/
+1. **List what actually exists on disk.** `ls CLAUDE.md AGENTS.md .claude/playbooks/ .claude/rules/
    .claude/sdlc.md .aisdlc/config.json specs/`. Count the playbooks against the number of router
    rows. **If any file is missing, this run failed** — say which files are missing and why (a
    refused write, a tool error), and do not describe the setup as ready. A router pointing at
@@ -191,7 +194,7 @@ with the exact list of what is missing and the one command the developer should 
 
 ```
 ## Set up for AI SDLC
-CLAUDE.md (<n> lines) · <n> playbooks · <n> rules files · .claude/sdlc.md · .aisdlc/config.json
+CLAUDE.md (<n> lines) · AGENTS.md · <n> playbooks · <n> rules files · .claude/sdlc.md · .aisdlc/config.json
 
 ## Optional capabilities
 Slop Guard: <status> · Superpowers: <status> · Ponytail: <status> · Headroom: <status>
@@ -204,8 +207,8 @@ Slop Guard: <status> · Superpowers: <status> · Ponytail: <status> · Headroom:
 
 ## Next
 1. Read CLAUDE.md and the playbooks. They are yours now; correct anything that reads wrong.
-2. git add CLAUDE.md .claude/ specs/ && git commit
-3. Write your first spec:  /sdlc:spec <a small, real ticket>
+2. git add CLAUDE.md AGENTS.md .claude/ specs/ && git commit
+3. Write your first spec:  /sdlc:spec <a small, real ticket>  (Codex: $spec · Grok: /spec)
 4. Run it while watching:  /sdlc:implement <TICKET> then /sdlc:qa <TICKET>
 5. Only then queue anything: aisdlc add <TICKET>
 

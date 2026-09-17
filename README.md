@@ -86,8 +86,8 @@ Start an interactive session in the repository you want to use.
 
 The init skill surveys the repo — stacks, directories, the exact commands CI runs, test
 conventions, what kinds of change the git history actually contains — proposes a router table for
-your approval, and then writes `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md`
-and `.aisdlc/config.json` calibrated to *this* repository.
+your approval, and then writes `CLAUDE.md`, `AGENTS.md` (Codex adapter), `.claude/playbooks/`,
+`.claude/rules/`, `.claude/sdlc.md` and `.aisdlc/config.json` calibrated to *this* repository.
 
 At the setup gate it also lists any optional capability plugins it detects in the current
 environment, proposes integrations, and records the selections in the project profile. Installation
@@ -129,8 +129,10 @@ Or without the queue, one ticket at a time while you watch:
   a human sets `status: approved` — checked when queueing, and again inside the worktree before the
   model is invoked.
 - **Tests are the safety net, so they are dense.** Every `UC-<n>` gets a test carrying its id,
-  which makes spec coverage a `grep` rather than a judgement call. A `Stop` hook blocks any session
-  that deleted or skipped a test; a `PreToolUse` hook blocks force pushes and `--no-verify`.
+  which makes spec coverage a `grep` rather than a judgement call. On Claude and Codex, a `Stop`
+  hook blocks any session that deleted or skipped a test; on Grok, where Stop hooks are passive,
+  the same check runs as an advisory warning (findings printed to stderr, exit 0 — Grok can only
+  block from PreToolUse). A `PreToolUse` hook blocks force pushes and `--no-verify` on all hosts.
 - **QA runs before a human does.** The `auto-qa` agent re-derives the use cases from the spec
   *before* reading the implementation — read the code first and you agree with it. `PASS` or `GAPS`
   is the first line of the pull request.

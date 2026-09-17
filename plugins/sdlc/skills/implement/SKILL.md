@@ -48,7 +48,9 @@ and the wandering that precedes the guess costs more than the whole task should.
 ## Phase 1: Route and ground
 
 1. Match the work to a row in the project's `CLAUDE.md` **Task Router** and read **only** that
-   playbook. Spanning two stacks means two playbooks — no more.
+   playbook. Spanning two stacks means two playbooks — no more. Also read the
+   `.claude/rules/<stack>.md` file for each stack you will touch — path-scoped rules are not
+   auto-attached on all hosts; you must open them explicitly.
 2. Read the files named in the spec's `Context` section. If a fresh `.codebase-map/` exists,
    read the relevant map files; otherwise grep for the nearest sibling implementation and
    mirror it.
@@ -59,11 +61,13 @@ and the wandering that precedes the guess costs more than the whole task should.
 4. Create the working branch if not already on one: `ai/<TICKET>-<slug>`.
 
 **Optional capabilities (read from `.claude/sdlc.md`):**
-- If Slop Guard is recorded as `available`: its PreToolUse hooks are active and enforce
-  secrets/SAST/supply-chain policy on Bash and Write operations. Do not replicate that enforcement.
-  State in your Phase 5 handoff what Slop Guard's domain covers and what it does not, so the
-  reviewer understands the boundary. The SDLC-specific guards (no force-push, no test deletion)
-  remain in this workflow regardless of Slop Guard's presence.
+- If Slop Guard is recorded as `available`: its PreToolUse hooks enforce secret access/content,
+  dependency/lockfile operations, and suppression/config weakening on Bash and Write operations.
+  Do not replicate that enforcement. Continue any configured security/static-analysis commands
+  from the CI matrix — Slop Guard does not replace them. State in your Phase 5 handoff what
+  Slop Guard's hook boundary covers and what it does not, so the reviewer understands the scope.
+  The SDLC-specific guards (no force-push, no test deletion) remain in this workflow regardless
+  of Slop Guard's presence.
 - If Superpowers is recorded as `available`: load the `test-driven-development` skill for the
   test-first discipline in Phase 2, and keep the `systematic-debugging` skill available for Phase 4.
 - If Ponytail is recorded as `available`: load the `ponytail` skill for YAGNI and minimalism
@@ -155,8 +159,8 @@ CI matrix: <command> ✓ · <command> ✓ · …
 Slop Guard domain: <what its hooks covered, or "not installed — no hook enforcement">
 
 ## Next
-/sdlc:qa <TICKET>     — independent verification against the spec
-/sdlc:ship <TICKET>   — draft PR with the QA report attached
+Run qa  (Claude: `/sdlc:qa <TICKET>` · Codex: `$qa <TICKET>` · Grok: `/qa <TICKET>`)
+Run ship (Claude: `/sdlc:ship <TICKET>` · Codex: `$ship <TICKET>` · Grok: `/ship <TICKET>`)
 ```
 
 ---

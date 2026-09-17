@@ -78,7 +78,7 @@ and manually installed; none is installed or required by this pipeline.
 
 | Capability | Status | Integration |
 |------------|--------|-------------|
-| Slop Guard | `<!-- available \| unavailable \| unknown -->` | Deterministic hook enforcement — PreToolUse gates on Bash and Write at the host level; not replicated inside workflow steps. |
+| Slop Guard | `<!-- available \| unavailable \| unknown -->` | PreToolUse hook enforcement: secret access/content, dependency/lockfile operations, suppression/config weakening. Stop gate is not registered; CI security commands run regardless. |
 | Superpowers | `<!-- available \| unavailable \| unknown -->` | Brainstorming, planning, TDD, systematic-debugging, and code-review disciplines in spec, implement, and qa. Falls back to explicit AISDLC instructions when absent. |
 | Ponytail | `<!-- available \| unavailable \| unknown -->` | Minimal implementation and over-engineering review in implement and qa. Falls back to "Implement the minimum" instruction when absent. |
 | Headroom | `<!-- installed \| absent -->` | External transport compression/memory — never invoked by any workflow step. |
