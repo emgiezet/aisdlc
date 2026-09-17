@@ -31,6 +31,30 @@ val="$(state_dir "sess-123" "--")"
     && ok  "state_dir: '--' treated as no agent" \
     || bad "state_dir: '--' treated as no agent" "$val"
 
+# Session and agent ids arrive in the hook payload and land in a filesystem
+# path, so a traversal component must not escape the sessions root.
+val="$(state_dir "../../escape")"
+case "$val" in
+    "${CLAUDE_PLUGIN_DATA}/sessions/"*)
+        case "$val" in
+            *..*) bad "state_dir: traversal in session_id" "escaped: $val" ;;
+            *)    ok  "state_dir: traversal in session_id is neutralized" ;;
+        esac ;;
+    *) bad "state_dir: traversal in session_id" "left the sessions root: $val" ;;
+esac
+
+val="$(state_dir "sess-123" "../../escape")"
+case "$val" in
+    *..*) bad "state_dir: traversal in agent_id" "escaped: $val" ;;
+    *)    ok  "state_dir: traversal in agent_id is neutralized" ;;
+esac
+
+# Ordinary ids must survive unchanged — host session ids contain hyphens.
+val="$(state_dir "sess-123_ABC.9")"
+[ "$val" = "${CLAUDE_PLUGIN_DATA}/sessions/sess-123_ABC.9" ] \
+    && ok  "state_dir: ordinary id passes through unchanged" \
+    || bad "state_dir: ordinary id unchanged" "$val"
+
 # --------------------------------------------------------------------------- #
 # 2. state_init: creates directory and all required files
 # --------------------------------------------------------------------------- #

@@ -17,13 +17,27 @@
 # Path helpers
 # --------------------------------------------------------------------------- #
 
+# _state_component <value> — make a payload-supplied id safe as a path segment.
+# session_id and agent_id come from the host's hook JSON; anything outside
+# [A-Za-z0-9._-], or a pure dot component, is replaced by a stable digest so a
+# traversal string cannot move session state outside the sessions root.
+_state_component() {
+    local value="$1"
+    case "$value" in
+        ""|.|..|*[!A-Za-z0-9._-]*)
+            printf 'invalid-%s' "$(printf '%s' "$value" | cksum | cut -d' ' -f1)"
+            return ;;
+    esac
+    printf '%s' "$value"
+}
+
 # state_dir <session_id> [<agent_id>]
 state_dir() {
-    local session_id="$1"
+    local session_id; session_id="$(_state_component "$1")"
     local agent_id="${2:-}"
     local base="${CLAUDE_PLUGIN_DATA}/sessions/${session_id}"
     if [ -n "$agent_id" ] && [ "$agent_id" != "--" ]; then
-        printf '%s/%s' "$base" "$agent_id"
+        printf '%s/%s' "$base" "$(_state_component "$agent_id")"
     else
         printf '%s' "$base"
     fi
