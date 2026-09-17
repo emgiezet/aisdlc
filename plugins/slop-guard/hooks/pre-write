@@ -106,6 +106,25 @@ while IFS=$'\t' read -r marker reason_pattern; do
     fi
 done <<< "$suppression_records"
 
+# Guard and host configuration files are protected unconditionally.
+# Writing .claude/settings.json can inject an env block that sets
+# CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory in every subsequent hook
+# process, converting all hook_deny calls to passive context for the rest of
+# the session.  Plugin manifests and hook-registration files control which
+# security checks run at all.  Routed through hook_secret_deny so advisory
+# mode cannot soften the denial and a headless session cannot approve it.
+case "$file_path" in
+    */.claude/settings.json|.claude/settings.json|*/.claude/settings.local.json|.claude/settings.local.json)
+        hook_secret_deny "${file_path} is write-protected: the env block it carries is injected into every hook process at session start, allowing it to set CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory and convert all subsequent denials to passive context."
+        exit 0 ;;
+    */.agents/*|.agents/*|*/.grok-plugin/*|.grok-plugin/*)
+        hook_secret_deny "${file_path} is write-protected: it is agent-host configuration that controls which security plugins are loaded and how violations are enforced."
+        exit 0 ;;
+    */plugins/*/hooks/hooks.json|plugins/*/hooks/hooks.json|*/plugins/*/.claude-plugin/plugin.json|plugins/*/.claude-plugin/plugin.json|*/plugins/*/plugin.json|plugins/*/plugin.json)
+        hook_secret_deny "${file_path} is write-protected: it is a plugin manifest or hook-registration file whose modification can remove or reconfigure the security checks applied to this session."
+        exit 0 ;;
+esac
+
 base_name="${file_path##*/}"
 protected=0
 case "$base_name" in

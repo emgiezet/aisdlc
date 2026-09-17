@@ -6,12 +6,17 @@
     "Architecture note — two layers, one purpose:",
     "  Floor  : the 'permissions' block below.  Enforced by the Claude Code platform",
     "           before any hook runs.  Cannot be bypassed by the agent.",
-    "  Defence: the pre-read hook in hooks/pre-read.  Catches edge cases the",
-    "           permission patterns do not cover and adds richer diagnostic reasons.",
+    "  Defence: the pre-read and pre-write hooks.  Catch edge cases the permission",
+    "           patterns do not cover and add richer diagnostic reasons.",
     "",
     "In a managed-settings deployment the platform layer is the hard guarantee;",
     "the hook is defence in depth.  In a project-only deployment the hook is the",
-    "only enforcement layer, so the permissions block below MUST be present."
+    "only enforcement layer, so the permissions block below MUST be present.",
+    "",
+    "Codex / Grok: neither host documents an equivalent project-level permissions",
+    "file at the time of writing.  The pre-write hook enforces the guard-config",
+    "protection for those hosts via hook_secret_deny, which is the only available",
+    "enforcement layer on those runtimes."
   ],
   "permissions": {
     "deny": [
@@ -21,7 +26,18 @@
       "Read(./**/*.key)",
       "Read(./secrets/**)",
       "Bash(npm install -g *)",
-      "Bash(sudo *)"
+      "Bash(sudo *)",
+      "Read(./.claude/settings.json)",
+      "Read(./.claude/settings.local.json)",
+      "Write(./.claude/settings.json)",
+      "Write(./.claude/settings.local.json)",
+      "Read(./.agents/**)",
+      "Write(./.agents/**)",
+      "Read(./.grok-plugin/**)",
+      "Write(./.grok-plugin/**)",
+      "Write(./plugins/*/hooks/hooks.json)",
+      "Write(./plugins/*/.claude-plugin/plugin.json)",
+      "Write(./plugins/*/plugin.json)"
     ],
     "ask": [
       "Bash(npm install *)",
