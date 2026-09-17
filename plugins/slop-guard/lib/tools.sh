@@ -608,7 +608,12 @@ install_tool() {
             exit 1
         fi
         if ! tool_version_matches "$name" "${stage_dir}/${bin_name}"; then
-            printf 'slopguard: installed %s binary reports the wrong version\n' "$name" >&2
+            printf 'slopguard: installed %s binary reports the wrong version (want %s)\n' \
+                "$name" "$(lock_version "$name")" >&2
+            # Echo what the binary actually printed — a missing runtime extension
+            # or a broken archive layout is otherwise invisible in logs.
+            printf '%s\n' "$(tool_version_output "$name" "${stage_dir}/${bin_name}" || true)" \
+                | sed -n '1,5s/^/slopguard:   | /p' >&2 || true
             exit 1
         fi
         if [ "$name" = "tflint" ]; then
