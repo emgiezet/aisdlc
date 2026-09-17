@@ -8,9 +8,6 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    env:
-      CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
-      CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
     steps:
       - uses: actions/checkout@v7
 
@@ -61,6 +58,9 @@ jobs:
           echo "✓ no project-specific references"
 
       - name: Install pinned Slop Guard tools
+        env:
+          CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
+          CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
         run: |
           php --version
           python3 -m pip install uv==0.11.11
@@ -68,6 +68,9 @@ jobs:
 
       # Owns the required-file lists and the instruction budgets.
       - name: make validate
+        env:
+          CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
+          CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
         run: make validate
 
   runner-and-fixture:
