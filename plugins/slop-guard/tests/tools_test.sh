@@ -469,3 +469,59 @@ else
     bad "project-only post-install message" \
         "neither expected phrase; output: $(cat "$po2_out")"
 fi
+
+# --------------------------------------------------------------------------- #
+printf '\nresolver: preamble runtime version in --version output does not shadow the tool version\n'
+# --------------------------------------------------------------------------- #
+
+# Reproduces the CI PHP/Xdebug preamble pattern: the binary's --version output
+# begins with an unrelated runtime line ("runtime 8.3.6") before the actual
+# tool line ("fake-tool 9.9.9").  tool_version_matches must accept this binary
+# because the lock version (9.9.9) appears as a standalone dotted token, even
+# if it is not the first such token.
+#
+# The current implementation extracts only "head -1" of all matching tokens,
+# so it compares 8.3.6 == 9.9.9, returns 1, and the resolver rejects the
+# binary — this test is RED against the unfixed parser.
+
+FAKE_DATA_PREAMBLE="${TEST_WORK}/plugin-data-preamble"
+mkdir -p "${FAKE_DATA_PREAMBLE}/tools/fake-tool/9.9.9"
+# Binary whose --version output has a preamble line with a different version.
+printf '#!/bin/sh\nprintf "runtime 8.3.6\nfake-tool 9.9.9\n"\n' \
+    > "${FAKE_DATA_PREAMBLE}/tools/fake-tool/9.9.9/fake-tool"
+chmod +x "${FAKE_DATA_PREAMBLE}/tools/fake-tool/9.9.9/fake-tool"
+ln -s "${FAKE_DATA_PREAMBLE}/tools/fake-tool/9.9.9" \
+    "${FAKE_DATA_PREAMBLE}/tools/fake-tool/current"
+
+resolved_preamble=$(
+    TOOLS_LOCK="$FAKE_LOCK"
+    CLAUDE_PLUGIN_DATA="$FAKE_DATA_PREAMBLE"
+    CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="plugin-only"
+    resolve_tool "fake-tool"
+)
+expected_preamble="${FAKE_DATA_PREAMBLE}/tools/fake-tool/current/fake-tool"
+[ "$resolved_preamble" = "$expected_preamble" ] \
+    && ok "preamble runtime version: tool still accepted when lock version appears after preamble" \
+    || bad "preamble version gate" \
+       "got '${resolved_preamble}', want '${expected_preamble}' — first-token parser extracted preamble version instead of tool version"
+
+# Verify wrong nearby version (1.8.2 vs 1.8.20) is still rejected even with preamble.
+FAKE_DATA_NEARBY="${TEST_WORK}/plugin-data-nearby"
+mkdir -p "${FAKE_DATA_NEARBY}/tools/fake-tool/9.9.9"
+# Lock expects 9.9.9; binary reports preamble 8.3.6 and tool version 9.9.90 (close but wrong).
+printf '#!/bin/sh\nprintf "runtime 8.3.6\nfake-tool 9.9.90\n"\n' \
+    > "${FAKE_DATA_NEARBY}/tools/fake-tool/9.9.9/fake-tool"
+chmod +x "${FAKE_DATA_NEARBY}/tools/fake-tool/9.9.9/fake-tool"
+ln -s "${FAKE_DATA_NEARBY}/tools/fake-tool/9.9.9" \
+    "${FAKE_DATA_NEARBY}/tools/fake-tool/current"
+
+resolved_nearby=$(
+    TOOLS_LOCK="$FAKE_LOCK"
+    CLAUDE_PLUGIN_DATA="$FAKE_DATA_NEARBY"
+    CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="plugin-only"
+    resolve_tool "fake-tool"
+)
+[ -z "$resolved_nearby" ] \
+    && ok "preamble + nearby version: 9.9.90 not accepted when lock wants 9.9.9" \
+    || bad "preamble nearby version gate" \
+       "got '${resolved_nearby}', want empty — version 9.9.90 must not match 9.9.9"
