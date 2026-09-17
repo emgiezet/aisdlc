@@ -480,9 +480,8 @@ printf '\nresolver: preamble runtime version in --version output does not shadow
 # because the lock version (9.9.9) appears as a standalone dotted token, even
 # if it is not the first such token.
 #
-# The current implementation extracts only "head -1" of all matching tokens,
-# so it compares 8.3.6 == 9.9.9, returns 1, and the resolver rejects the
-# binary — this test is RED against the unfixed parser.
+# Regression guard: this was red before the token-scanning fix; kept to ensure
+# the multi-token extraction path is never regressed.
 
 FAKE_DATA_PREAMBLE="${TEST_WORK}/plugin-data-preamble"
 mkdir -p "${FAKE_DATA_PREAMBLE}/tools/fake-tool/9.9.9"
@@ -509,7 +508,10 @@ expected_preamble="${FAKE_DATA_PREAMBLE}/tools/fake-tool/current/fake-tool"
 # token first, then 10,000 additional dotted tokens.  grep -qxF exits 0 on
 # the first match and closes the pipe; grep -oE gets SIGPIPE (exit 141).
 # Under set -o pipefail the pipeline returns 141, not 0, so "|| return 1"
-# fires and tool_version_matches wrongly rejects the binary — RED test.
+# fires and tool_version_matches wrongly rejects the binary.
+#
+# Regression guard: this was red before the here-string fix; kept to prevent
+# any future reintroduction of producer→grep -q pipelines in tool_version_matches.
 FAKE_DATA_FLOOD="${TEST_WORK}/plugin-data-flood"
 mkdir -p "${FAKE_DATA_FLOOD}/tools/fake-tool/9.9.9"
 cat > "${FAKE_DATA_FLOOD}/tools/fake-tool/9.9.9/fake-tool" <<'FLOODSCRIPT'
@@ -537,7 +539,7 @@ expected_flood="${FAKE_DATA_FLOOD}/tools/fake-tool/current/fake-tool"
     || bad "flood SIGPIPE gate" \
        "got '${resolved_flood}', want '${expected_flood}' — grep SIGPIPE under pipefail caused false rejection"
 
-# Verify wrong nearby version (1.8.2 vs 1.8.20) is still rejected even with preamble.
+# Regression guard: wrong nearby version (9.9.9 vs 9.9.90) is still rejected.
 FAKE_DATA_NEARBY="${TEST_WORK}/plugin-data-nearby"
 mkdir -p "${FAKE_DATA_NEARBY}/tools/fake-tool/9.9.9"
 # Lock expects 9.9.9; binary reports preamble 8.3.6 and tool version 9.9.90 (close but wrong).
@@ -557,3 +559,69 @@ resolved_nearby=$(
     && ok "preamble + nearby version: 9.9.90 not accepted when lock wants 9.9.9" \
     || bad "preamble nearby version gate" \
        "got '${resolved_nearby}', want empty — version 9.9.90 must not match 9.9.9"
+
+# --------------------------------------------------------------------------- #
+printf '\nresolver: project binary reporting wrong --version is rejected\n'
+# --------------------------------------------------------------------------- #
+
+# Regression guard (RED before fix): resolve_tool step 1 accepted any executable
+# in vendor/bin without a version check, letting an agent substitute a malicious
+# binary for a managed tool.  After the fix, a project binary that reports a
+# version token that does not match the lockfile pin is rejected, and the
+# resolver falls through to the plugin or PATH steps.
+
+WRONG_VER_PROJECT="${TEST_WORK}/project-wrong-ver"
+mkdir -p "${WRONG_VER_PROJECT}/vendor/bin"
+# Binary that reports 8.8.8, lockfile pins 9.9.9.
+printf '#!/bin/sh\nprintf "fake-tool 8.8.8\\n"\n' \
+    > "${WRONG_VER_PROJECT}/vendor/bin/fake-tool"
+chmod +x "${WRONG_VER_PROJECT}/vendor/bin/fake-tool"
+
+resolved_wv=$(
+    TOOLS_LOCK="$FAKE_LOCK"
+    CLAUDE_PROJECT_DIR="$WRONG_VER_PROJECT"
+    CLAUDE_PLUGIN_DATA=""
+    CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="project-only"
+    resolve_tool "fake-tool"
+)
+[ -z "$resolved_wv" ] \
+    && ok "project binary reporting wrong version is rejected" \
+    || bad "project binary version gate" \
+       "got '${resolved_wv}', want empty — 8.8.8 must not satisfy 9.9.9 pin"
+
+# --------------------------------------------------------------------------- #
+printf '\nversion gate: 4-component token does not satisfy a 3-component pin\n'
+# --------------------------------------------------------------------------- #
+
+# Regression guard (RED before fix): grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' extracted
+# 1.2.3 from 1.2.3.4, so a binary reporting 1.2.3.4 incorrectly satisfied a 1.2.3
+# pin.  The tightened extractor requires a non-digit-dot boundary on both sides.
+
+LOCK_1_2_3="${TEST_WORK}/lock-1.2.3.json"
+jq -n '{schema:1, tools:{"fake-tool":{version:"1.2.3",
+    assets:{"linux-amd64":{url:"file:///dev/null",sha256:"a"},
+            "linux-arm64":{url:"file:///dev/null",sha256:"a"},
+            "darwin-arm64":{url:"file:///dev/null",sha256:"a"}},
+    bin:"fake-tool"}}}' > "$LOCK_1_2_3"
+
+FAKE_4COMP="${TEST_WORK}/fake-tool-4comp"
+mkdir -p "$FAKE_4COMP"
+printf '#!/bin/sh\nprintf "fake-tool 1.2.3.4\\n"\n' > "${FAKE_4COMP}/fake-tool"
+chmod +x "${FAKE_4COMP}/fake-tool"
+
+# 4-component version must not satisfy a 3-component pin.
+TOOLS_LOCK="$LOCK_1_2_3" tool_version_matches "fake-tool" "${FAKE_4COMP}/fake-tool" \
+    && bad "version precision: 4-component" \
+       "1.2.3.4 incorrectly satisfied a 1.2.3 pin" \
+    || ok "version precision: 1.2.3.4 does not satisfy 1.2.3 pin"
+
+# 3-component exact match must still pass (regression).
+FAKE_EXACT="${TEST_WORK}/fake-tool-exact"
+mkdir -p "$FAKE_EXACT"
+printf '#!/bin/sh\nprintf "fake-tool 1.2.3\\n"\n' > "${FAKE_EXACT}/fake-tool"
+chmod +x "${FAKE_EXACT}/fake-tool"
+
+TOOLS_LOCK="$LOCK_1_2_3" tool_version_matches "fake-tool" "${FAKE_EXACT}/fake-tool" \
+    && ok "version precision: exact 1.2.3 still accepted" \
+    || bad "version precision: exact match regressed" \
+       "1.2.3 was rejected when lock expects 1.2.3"
