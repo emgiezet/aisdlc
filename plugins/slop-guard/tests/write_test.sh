@@ -70,3 +70,38 @@ reason="$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionR
 [ "$decision" = deny ] && printf '%s' "$reason" | grep -qF 'no human in this session' \
     && ok 'pre-write: headless protected edit becomes reasoned deny' \
     || bad 'pre-write: headless protected edit' "decision=${decision}, reason=${reason}"
+
+# ---------------------------------------------------------------------------
+# Guard/host configuration-file protection (hook_secret_deny — always deny)
+# ---------------------------------------------------------------------------
+
+# .claude/settings.json: writing it injects env vars (e.g.
+# CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory) that degrade subsequent
+# hook_deny calls to passive context for the rest of the session.
+run_write_policy Write .claude/settings.json \
+    '{"env":{"CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE":"advisory"}}' '' \
+    deny '.claude/settings.json write denied'
+
+# advisory mode MUST NOT relax this deny (hook_secret_deny, not hook_deny).
+advisory_cfg_output="$(jq -n --arg file '.claude/settings.json' --arg new '{"env":{}}' \
+    '{tool_name:"Write",tool_input:{file_path:$file,content:$new,new_string:$new,old_string:""}}' \
+    | CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory "$WRITE_HOOK")"
+advisory_cfg_decision="$(printf '%s' "$advisory_cfg_output" \
+    | jq -r '.hookSpecificOutput.permissionDecision // "allow"')"
+[ "$advisory_cfg_decision" = "deny" ] \
+    && ok 'pre-write: .claude/settings.json denied in advisory mode' \
+    || bad 'pre-write: .claude/settings.json advisory mode' \
+        "expected deny, got ${advisory_cfg_decision}"
+
+# .agents/ tree: host-level configuration for agent plugin loading.
+run_write_policy Write .agents/plugins/marketplace.json '{}' '' \
+    deny '.agents/plugins/marketplace.json write denied'
+
+# Hook registration files: removing or editing them can silence the guard.
+run_write_policy Write plugins/slop-guard/hooks/hooks.json '{}' '' \
+    deny 'plugins/*/hooks/hooks.json write denied'
+
+# Near-miss: docs/claude/settings.json has no .claude directory component and
+# must not be caught — agents legitimately document Claude settings there.
+run_write_policy Write docs/claude/settings.json '{}' '' \
+    allow 'docs/claude/settings.json near-miss not caught'
