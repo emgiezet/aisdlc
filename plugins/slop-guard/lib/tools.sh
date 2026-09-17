@@ -315,10 +315,11 @@ tool_version_output() {
 # --------------------------------------------------------------------------- #
 
 # tool_version_matches <name> <binary_path>
-# Returns 0 when the binary's --version output contains any standalone
-# dotted-integer token that exactly equals the lockfile version (leading 'v'
-# stripped from both sides). Scanning all tokens handles output that leads with
-# an unrelated version string. Exactness: 1.8.2 will not match 1.8.20.
+# Returns 0 when the binary's --version output contains any maximal 2- or
+# 3-component dotted-integer token that exactly equals the lockfile version
+# (leading 'v' stripped from both sides). A single greedy regex covers both
+# component counts: 1.8.2 is emitted as-is, not as 1.8. The || return 1
+# ensures a no-match exits cleanly under set -eo pipefail.
 tool_version_matches() {
     local name="$1" binary="$2"
     local expected; expected="$(lock_version "$name")" || return 1
@@ -326,15 +327,11 @@ tool_version_matches() {
     expected="${expected#v}"   # strip leading 'v' (e.g. v0.11.0 → 0.11.0)
 
     local actual; actual="$(tool_version_output "$name" "$binary" || true)"
-    # Scan all standalone dotted-integer tokens; any exact match wins.
-    local tokens3
-    tokens3="$(printf '%s\n' "$actual" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
-    if [ -n "$tokens3" ]; then
-        printf '%s\n' "$tokens3" | grep -qxF "$expected"
-        return
-    fi
-    # Fall back to 2-component match when no 3-component token is present.
-    printf '%s\n' "$actual" | grep -oE '[0-9]+\.[0-9]+' | grep -qxF "$expected"
+    # Extract every maximal 2- or 3-component token; exact-line match expected.
+    printf '%s\n' "$actual" \
+        | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' \
+        | grep -qxF "$expected" \
+        || return 1
 }
 
 # Managed Node tools are current only when the copied manifests still match the
