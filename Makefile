@@ -28,11 +28,11 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	@jq . $(CODEX_MARKETPLACE) > /dev/null && echo "  ✓ .agents/plugins/marketplace.json"
 	@jq . $(GROK_MARKETPLACE) > /dev/null && echo "  ✓ .grok-plugin/marketplace.json"
 	@jq . plugins/sdlc/hooks/hooks.json > /dev/null && echo "  ✓ sdlc hooks.json"
-	@for f in evals/harness/scenarios/*/scenario.json; do \
+	@set -e; for f in evals/harness/scenarios/*/scenario.json; do \
 		jq . "$$f" > /dev/null && echo "  ✓ $$f"; \
 	done
 	@echo "Checking source paths and name consistency across all marketplaces..."
-	@for plugin in sdlc slop-guard; do \
+	@set -e; for plugin in sdlc slop-guard; do \
 		codex_path=$$(jq -r ".plugins[] | select(.name==\"$$plugin\") | .source.path" $(CODEX_MARKETPLACE)); \
 		test -n "$$codex_path" \
 			|| (echo "  ✗ $$plugin: not found in Codex marketplace" && exit 1); \
@@ -68,11 +68,11 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	   && echo "  ✓ sdlc version consistent ($$SDLC_CLAUDE_V)" \
 	   || (echo "  ✗ sdlc version mismatch: claude=$$SDLC_CLAUDE_V portable=$$SDLC_PORT_V marketplace=$$SDLC_MKT_V grok=$$SDLC_GROK_V" && exit 1)
 	@echo "Checking required files..."
-	@for c in $(WORKFLOW_SKILLS); do \
+	@set -e; for c in $(WORKFLOW_SKILLS); do \
 		test -f plugins/sdlc/skills/$$c/SKILL.md && echo "  ✓ skills/$$c/SKILL.md" || \
 		(echo "  ✗ skills/$$c/SKILL.md MISSING" && exit 1); \
 	done
-	@for s in $(SKILLS); do \
+	@set -e; for s in $(SKILLS); do \
 		test -f plugins/sdlc/skills/$$s/SKILL.md && echo "  ✓ skills/$$s/SKILL.md" || \
 		(echo "  ✗ skills/$$s/SKILL.md MISSING" && exit 1); \
 		test -f plugins/sdlc/skills/$$s/agents/eval-set.json || \
@@ -80,7 +80,7 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	done
 	@test -f plugins/sdlc/agents/auto-qa.md && echo "  ✓ agents/auto-qa.md" || \
 		(echo "  ✗ agents/auto-qa.md MISSING" && exit 1)
-	@for p in $(PLAYBOOKS); do \
+	@set -e; for p in $(PLAYBOOKS); do \
 		test -f plugins/sdlc/templates/playbooks/$$p.md && echo "  ✓ templates/playbooks/$$p.md" || \
 		(echo "  ✗ templates/playbooks/$$p.md MISSING" && exit 1); \
 	done
@@ -97,18 +97,22 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	done
 	@echo "  ✓ every playbook within 70 lines"
 	@echo "Checking shell scripts..."
-	@for s in $(SCRIPTS); do \
+	@set -e; for s in $(SCRIPTS); do \
 		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
 		test -x "$$s" || (echo "  ✗ $$s NOT EXECUTABLE" && exit 1); \
 		echo "  ✓ $$s"; \
 	done
-	@command -v shellcheck > /dev/null 2>&1 && \
-		(shellcheck -S warning plugins/sdlc/hooks/guard plugins/sdlc/hooks/session-start \
+	@set -e; \
+	if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck -S warning plugins/sdlc/hooks/guard plugins/sdlc/hooks/session-start \
 		            plugins/sdlc/bin/aisdlc evals/harness/run.sh evals/harness/selftest.sh \
-		            evals/harness/stub-claude && echo "  ✓ shellcheck clean") || \
-	echo "  – shellcheck not installed, skipped"
+		            evals/harness/stub-claude; \
+		echo "  ✓ shellcheck clean"; \
+	else \
+		echo "  – shellcheck not installed, skipped"; \
+	fi
 	@echo "Running sdlc hook tests..."
-	@for s in plugins/sdlc/tests/run-tests plugins/sdlc/tests/grok_hook_test.sh; do \
+	@set -e; for s in plugins/sdlc/tests/run-tests plugins/sdlc/tests/grok_hook_test.sh; do \
 		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
 	done
 	@plugins/sdlc/tests/run-tests
