@@ -12,7 +12,7 @@ jobs:
       CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
       CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Version consistency
         run: |
@@ -73,7 +73,7 @@ jobs:
   runner-and-fixture:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
