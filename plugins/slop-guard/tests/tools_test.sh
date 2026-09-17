@@ -505,6 +505,38 @@ expected_preamble="${FAKE_DATA_PREAMBLE}/tools/fake-tool/current/fake-tool"
     || bad "preamble version gate" \
        "got '${resolved_preamble}', want '${expected_preamble}' — first-token parser extracted preamble version instead of tool version"
 
+# Reproduces the pipefail SIGPIPE hazard: binary outputs the correct 9.9.9
+# token first, then 10,000 additional dotted tokens.  grep -qxF exits 0 on
+# the first match and closes the pipe; grep -oE gets SIGPIPE (exit 141).
+# Under set -o pipefail the pipeline returns 141, not 0, so "|| return 1"
+# fires and tool_version_matches wrongly rejects the binary — RED test.
+FAKE_DATA_FLOOD="${TEST_WORK}/plugin-data-flood"
+mkdir -p "${FAKE_DATA_FLOOD}/tools/fake-tool/9.9.9"
+cat > "${FAKE_DATA_FLOOD}/tools/fake-tool/9.9.9/fake-tool" <<'FLOODSCRIPT'
+#!/bin/sh
+printf 'fake-tool 9.9.9\n'
+i=0
+while [ "$i" -lt 10000 ]; do
+    printf '1.2.3\n'
+    i=$((i + 1))
+done
+FLOODSCRIPT
+chmod +x "${FAKE_DATA_FLOOD}/tools/fake-tool/9.9.9/fake-tool"
+ln -s "${FAKE_DATA_FLOOD}/tools/fake-tool/9.9.9" \
+    "${FAKE_DATA_FLOOD}/tools/fake-tool/current"
+
+resolved_flood=$(
+    TOOLS_LOCK="$FAKE_LOCK"
+    CLAUDE_PLUGIN_DATA="$FAKE_DATA_FLOOD"
+    CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="plugin-only"
+    resolve_tool "fake-tool"
+)
+expected_flood="${FAKE_DATA_FLOOD}/tools/fake-tool/current/fake-tool"
+[ "$resolved_flood" = "$expected_flood" ] \
+    && ok "flood tokens: tool accepted when 9.9.9 is first token among 10001" \
+    || bad "flood SIGPIPE gate" \
+       "got '${resolved_flood}', want '${expected_flood}' — grep SIGPIPE under pipefail caused false rejection"
+
 # Verify wrong nearby version (1.8.2 vs 1.8.20) is still rejected even with preamble.
 FAKE_DATA_NEARBY="${TEST_WORK}/plugin-data-nearby"
 mkdir -p "${FAKE_DATA_NEARBY}/tools/fake-tool/9.9.9"
