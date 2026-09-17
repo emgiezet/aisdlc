@@ -64,7 +64,7 @@ _FX_STOP='{"hookEventName":"Stop","sessionId":"grok-stop-001","stopHookActive":f
 _STOP_REPO="${_SDLC_GROK_WORK}/stop-repo"
 mkdir -p "$_STOP_REPO"
 (
-    cd "$_STOP_REPO"
+    cd "$_STOP_REPO" || exit 1
     git init -q -b main
     git config user.email stop-test@localhost
     git config user.name "sdlc stop test"

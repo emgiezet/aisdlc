@@ -6,7 +6,6 @@
 set -uo pipefail
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-PLUGIN_ROOT="$(cd "${TESTS_DIR}/.." && pwd)"
 
 PASS=0
 FAIL=0
