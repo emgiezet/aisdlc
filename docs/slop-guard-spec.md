@@ -105,7 +105,7 @@ Plugin, który na trzech warstwach:
 
 **Z7. Brak sieci w szybkiej ścieżce.**
 - Hooki `PreToolUse`/`PostToolUse` nie wykonują zapytań sieciowych.
-- Sieć (SCA, metadane rejestrów pakietów) jest dozwolona tylko w bramce `Stop` i tylko gdy `userConfig.allow_network = true`. Wymóg ma znaczenie także dla lokalnego agenta pracującego na danych poufnych.
+- Narzędzia SCA (govulncheck, composer audit, pip-audit, npm audit) są wywoływane w bramce `Stop` wyłącznie przy użyciu lokalnie zainstalowanych binarkek. Plugin nie wykonuje samodzielnych zapytań sieciowych.
 
 **Z8. Ochrona przed pętlami.**
 - Maksymalnie 3 kolejne blokady tego samego findingu w tym samym pliku. Potem finding jest degradowany do `warn` z komunikatem dla użytkownika.
@@ -262,24 +262,6 @@ slop-guard/
       "title": "Enforcement mode",
       "description": "advisory | balanced | strict",
       "default": "balanced"
-    },
-    "stop_gate": {
-      "type": "boolean",
-      "title": "Block turn end on unresolved blockers",
-      "description": "Run slow checks at Stop and keep Claude working while blockers remain.",
-      "default": true
-    },
-    "sast_engine": {
-      "type": "string",
-      "title": "SAST engine",
-      "description": "opengrep | semgrep | none",
-      "default": "opengrep"
-    },
-    "allow_network": {
-      "type": "boolean",
-      "title": "Allow network in Stop gate",
-      "description": "Enables dependency vulnerability lookups (SCA).",
-      "default": false
     },
     "tool_source": {
       "type": "string",
@@ -469,20 +451,20 @@ Legenda:
 | PHP | Psalm (taint analysis) + psalm/plugin-laravel | security: dataflow (SQLi, XSS, shell, path, unserialize) | S | MIT | tak |
 | PHP | Rector (`--dry-run`) | modernizacja, martwy kod | S | MIT | nie (opcja) |
 | PHP | PHPMD | złożoność, rozmiar, nieużywany kod | M | BSD-3 | nie (opcja) |
-| PHP | `composer audit` | podatne zależności | S (przy zmianie composer.lock) | MIT | tak, gdy `allow_network` |
+| PHP | `composer audit` | podatne zależności | S (przy zmianie composer.lock) | MIT | tak |
 | Go | golangci-lint v2 (standard + security/perf/maint) | wszystko | M (pakiet) | GPL-3.0 (uruchamiane, nie linkowane) | tak |
 | Go | gofmt/goimports (w golangci `formatters`) | styl (raport) | F | BSD-3 | tak |
-| Go | govulncheck | podatne zależności z analizą osiągalności | S | BSD-3 | tak, gdy `allow_network` |
+| Go | govulncheck | podatne zależności z analizą osiągalności | S | BSD-3 | tak |
 | Python | Ruff (`check`, `format --check`) | lint, security (S), perf (PERF), async | F | MIT | tak |
 | Python | Pyright (fallback) / mypy / Pyrefly / ty — wg projektu | typy | M | MIT | tak |
 | Python | Bandit | security (uzupełnienie Ruff S) | S | Apache-2.0 | nie (opcja) |
-| Python | pip-audit / osv-scanner | podatne zależności | S | Apache-2.0 | tak, gdy `allow_network` |
+| Python | pip-audit / osv-scanner | podatne zależności | S | Apache-2.0 | tak |
 | TS/React | ESLint 9 + typescript-eslint v8 + react + react-hooks + security + regexp + no-unsanitized | lint, security, perf | F (bez type-info) / M (z type-info) | MIT / Apache-2.0 / MPL-2.0 | tak |
 | TS | `tsc --noEmit` | typy całego projektu | S | Apache-2.0 | tak |
 | TS/JS | knip | nieużywane eksporty/zależności | S | ISC | nie (opcja) |
 | Node.js | eslint-plugin-n + eslint-plugin-security + regexp (w stosie ESLint) | sync I/O, deprecated API, injection, ReDoS | F | MIT / Apache-2.0 | tak |
 | Node.js | njsscan | security (tylko JS, bez TS) | S | reguły LGPL | nie (opcja) |
-| JS deps | `npm audit` / `pnpm audit` / osv-scanner | podatne zależności | S | — | tak, gdy `allow_network` |
+| JS deps | `npm audit` / `pnpm audit` / osv-scanner | podatne zależności | S | — | tak |
 | SQL (Postgres) | squawk | bezpieczne migracje (locki, NOT NULL, indeksy) | F | sprawdź przy pinowaniu | tak dla `*.sql` w katalogach migracji |
 | SQL | sqlfluff | lint SQL, `SELECT *`, niejednoznaczności | F | MIT | tak dla `*.sql` |
 | Terraform | `terraform fmt -check` / `tofu fmt -check` | styl (raport) | F | MPL / BUSL (Terraform) | tak |
@@ -673,7 +655,7 @@ vendor/bin/rector process $FILES --dry-run --output-format=json --no-progress-ba
 - Tylko projektowy `rector.php`, bez fallbacku.
 - Findings to `info` z propozycją diffu, **nigdy nie aplikowane automatycznie**.
 
-#### composer audit (tier S, przy zmianie `composer.lock`, wymaga `allow_network`)
+#### composer audit (tier S, przy zmianie `composer.lock`)
 
 ```bash
 composer audit --locked --format=json --no-interaction
@@ -773,7 +755,7 @@ Zasady:
   - `prealloc`, `perfsprint` → `warn`,
   - `gocognit`, `gocritic` → `warn`.
 
-#### govulncheck (tier S, przy zmianie go.mod/go.sum, wymaga `allow_network`)
+#### govulncheck (tier S, przy zmianie go.mod/go.sum)
 
 ```bash
 govulncheck -format json ./...
@@ -880,7 +862,7 @@ bandit -r $DIRS -f json -ll -ii --exclude ./tests,./.venv
 
 - `-ll -ii` = severity i confidence co najmniej medium.
 
-#### pip-audit / osv-scanner (tier S, wymaga `allow_network`)
+#### pip-audit / osv-scanner (tier S)
 
 ```bash
 pip-audit -f json --strict --progress-spinner off -r requirements.txt   # lub dla projektu uv/poetry:
@@ -1036,7 +1018,7 @@ Zasady:
   - `no-floating-promises`, `no-misused-promises`, `rules-of-hooks`, `n/no-sync` (w kodzie serwerowym) → `error`,
   - reszta → `warn`.
 
-#### Zależności JS (tier S, przy zmianie lockfile'a, wymaga `allow_network`)
+#### Zależności JS (tier S, przy zmianie lockfile'a)
 
 ```bash
 npm audit --json --omit=dev          # lub: pnpm audit --json --prod / osv-scanner na lockfile
@@ -1130,7 +1112,7 @@ plugin "aws" {
 TFLINT_PLUGIN_DIR="$SLOPGUARD_CACHE_DIR/tflint" tflint --config "$CONFIG" --format json --chdir "$(dirname "$FILE")"
 ```
 
-- `tflint --init` pobiera ruleset z sieci — wykonywane tylko w `session-start` przy `allow_network`, albo ręcznie przez `slopguard doctor --install`.
+- `tflint --init` pobiera ruleset z sieci — wykonywane ręcznie przez `slopguard doctor --install`.
 
 `configs/baseline/.checkov.yaml`:
 
@@ -1167,7 +1149,7 @@ kubeconform -strict -summary -output json -kubernetes-version "$K8S_VERSION" -ig
 kube-linter lint --config "$CONFIG" --format json "$FILE"
 ```
 
-- `kubeconform` domyślnie pobiera schematy z sieci. Dispatcher używa lokalnego cache schematów (`-schema-location` na katalog w `${CLAUDE_PLUGIN_DATA}`), wypełnianego w `session-start` przy `allow_network`. Bez cache — pomiń z `info`.
+- `kubeconform` domyślnie pobiera schematy z sieci. Dispatcher używa lokalnego cache schematów (`-schema-location` na katalog w `${CLAUDE_PLUGIN_DATA}`), wypełnianego przez `slopguard doctor --install`. Bez cache — pomiń z `info`.
 
 `configs/baseline/.kube-linter.yaml`:
 
@@ -1278,7 +1260,6 @@ opengrep scan --config "$CLAUDE_PLUGIN_ROOT/rules/opengrep" --json --metrics=off
 ```
 
 - Flagę `--metrics` zweryfikuj — Opengrep może nie mieć telemetrii.
-- Przy `sast_engine=semgrep` to samo wywołanie przez `semgrep scan`.
 
 Minimalny zestaw **własnych** reguł (MIT, pisane od zera; każda z fixture `bad`/`good`):
 
@@ -1332,7 +1313,6 @@ Uwagi:
 - Dla `ask` przy nowej zależności dispatcher dołącza w `permissionDecisionReason` wynik lokalnych heurystyk bez sieci:
   - odległość Levenshteina ≤ 2 od popularnych pakietów z wbudowanej listy top-N per ekosystem,
   - nazwa z sufiksami typu `-js`, `-dev`, `-utils` przy znanym pakiecie bazowym.
-- Przy `allow_network=true` może dodatkowo sprawdzić datę pierwszej publikacji (np. `< 30 dni` → oznacz w powodzie).
 - Skill `node-antipatterns` rekomenduje w projektach pnpm ustawienie `minimumReleaseAge` (dostępne od pnpm 10.16).
 
 ### 7.2 `pre-write` — obchodzenie kontroli i sekrety
@@ -1649,7 +1629,7 @@ Zasady generatora:
 ```
 
 **Zasady instalacji**
-- Instalacja wyłącznie przez `slopguard doctor --install`, uruchamiane ręcznie przez użytkownika albo w `session-start`, gdy `allow_network=true`. **Nigdy w hookach Pre/PostToolUse.**
+- Instalacja wyłącznie przez `slopguard doctor --install`, uruchamiane ręcznie przez użytkownika. **Nigdy w hookach Pre/PostToolUse.**
 - Binarki: pobranie → weryfikacja sha256 → rozpakowanie do katalogu wersji → atomowy symlink `current`.
   - Niezgodny hash = przerwanie, usunięcie pobranego pliku, `error` w `doctor`.
 - Python: `uv pip install --require-hashes -r tools/python/requirements.lock` do `${CLAUDE_PLUGIN_DATA}/tools/python-venv`.
@@ -1757,7 +1737,7 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 - ✅ Findings medium docierają do agenta przez rewake tylko przy nowych problemach ≥ `error`; brak zapętleń (Z8) w testach.
 
 **Etap 4 — Bramka Stop**
-- Psalm taint, `tsc --noEmit`, Checkov na katalogach, skan sekretów diffu sesji, SCA (govulncheck, composer/npm audit, pip-audit/osv-scanner) przy `allow_network`.
+- Psalm taint, `tsc --noEmit`, Checkov na katalogach, skan sekretów diffu sesji, SCA (govulncheck, composer/npm audit, pip-audit/osv-scanner) przy zainstalowanych narzędziach.
 - Ochrona pętli, raport końcowy (findings nierozwiązane, dodane suppressions, liczba zmienionych linii poza hunkami findings).
 - ✅ Kontrakt `stop-gate`; p95 < 5 min; tryby `advisory`/`balanced`/`strict` zachowują się zgodnie z 4.6.
 
@@ -1778,13 +1758,13 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 | # | Decyzja | Rozstrzygnięcie | Blokująca |
 |---|---|---|---|
 | D1 | Język dispatchera | **POTWIERDZONE: bash + jq.** Ten sam warsztat co `plugins/sdlc/bin/aisdlc` i `hooks/guard` — jeden recenzent czyta oba pluginy, `shellcheck -S warning` jest bramką. Konsekwencje: `jq` staje się pinowaną zależnością produktu (bez niego polityki fail-closed byłyby no-opem), blokady plikowe przez `mkdir` a nie `flock` (macOS go nie ma), każda odpowiedź JSON budowana `jq -n --arg`, Windows odłożony do Etapu 6 jako launcher `.cmd` albo brak wsparcia w 1.0 | tak |
-| D2 | Silnik SAST | **POTWIERDZONE: Opengrep**, `sast_engine=semgrep\|none` nadal działa. Powód: reguły wymagające dataflow (AP-NODE-SEC-001, AP-PY-SEC-001, AP-TS-SEC-004) nie mają pokrycia w żadnym innym narzędziu macierzy — PHP ma taint w Psalmie, Go w gosecu, a Python/TS/Node nic. Format reguł i wyjście JSON/SARIF są wspólne, więc przełącznik pozostaje jednym słowem. Ryzyko to utrzymanie młodego forka, nie możliwości: pinowanie po sha256 i trzymanie własnych reguł w składni, którą parsuje też Semgrep CE (weryfikowane przez `validate-configs` z `sast_engine=semgrep`) | tak |
+| D2 | Silnik SAST | **POTWIERDZONE: Opengrep**. Reguły wymagające dataflow (AP-NODE-SEC-001, AP-PY-SEC-001, AP-TS-SEC-004) nie mają pokrycia w żadnym innym narzędziu macierzy — PHP ma taint w Psalmie, Go w gosecu, a Python/TS/Node nic. Format reguł i wyjście JSON/SARIF Opengrep i Semgrep CE są identyczne; własne reguły pisane w składni, którą oba silniki parsują. Ryzyko to utrzymanie młodego forka, nie możliwości: pinowanie po sha256 i weryfikacja każdej reguły przez `validate-configs`. | tak |
 | D3 | Domyślny tryb | **balanced**; `strict` dla repo z wysokimi wymaganiami (moduły płatności/danych osobowych) | nie |
 | D4 | Bramka Stop blokuje? | **Tak, tylko blockery**, maks. 2 iteracje | nie |
 | D5 | Trivy / KICS | **Wyłączone domyślnie**; Checkov + tflint + kube-linter pokrywają zakres | nie |
 | D6 | Lint JS/TS | **ESLint + typescript-eslint** (reguły type-aware jak `no-floating-promises`); Biome/Oxlint jako szybki tier F później, jeśli wydajność będzie problemem | nie |
 | D7 | Type checker Pythona | wg projektu; fallback **Pyright standard** | nie |
-| D8 | Sieć | `allow_network=false` domyślnie; SCA w CI zamiast w pluginie, dopóki nie ma lokalnego mirrora baz podatności | nie |
+| D8 | Sieć | Plugin nie wykonuje zapytań sieciowych. Narzędzia SCA (govulncheck, composer audit, pip-audit, npm audit) wywołuje bramka Stop, korzystając wyłącznie z lokalnie zainstalowanych binarkek. Pełny SCA z aktualną bazą podatności powinien być elementem CI. | nie |
 | D9 | Nakładanie z `security-guidance` / Claude Security / wtyczkami LSP | Slop Guard nie powiela przeglądu LLM; jeśli `security-guidance` jest włączony, `/secure-review` tylko odsyła do niego | nie |
 | D10 | CI | **POTWIERDZONE: GitHub Actions.** Etap 2 dowozi `actionlint` + `zizmor` z `unpinned-uses: hash-pin`; GitLab CI (6.9) i AP-CI-006 schodzą za Etap 2 | tak (dla zakresu Etapu 2) |
 | D11 | Dialekt SQL domyślny | Czy dominuje MySQL czy PostgreSQL? MySQL nie ma odpowiednika squawk — więcej reguł własnych i skill | nie |

@@ -9,16 +9,16 @@ Date confirmed: **2026-09-16**
 | # | Decision | Answer | Date | Consequence |
 |---|---|---|---|---|
 | D1 | Dispatcher language | **bash + `jq`** | 2026-09-16 | No compiled artefact, no cross-compilation, no release matrix. `jq` is the only added pinned dependency (Task 0.2) — `flock` is not available on macOS and is not used; file locks are implemented with `mkdir`. Every JSON response is built with `jq -n --arg`. Tests are bash assertions, not `go test`. `shellcheck -S warning` is the CI gate, shared with `plugins/sdlc/bin/aisdlc`. Windows support is a wrapper problem deferred to Stage 6 and recorded as a known limitation. |
-| D2 | SAST engine | **Opengrep** (`sast_engine=semgrep\|none` still works) | 2026-09-16 | Own rules are kept in the syntax both Opengrep and Semgrep CE parse. Taint-mode rules are marked in the catalogue so a `semgrep` fallback degrades visibly, not silently. |
+| D2 | SAST engine | **Opengrep** | 2026-09-16 | Own rules are kept in the syntax both Opengrep and Semgrep CE parse. Taint-mode rules are marked in the catalogue so a Semgrep CE fallback degrades visibly, not silently. |
 | D10 | Target CI system | **GitHub Actions** | 2026-09-16 | Stage 2 implements `actionlint` + `zizmor` with `unpinned-uses: hash-pin`. The GitLab Opengrep rule set (§6.9) moves behind Stage 2, and AP-CI-006 ships in Stage 3 or later. |
 
 ### Why Opengrep rather than Semgrep CE
 
 The rules that need dataflow tracking are the ones no other tool in the matrix covers. PHP has Psalm taint and Go has `gosec`; Python, TypeScript and Node have nothing free that tracks `req.body` to a sink. AP-NODE-SEC-001, AP-PY-SEC-001 and AP-TS-SEC-004 are precisely those, and Opengrep keeps intra-file taint in the open-source engine while Semgrep moved it behind the paid tier.
 
-The rule format and JSON/SARIF output are identical, so `sast_engine` stays a one-word switch rather than a rewrite. Neither engine changes the licence problem — Semgrep Registry rules cannot be shipped either way, so the plugin writes its own rules regardless. Opengrep costs nothing extra here.
+The rule format and JSON/SARIF output are identical between Opengrep and Semgrep CE; own rules are authored in the shared syntax, verified by `scripts/validate-configs`. Neither engine changes the licence problem — Semgrep Registry rules cannot be shipped either way, so the plugin writes its own rules regardless. Opengrep costs nothing extra here.
 
-The risk is maintenance, not capability: the fork is young and small. Mitigations: pin it by sha256 like every other binary, and keep every own rule inside the syntax Semgrep CE also parses, verified by running `scripts/validate-configs` with `sast_engine=semgrep`.
+The risk is maintenance, not capability: the fork is young and small. Mitigations: pin it by sha256 like every other binary, and keep every own rule inside the syntax Semgrep CE also parses.
 
 ---
 
@@ -31,7 +31,7 @@ The risk is maintenance, not capability: the fork is young and small. Mitigation
 | D5 | Trivy / KICS | **Off by default** | On 19 March 2026 an attacker published a malicious Trivy v0.69.4 that overwrote 76 of 77 `aquasecurity/trivy-action` tags and all 7 `aquasecurity/setup-trivy` tags with credential-stealing code; KICS was hit in the same campaign (§5.1). A plugin running on developer machines with access to secrets must not fetch these tools unverified. Checkov + tflint + kube-linter cover the same IaC scope. If re-enabled via project config, Trivy or KICS must be pinned by sha256 to a version published after the incident. |
 | D6 | JS/TS linter | **ESLint + typescript-eslint** | Type-aware rules (`no-floating-promises`, etc.) are enabled. Biome/Oxlint as a fast tier-F option is recorded in `docs/ideas.md` for consideration if performance becomes a problem. |
 | D7 | Python type checker | **Project's own type checker; Pyright (standard mode) as fallback** | If the project ships a `pyrightconfig.json` or `pyproject.toml [tool.pyright]`, that configuration is used. Otherwise Pyright runs in standard mode. |
-| D8 | Network in fast path | **`allow_network=false` by default** | SCA runs in CI rather than in the plugin until a local vulnerability-database mirror is available. Users may set `allow_network=true` to enable SCA in the Stop gate. |
+| D8 | Network in hooks | **No network calls from plugin hooks** | SCA tools (govulncheck, composer audit, pip-audit, npm audit) run in the Stop gate using locally installed binaries only. Full SCA against a current vulnerability database belongs in CI. |
 | D9 | Overlap with `security-guidance` / Claude Security | **No LLM-review duplication** | If `security-guidance` is enabled, `/slop-guard:secure-review` defers to it instead of launching an independent LLM review (§3.5). |
 
 ---
