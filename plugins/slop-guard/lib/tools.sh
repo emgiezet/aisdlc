@@ -317,9 +317,10 @@ tool_version_output() {
 # tool_version_matches <name> <binary_path>
 # Returns 0 when the binary's --version output contains any maximal 2- or
 # 3-component dotted-integer token that exactly equals the lockfile version
-# (leading 'v' stripped from both sides). A single greedy regex covers both
-# component counts: 1.8.2 is emitted as-is, not as 1.8. The || return 1
-# ensures a no-match exits cleanly under set -eo pipefail.
+# (leading 'v' stripped from both sides). Tokens are collected into a variable
+# first (no-match tolerated with || true), then matched via here-string rather
+# than a producer→grep -q pipeline: an early match in the latter causes the
+# producer to receive SIGPIPE (exit 141) which pipefail reports as failure.
 tool_version_matches() {
     local name="$1" binary="$2"
     local expected; expected="$(lock_version "$name")" || return 1
@@ -327,11 +328,12 @@ tool_version_matches() {
     expected="${expected#v}"   # strip leading 'v' (e.g. v0.11.0 → 0.11.0)
 
     local actual; actual="$(tool_version_output "$name" "$binary" || true)"
-    # Extract every maximal 2- or 3-component token; exact-line match expected.
-    printf '%s\n' "$actual" \
-        | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' \
-        | grep -qxF "$expected" \
-        || return 1
+    # Collect every maximal 2- or 3-component token; tolerate no-match.
+    local tokens
+    tokens="$(printf '%s\n' "$actual" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' || true)"
+    [ -n "$tokens" ] || return 1
+    # Here-string avoids the producer→grep -q pipe that triggers SIGPIPE.
+    grep -qxF "$expected" <<< "$tokens" || return 1
 }
 
 # Managed Node tools are current only when the copied manifests still match the
