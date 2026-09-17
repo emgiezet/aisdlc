@@ -22,6 +22,11 @@ PARSER="${PLUGIN_ROOT}/rules/policies/generate_policy.sh"
 # The generated text contains only single-quoted strings from the repository-owned policy.
 eval "$("$PARSER" "$POLICY_FILE")"
 
+# Wrapper executables that only prefix another command: the policy must judge
+# what they run, not the wrapper. `curl … | sudo sh` fed the sink just as
+# directly as `curl … | sh`.
+_WRAPPER_COMMANDS='sudo|doas|nohup|command|exec|time|xargs|stdbuf|setsid'
+
 _normalize_component() {
     local text="$1" index=0 executable
     local -a words
@@ -39,11 +44,33 @@ _normalize_component() {
         done
     fi
     [ "$index" -lt "${#words[@]}" ] || { printf '%s' "$text"; return; }
+    # Step over wrapper executables and their flags until a real command shows up.
+    while [ "$index" -lt "${#words[@]}" ] \
+        && [[ "${words[$index]##*/}" =~ ^(${_WRAPPER_COMMANDS})$ ]]; do
+        index=$((index + 1))
+        while [ "$index" -lt "${#words[@]}" ]; do
+            case "${words[$index]}" in -*|[A-Za-z_][A-Za-z0-9_]*=*) index=$((index + 1)) ;; *) break ;; esac
+        done
+    done
+    [ "$index" -lt "${#words[@]}" ] || { printf '%s' "$text"; return; }
     executable="${words[$index]##*/}"
     words[$index]="$executable"
     words=("${words[@]:$index}")
     printf '%s' "${words[*]}"
 }
+
+_DOWNLOADER_RE='^[[:space:]]*(curl|wget)([[:space:]]|$)'
+_INTERPRETER_RE='^[[:space:]]*(sh|bash|zsh|dash|ksh|python[0-9.]*|perl|ruby|node)([[:space:]]|$)'
+
+# Substitution feeding an interpreter — `bash <(curl …)`, `sh -c "$(curl …)"`.
+# shellsplit reports the substitution as its own component, so the pipeline
+# relation below never sees it; match the raw command instead, requiring the
+# interpreter to introduce the substitution so an unrelated `$(curl …)`
+# assignment elsewhere in the command is not swept up.
+if [[ "$command" =~ (^|[^-[:alnum:]_/])(sh|bash|zsh|dash|ksh|python[0-9.]*|perl|ruby|node)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*[\"\']?[\$\<]\([[:space:]]*(curl|wget)([[:space:]]|$) ]]; then
+    hook_deny "Remote script execution. Download, verify checksum, then run explicitly."
+    exit 0
+fi
 
 components=()
 while IFS= read -r component; do
@@ -51,8 +78,11 @@ while IFS= read -r component; do
 done < <(shellsplit "$command")
 decision=""
 reason=""
-previous=""
 operator=""
+# Set while the current pipeline started with a downloader; any later stage that
+# is an interpreter is then fed remote bytes, however many filters sit between
+# them (`curl … | tee /tmp/i | sh`).
+piped_from_download=0
 
 for component in "${components[@]}"; do
     case "$component" in
@@ -62,11 +92,18 @@ for component in "${components[@]}"; do
 
     normalized_component="$(_normalize_component "$component")"
 
-    if [ "$operator" = '|' ] \
-        && [[ "$previous" =~ ^[[:space:]]*(curl|wget)([[:space:]]|$) ]] \
-        && [[ "$normalized_component" =~ ^[[:space:]]*(sh|bash|zsh|python[0-9.]*)([[:space:]]|$) ]]; then
-        hook_deny "Remote script execution. Download, verify checksum, then run explicitly."
-        exit 0
+    if [ "$operator" = '|' ]; then
+        if [ "$piped_from_download" -eq 1 ] \
+            && [[ "$normalized_component" =~ $_INTERPRETER_RE ]]; then
+            hook_deny "Remote script execution. Download, verify checksum, then run explicitly."
+            exit 0
+        fi
+    else
+        # A non-pipe operator ends the pipeline, so the relation resets.
+        piped_from_download=0
+    fi
+    if [[ "$normalized_component" =~ $_DOWNLOADER_RE ]]; then
+        piped_from_download=1
     fi
 
     allowed=0
@@ -95,7 +132,6 @@ for component in "${components[@]}"; do
         done
     fi
 
-    previous="$normalized_component"
     operator=""
 done
 
