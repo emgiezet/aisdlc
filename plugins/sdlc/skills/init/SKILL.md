@@ -6,7 +6,7 @@ description: >
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 
-# /sdlc:init
+# init
 
 The rest of the pipeline assumes three things exist: a **router** that sends each task to one
 playbook, **rules** that attach by path, and a **profile** recording what this repo actually has.
@@ -121,7 +121,7 @@ Present, for approval, before writing anything:
 
    | Capability | Status | Integration |
    |------------|--------|-------------|
-   | Slop Guard | `<available\|unavailable\|unknown>` | PreToolUse hook enforcement: secret access/content, dependency/lockfile operations, suppression/config weakening. Active when installed; workflow does not replicate it when absent. Stop gate is not registered. |
+   | Slop Guard | `<available\|unavailable\|unknown>` | Optional add-on: PreToolUse hooks for secret access/content, dependency/lockfile operations, and suppression/config weakening. Absent: the AISDLC workflow is complete and its own Stop guard (on Claude/Codex) remains active. Slop Guard has no SAST or Stop gate. |
    | Superpowers | `<available\|unavailable\|unknown>` | Brainstorming/planning/TDD/debug/review disciplines in spec, implement, qa. Falls back to explicit AISDLC instructions when absent. |
    | Ponytail | `<available\|unavailable\|unknown>` | Minimal implementation and over-engineering review in implement and qa. Falls back to "Implement the minimum" instruction when absent. |
    | Headroom | `<installed\|absent>` | External transport only — never invoked by any workflow step. |
@@ -208,9 +208,9 @@ Slop Guard: <status> · Superpowers: <status> · Ponytail: <status> · Headroom:
 ## Next
 1. Read CLAUDE.md and the playbooks. They are yours now; correct anything that reads wrong.
 2. git add CLAUDE.md AGENTS.md .claude/ specs/ && git commit
-3. Write your first spec:  /sdlc:spec <a small, real ticket>  (Codex: $spec · Grok: /spec)
-4. Run it while watching:  /sdlc:implement <TICKET> then /sdlc:qa <TICKET>
-5. Only then queue anything: aisdlc add <TICKET>
+3. Write your first spec — use the `spec` skill (Claude: `/sdlc:spec` · Codex: `$spec` · Grok: `/spec`).
+4. Run it while watching — use the `implement` then `qa` skills.
+5. Claude: queue further work with `aisdlc add <TICKET>`. Codex/Grok: invoke `implement` directly after approval.
 
 The first spec you drive by hand teaches you more about this setup than the first ten queued tasks.
 ```
@@ -219,7 +219,7 @@ The first spec you drive by hand teaches you more about this setup than the firs
 
 ## Not to be confused with
 
-- **`/sdlc:spec`** — writes one spec. This command sets up the repo so specs can be executed.
+- **The `spec` skill** — writes one spec. This command sets up the repo so specs can be executed.
 - **Editing `CLAUDE.md` by hand** — always fine, and expected. This command produces a starting
   point calibrated to the repo; keeping it correct as the repo changes is ordinary maintenance. The
   `task-router` skill covers how.

@@ -17,17 +17,49 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
+# Grok: SessionStart stdout is ignored (passive hook); exit cleanly.
+if [ -n "${GROK_PLUGIN_ROOT:-}" ] && [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    exit 0
+fi
+
+# Unknown runtime: nothing to inject.
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    exit 0
+fi
+
+# Codex: sets PLUGIN_ROOT (native) plus CLAUDE_PLUGIN_ROOT (compatibility layer).
+# Claude: sets only CLAUDE_PLUGIN_ROOT.
+if [ -n "${PLUGIN_ROOT:-}" ]; then
+    # Codex — $-prefixed commands
+    _init="\$init"
+    _spec="\$spec"
+    _mockup="\$mockup"
+    _implement="\$implement"
+    _qa="\$qa"
+    _ship="\$ship"
+    _queue_note="aisdlc queue is Claude-only — invoke \$implement <TICKET> directly after approval"
+else
+    # Claude — /sdlc:-prefixed commands
+    _init="/${NAME}:init"
+    _spec="/${NAME}:spec"
+    _mockup="/${NAME}:mockup"
+    _implement="/${NAME}:implement"
+    _qa="/${NAME}:qa"
+    _ship="/${NAME}:ship"
+    _queue_note="aisdlc add <TICKET>       → queue it instead: worktree per task, PRs are the review inbox"
+fi
+
 context_raw="AI SDLC harness active (${NAME} v${VERSION}).
 
 The pipeline. A spec is the only approval point; everything after it runs unattended:
-  /${NAME}:init             → generate this repo's task router, playbooks, and rules (run once)
-  /${NAME}:spec <TICKET>    → specs/<TICKET>/spec.md with a UC table (starts as status: draft)
-  /${NAME}:mockup <TICKET>  → clickable single-file mockup for business validation
+  ${_init}             → generate this repo's task router, playbooks, and rules (run once)
+  ${_spec} <TICKET>    → specs/<TICKET>/spec.md with a UC table (starts as status: draft)
+  ${_mockup} <TICKET>  → clickable single-file mockup for business validation
   <a human flips status: approved and commits it>
-  /${NAME}:implement <TICKET> → no-gate TDD build, one test per UC, full CI matrix
-  /${NAME}:qa <TICKET>      → independent verification, UC×test matrix, PASS/GAPS verdict
-  /${NAME}:ship <TICKET>    → draft PR with the verdict up front, QA report as a comment
-  aisdlc add <TICKET>       → queue it instead: worktree per task, PRs are the review inbox
+  ${_implement} <TICKET> → no-gate TDD build, one test per UC, full CI matrix
+  ${_qa} <TICKET>      → independent verification, UC×test matrix, PASS/GAPS verdict
+  ${_ship} <TICKET>    → draft PR with the verdict up front, QA report as a comment
+  ${_queue_note}
 
 Skills (load with the Skill tool):
 - spec-authoring — the UC table format: atomic, observable, stably-numbered criteria
@@ -41,12 +73,12 @@ Enforced by hooks, not by good intentions: force pushes and --no-verify are bloc
 session that deletes or skips a test is blocked from finishing. If a test contradicts the
 spec, that is a contradiction to report, not a test to remove.
 
-If this repo has no CLAUDE.md task router yet, run /${NAME}:init before anything else."
+If this repo has no CLAUDE.md task router yet, run ${_init} before anything else."
 
 context_escaped=$(escape_for_json "$context_raw")
 
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  cat <<EOF
+# Claude JSON contract (hookSpecificOutput) — honoured by both Claude and Codex.
+cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
@@ -54,12 +86,5 @@ if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   }
 }
 EOF
-else
-  cat <<EOF
-{
-  "additional_context": "${context_escaped}"
-}
-EOF
-fi
 
 exit 0

@@ -2,11 +2,11 @@
 name: qa
 description: >
   Use when an implementation is ready for independent verification against its spec, after
-  /sdlc:implement and before opening a PR or reviewing agent-written code.
+  implement and before opening a PR or reviewing agent-written code.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 
-# /sdlc:qa
+# qa
 
 The step that decides whether a human should spend attention on this branch. It runs before
 anyone reads the code, and its verdict is what they read first.
@@ -51,10 +51,14 @@ Either way the output is a UC×test matrix, real suite output, and a findings li
   analysis findings.
 - If Ponytail is recorded as `available`: load the `ponytail-review` skill — it identifies
   over-engineering to flag as non-blocking findings in the QA report.
-- AISDLC fallback when any optional capability is absent or unknown: apply the `dense-testing`
-  review framework, and include an explicit "Security checks not run — no hook enforcement active"
-  note in the report's "Not verified" section to show the reviewer what was outside the coverage
-  boundary. Continue configured security/static-analysis commands from the CI matrix.
+- **Slop Guard absent or unknown**: note "No Slop Guard hook enforcement" in the Not verified
+  section. In all cases: always apply the `dense-testing` review framework, and always run
+  configured security/static-analysis commands from the CI matrix. If no such command is
+  configured, note "No project security/static-analysis command ran" in Not verified.
+- **Superpowers absent**: apply the `dense-testing` review framework for UC coverage and code
+  quality analysis (the framework is always applied regardless of Superpowers).
+- **Ponytail absent**: note over-engineering observations as non-blocking findings if scope
+  appears excessive, without the formal ponytail-review discipline.
   Headroom is never loaded by this workflow.
 
 ---
@@ -119,7 +123,7 @@ git status --porcelain     # must print nothing
 ```
 
 An uncommitted report is a report that does not exist: the queue runs in a throwaway worktree, so
-the file disappears with it, and `/sdlc:ship` refuses to run on a dirty tree — an unattended task
+the file disappears with it, and the `ship` skill refuses to run on a dirty tree — an unattended task
 stalls here with all the work already done. Verify with `git status` before you report success; if
 it prints anything, you are not done.
 

@@ -44,7 +44,7 @@ This makes coverage of the *spec* computable with grep, independent of line-cove
 grep -rho 'UC-[0-9]\+' <test-dir> | sort -u    # UCs with at least one test
 ```
 
-`/sdlc:qa` and the `auto-qa` agent build the UC×test matrix from exactly this. A UC with no
+The `qa` skill and the `auto-qa` agent build the UC×test matrix from exactly this. A UC with no
 matching test is a gap, whatever the line coverage says.
 
 ## Density floors

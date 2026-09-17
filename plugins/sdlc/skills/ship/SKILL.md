@@ -1,12 +1,12 @@
 ---
 name: ship
 description: >
-  Use when /sdlc:qa has passed and the implementation branch is ready to be pushed as a draft
-  PR with the spec and QA verdict attached, or from the aisdlc queue as the final delivery step.
+  Use when the qa skill has passed and the implementation branch is ready to be pushed as a
+  draft PR with the spec and QA verdict attached, or from the aisdlc queue as the final delivery step.
 allowed-tools: Bash(git:*), Bash(gh:*), Read, Write, Grep, Glob
 ---
 
-# /sdlc:ship
+# ship
 
 The delivery end of the unattended pipeline. Its job is to make a human's next two minutes
 efficient: the PR must say what was asked, what the QA verdict is, and where to look first.
@@ -28,7 +28,7 @@ answer, and finding that out must cost one tool call.
 
 Then refuse, with a one-line reason, if:
 
-- `specs/<TICKET>/qa-report.md` is missing → "run /sdlc:qa first"
+- `specs/<TICKET>/qa-report.md` is missing → "run the qa skill first"
 - the QA verdict is `GAPS` and it has a blocking finding → "QA blocking; fix before shipping"
 - `specs/<TICKET>/BLOCKED.md` exists → "implementation stopped blocked"
 - the working tree is dirty → commit or explain; never `git add -A` blind at this stage

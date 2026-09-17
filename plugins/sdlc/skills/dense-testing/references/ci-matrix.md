@@ -1,7 +1,7 @@
 # CI verification matrix
 
 Single source of truth for how any command discovers the commands to verify a change with.
-Referenced by `/sdlc:implement`, `/sdlc:qa`, and the `auto-qa` agent. The goal: what you run
+Referenced by the `implement` and `qa` skills, and the `auto-qa` agent. The goal: what you run
 locally is exactly what CI runs, so a clean local run means no CI surprises.
 
 If `.claude/sdlc.md` already records a verification table for this repo, use it and skip

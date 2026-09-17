@@ -10,8 +10,8 @@ description: >
 
 # Spec Authoring
 
-A spec in `specs/<TICKET>/spec.md` is the input to `/sdlc:implement`, `/sdlc:qa`, and the
-`aisdlc` queue. Nobody reviews the plan mid-run — approving the spec *is* the approval, so
+A spec in `specs/<TICKET>/spec.md` is the input to the `implement` and `qa` skills, and the
+`aisdlc` queue (Claude only). Nobody reviews the plan mid-run — approving the spec *is* the approval, so
 whatever the spec fails to say, the agent will invent.
 
 Human-facing planning belongs elsewhere: decomposition of a vague ticket, design discussion,

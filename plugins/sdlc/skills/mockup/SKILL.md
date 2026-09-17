@@ -6,14 +6,14 @@ description: >
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 ---
 
-# /sdlc:mockup
+# mockup
 
 Validation before implementation. Reading a spec back to a stakeholder proves nothing — they
 agree with the words and disagree with the screen. A clickable mockup surfaces the
 misunderstanding while changing it is still free.
 
 The invocation input is the ticket id. Read `.claude/sdlc.md` for the specs directory, then
-`<specs dir>/<TICKET>/spec.md`. No spec → stop and point at `/sdlc:spec <TICKET>`. Works on a
+`<specs dir>/<TICKET>/spec.md`. No spec → stop and point at the `spec` skill for <TICKET>. Works on a
 `draft` spec — that is the point.
 
 ---
@@ -71,8 +71,8 @@ Keep it under ~400 lines. A mockup that needs more is a spec that needs splittin
 3. "What is missing that you expected to see?"
 
 ## Then
-- Changes to the flow → update the spec via /sdlc:spec <TICKET>, re-run this command.
-- Flow confirmed → flip the spec to status: approved and queue it: aisdlc add <TICKET>
+- Changes to the flow → update the spec with the `spec` skill, re-run this command.
+- Flow confirmed → flip the spec to status: approved. Claude: `aisdlc add <TICKET>`. Codex: `$implement <TICKET>`. Grok: `/implement <TICKET>`.
 ```
 
 The mockup is disposable code, but commit it with the spec: it is the record of what was actually
@@ -82,7 +82,7 @@ approved, and the UI playbook treats it as the visual contract during implementa
 
 ## Not to be confused with
 
-- **Production frontend work** — that is `/sdlc:implement` following the UI playbook, with the
+- **Production frontend work** — that is the `implement` skill following the UI playbook, with the
   project's real conventions and real tests. This command deliberately produces throwaway code in
   one file and must never be copied into the application.
-- **`/sdlc:spec`** — writes the spec this command reads. Run it first.
+- **The `spec` skill** — writes the spec this command reads. Run it first.

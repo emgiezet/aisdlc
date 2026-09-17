@@ -6,9 +6,9 @@ description: >
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, Agent
 ---
 
-# /sdlc:spec
+# spec
 
-Produces the one artefact that makes unattended execution possible. `/sdlc:implement` runs with
+Produces the one artefact that makes unattended execution possible. The `implement` skill runs with
 no human gates, so **this spec is the only approval point** — whatever it leaves unsaid, the
 agent will invent.
 
@@ -22,7 +22,7 @@ For free text, derive the id `LOCAL-<slug>` from the first few words (e.g.
 
 **Read `.claude/sdlc.md` first** — it names this repo's specs directory, tracker, contract
 directory, ADR location, and glossary skill. No profile → detect what you can, and state each
-assumption you had to make. Missing `/sdlc:init` is worth one line of advice, not a refusal.
+assumption you had to make. Missing the `init` skill setup is worth one line of advice, not a refusal.
 
 **Load the `spec-authoring` skill** — it holds the section layout, the use-case rules, the sizing
 limits, and the review checklist this command applies.
@@ -130,9 +130,9 @@ Run the `spec-authoring` review checklist and report:
 
 ## Next
 1. Review the spec, especially the Out: scope and the inferred use cases.
-2. UI in scope? → /sdlc:mockup <TICKET> and validate with the business first.
+2. UI in scope? → invoke the `mockup` skill for <TICKET> and validate with the business first.
 3. Flip status: approved in the frontmatter, commit the spec.
-4. Queue it: aisdlc add <TICKET>
+4. Claude: queue it with `aisdlc add <TICKET>`. Codex: `$implement <TICKET>`. Grok: `/implement <TICKET>`.
 ```
 
 Never offer to approve the spec yourself, and never continue into implementation from here.
@@ -141,9 +141,9 @@ Never offer to approve the spec yourself, and never continue into implementation
 
 ## Not to be confused with
 
-- **`/sdlc:implement`** — consumes the approved spec and builds it, unattended. This command only
-  writes the contract.
-- **`/sdlc:init`** — sets up the repo's router, playbooks and profile. Run it once, before your
+- **The `implement` skill** — consumes the approved spec and builds it, unattended. This command
+  only writes the contract.
+- **The `init` skill** — sets up the repo's router, playbooks and profile. Run it once, before your
   first spec.
 - Any planning or decomposition workflow your project already has. If a ticket needs to become
   several independently shippable slices, decompose it first and run this command per slice —

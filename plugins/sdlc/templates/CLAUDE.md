@@ -14,8 +14,8 @@ will need for the code.
 | <task, in the words a developer would use> | `.claude/playbooks/<name>.md` |
 | <one row per task type this repo actually has> | `.claude/playbooks/<name>.md` |
 | Write or fix tests, chase coverage | `.claude/playbooks/testing.md` |
-| Deliver an approved spec end-to-end | run `/sdlc:implement <TICKET>` |
-| Turn a ticket into a spec | run `/sdlc:spec <TICKET>` |
+| Deliver an approved spec end-to-end | invoke the `implement` skill for the ticket |
+| Turn a ticket into a spec | invoke the `spec` skill for the ticket |
 | Anything else | this file plus the `.claude/rules/` file for the paths you touch |
 
 `.claude/rules/*.md` are **path-scoped** — they attach automatically to the files you edit, so

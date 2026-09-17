@@ -7,7 +7,7 @@ The `.claude/rules/` file for the frontend attaches on its own.
 
 1. **Check for a mockup.** If `specs/<TICKET>/mockup/index.html` exists, it is the visual contract
    that was approved — match its structure and copy, not your own idea of the layout. No mockup
-   and the spec has UI acceptance criteria → run `/sdlc:mockup <TICKET>` and get it approved first.
+   and the spec has UI acceptance criteria → invoke the `mockup` skill for <TICKET> and get it approved first.
 2. **Reuse before building.** Grep the component library for an existing primitive. A second
    Button/Modal/Input variant is a defect, not a feature.
 3. **Types from the contract.** Data shapes come from the generated client or the shared types —

@@ -6,7 +6,7 @@ description: >
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
 ---
 
-# /sdlc:implement
+# implement
 
 The invocation input is the ticket id (e.g. `ABC-123`), matching `<specs dir>/<TICKET>/spec.md`.
 
@@ -35,7 +35,7 @@ use case or to the density grid.
 search for the ticket elsewhere, no reconstructing requirements from the code. Refuse to proceed,
 with a one-line reason, if:
 
-- the file does not exist → "no spec at specs/<TICKET>/spec.md — run /sdlc:spec <TICKET>"
+- the file does not exist → "no spec at specs/<TICKET>/spec.md — run the spec skill for this ticket"
 - `status:` is not `approved` → "spec is <status>; a human must approve it"
 - the `Open questions` section still has unchecked boxes → "open questions block execution"
 - the UC table is empty or has a row with no observable result → "UC-<n> has no testable result"
@@ -148,7 +148,7 @@ readings. Committing what works before stopping is correct — leave the branch 
 
 ## Phase 5: Hand off
 
-Do not open a PR from here; `/sdlc:ship` does that after QA.
+Do not open a PR from here; the `ship` skill does that after QA.
 
 ```
 ## Implemented — <TICKET>
@@ -171,5 +171,5 @@ Run ship (Claude: `/sdlc:ship <TICKET>` · Codex: `$ship <TICKET>` · Grok: `/sh
   with a plan-review gate and a sign-off at the end. Those gates make it unusable in a queue,
   which is the whole reason this command exists. Use the supervised path for exploratory work and
   this one for work whose contract is already settled.
-- **`/sdlc:qa`** — verifies what this command built. Deliberately a separate run with a fresh
+- **The `qa` skill** — verifies what this command built. Deliberately a separate run with a fresh
   context: an agent checking its own work in the same session grades its own homework.
