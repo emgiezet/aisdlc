@@ -94,6 +94,34 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 			plugins/slop-guard/rules/stacks.json > /dev/null \
 			&& echo "  ✓ stacks.json: implies refs are valid" \
 			|| (echo "  ✗ stacks.json: implies references an unknown tag" && exit 1); \
+		jq -e '[to_entries[] | select(.value.context7 != null) | select((.value.context7 | type) != "string" or (.value.context7 | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: context7 values are non-empty strings" \
+			|| (echo "  ✗ stacks.json: context7 field empty or wrong type" && exit 1); \
+	fi; \
+	if [ -f plugins/slop-guard/rules/registries.json ]; then \
+		jq . plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ slopguard registries.json"; \
+		jq -e '[to_entries[] | select((.value.url // "" | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty url" \
+			|| (echo "  ✗ registries.json: entry with empty or missing url" && exit 1); \
+		jq -e '[to_entries[] | select((.value.latest_jq // "" | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty latest_jq" \
+			|| (echo "  ✗ registries.json: entry with empty or missing latest_jq" && exit 1); \
+		jq -e '[to_entries[] | select((.value.published_jq // "" | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty published_jq" \
+			|| (echo "  ✗ registries.json: entry with empty or missing published_jq" && exit 1); \
+		jq -e '[to_entries[] | select((.value.manifests // [] | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty manifests" \
+			|| (echo "  ✗ registries.json: entry with empty or missing manifests" && exit 1); \
+		jq -e '[to_entries[] | select(.value.url | contains("{package}") | not)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all urls contain {package}" \
+			|| (echo "  ✗ registries.json: url missing {package} placeholder" && exit 1); \
 	fi; \
 	test "$$(jq -r '.name' plugins/slop-guard/.claude-plugin/plugin.json)" = "slop-guard" \
 		|| (echo "  ✗ slopguard plugin name mismatch" && exit 1); \

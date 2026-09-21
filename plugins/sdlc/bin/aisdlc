@@ -535,7 +535,9 @@ cmd_status() {
     repo="$(resolve_repo "$repo")"
     [ -d "$(state_dir "$repo")" ] || { say "no queue in $repo"; return 0; }
 
-    local queued; queued="$(wc -l < "$(state_dir "$repo")/queue.jsonl" 2>/dev/null | tr -d ' ')"
+    local queue_file="$(state_dir "$repo")/queue.jsonl"
+    local queued=0
+    [ -f "$queue_file" ] && queued="$(wc -l < "$queue_file" | tr -d ' ')"
     printf '%-34s %-9s %-6s %8s  %s\n' TASK STATUS PHASES COST NOTE
     local f
     while read -r f; do
