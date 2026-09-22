@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "AI SDLC harness — the pipeline, the guardrails, and the evals that let cheap models deliver reviewable code",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "sdlc",
       "source": "./plugins/sdlc",
-      "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy for your repo, then spec → mockup → implement → qa → ship runs unattended and lands a draft PR",
-      "version": "0.1.0",
+      "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy and descriptors for your repo; spec → mockup → implement → qa → ship → review runs unattended; issues enter through triage, PRs leave through a gated human merge",
+      "version": "0.2.0",
       "strict": true
     },
     {

@@ -25,15 +25,20 @@ Three consequences shape everything below:
 
 | Step | Who | Artefact |
 |------|-----|----------|
-| `/sdlc:init` (once per repo) | agent proposes, human approves | `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md` |
+| `/sdlc:brainstorm`, `/sdlc:discover`, `/sdlc:backlog` (optional) | human with an agent | `specs/briefs/*.md`, issues |
+| `/sdlc:init` (once per repo) | agent proposes, human approves | `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md`, `.claude/trackers/`, `.claude/browsers/` |
 | `/sdlc:spec <TICKET>` | agent drafts, human corrects | `specs/<TICKET>/spec.md`, `status: draft` |
 | `/sdlc:mockup <TICKET>` | agent builds, business reacts | `specs/<TICKET>/mockup/index.html` |
-| **Approve** | **human only** | `status: approved`, committed |
+| **Approve** | **human only** | `status: approved`, committed — or, for a bug, the `bug` label on the issue |
 | `aisdlc add` / `run` | queue | worktree + branch per task |
+| `/sdlc:triage`, `/sdlc:root-cause` (issue route) | agent, read-only | `specs/GH-<n>/spec.md` with `kind: bugfix`, root cause in Context |
 | `/sdlc:implement` | agent, unattended | commits per UC, or `BLOCKED.md` |
-| `/sdlc:qa` | agent, unattended | `specs/<TICKET>/qa-report.md`, PASS/GAPS |
-| `/sdlc:ship` | agent, unattended | draft PR labelled `ai-sdlc` |
-| Review & merge | human | the decision that still cannot be delegated |
+| `/sdlc:qa` | agent, unattended | `specs/<TICKET>/qa-report.md`, PASS/GAPS, screenshots for UI UCs |
+| `/sdlc:ship` | agent, unattended | draft PR labelled `ai-sdlc` + `review` |
+| `/sdlc:review` | agent, unattended | `APPROVED` → `merge-ready`, or `CHANGES_REQUESTED` and an autofix loop |
+| `/sdlc:continue`, `/sdlc:fix-pr`, `/sdlc:autopilot` | agent, on demand | a stalled PR driven to `merge-ready` |
+| `/sdlc:merge` | **human only** | the decision that still cannot be delegated, now with its gates checked |
+| `/sdlc:close-fixed`, `/sdlc:changelog`, `/sdlc:retro` | agent, on a schedule | closed issues, a changelog PR, a ranked list of what the harness cost |
 
 Everything before the approval line is cheap to change. Everything after it is an agent acting on
 your behalf without supervision. Spend your attention accordingly: **an hour on the spec is worth
@@ -115,14 +120,16 @@ have. Both of those were wandering, and wandering is what agent work actually co
 
 ## Definition of done for a queued task
 
-A task is done when **all** of these hold — this is what `/sdlc:qa` and `/sdlc:ship` check:
+A task is done when **all** of these hold — this is what `/sdlc:qa`, `/sdlc:ship` and
+`/sdlc:review` check:
 
 - Every `UC-<n>` in the spec has a passing test carrying its id.
 - The full CI matrix for every touched stack is green, and skip count is zero.
 - No file in the spec's `Out:` scope was modified.
 - The contract directory, if this project has one, changed in the same commit as any handler whose contract moved.
-- `qa-report.md` says `PASS`, with an explicit "not verified" section.
+- `qa-report.md` says `PASS`, with an explicit "not verified" section, and a screenshot per UI UC when a browser is configured.
 - The PR is a draft, labelled, with the riskiest changes called out by `file:line`.
+- `/sdlc:review` returned `APPROVED`: no blocker, no unwaived major.
 
 Anything less is `GAPS` or `BLOCKED`. Both are successful outcomes of an unattended run — the
 failure mode to fear is a confident PR that quietly does the wrong thing.
@@ -160,11 +167,15 @@ means the harness is producing work that reviewers reject — noise dressed as t
 
 Not a temporary list — these are the parts where being accountable is the job:
 
-- Approving a spec, and owning what it left out.
+- Approving a spec, and owning what it left out. For a bug, labelling the issue `bug` *is* that
+  approval — `/sdlc:triage` records who did it in the generated spec.
 - Deciding a test that contradicts the spec means the test is wrong, or the spec is.
 - Hard-to-reverse calls: schema shape, contract breaks, IAM, anything touching money or PII.
 - Applying infrastructure. Agents produce the plan; a person runs the apply.
-- Merging. A draft PR labelled `ai-sdlc` with a `PASS` verdict is a recommendation, not a decision.
+- Merging. `/sdlc:merge` checks the gates and squash-merges, but only when a person runs it; the
+  queue never does. A `merge-ready` label is a recommendation, not a decision.
+- Evidence. Nothing a synthetic panel says, and nothing tagged `[ASSUMPTION]`, counts as evidence
+  in a brief; only a person can gather what does.
 
 ## Getting started
 

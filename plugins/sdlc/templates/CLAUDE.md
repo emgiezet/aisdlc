@@ -16,6 +16,9 @@ will need for the code.
 | Write or fix tests, chase coverage | `.claude/playbooks/testing.md` |
 | Deliver an approved spec end-to-end | run `/sdlc:implement <TICKET>` |
 | Turn a ticket into a spec | run `/sdlc:spec <TICKET>` |
+| Fix a reported bug from its issue | run `/sdlc:fix-issue <issue#>` |
+| Review a pull request | run `/sdlc:review <pr#>` |
+| Finish a stalled or unreviewed PR | run `/sdlc:autopilot <pr#>` |
 | Anything else | this file plus the `.claude/rules/` file for the paths you touch |
 
 `.claude/rules/*.md` are **path-scoped** — they attach automatically to the files you edit, so
@@ -26,8 +29,10 @@ one gets picked, which is worse than picking none.
 ## Layout
 
 - `<dir>/` — <what lives here>
-- `specs/<TICKET>/` — agent-facing specs: `spec.md`, `qa-report.md`, `mockup/`
-- `.claude/sdlc.md` — this project's AI SDLC profile (tracker, contracts, verify commands)
+- `specs/<TICKET>/` — agent-facing specs: `spec.md`, `qa-report.md`, `qa/`, `mockup/`
+- `specs/briefs/` — discovery artefacts that precede a spec
+- `.claude/sdlc.md` — this project's AI SDLC profile; `.claude/trackers/`, `.claude/browsers/` —
+  the tracker and browser descriptors it names
 
 ## Invariants
 
