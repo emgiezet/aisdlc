@@ -20,22 +20,39 @@ escape_for_json() {
 context_raw="AI SDLC harness active (${NAME} v${VERSION}).
 
 The pipeline. A spec is the only approval point; everything after it runs unattended:
-  /${NAME}:init             → generate this repo's task router, playbooks, and rules (run once)
+  /${NAME}:init             → generate this repo's task router, playbooks, rules, profile, descriptors (run once)
   /${NAME}:spec <TICKET>    → specs/<TICKET>/spec.md with a UC table (starts as status: draft)
   /${NAME}:mockup <TICKET>  → clickable single-file mockup for business validation
   <a human flips status: approved and commits it>
   /${NAME}:implement <TICKET> → no-gate TDD build, one test per UC, full CI matrix
-  /${NAME}:qa <TICKET>      → independent verification, UC×test matrix, PASS/GAPS verdict
-  /${NAME}:ship <TICKET>    → draft PR with the verdict up front, QA report as a comment
-  aisdlc add <TICKET>       → queue it instead: worktree per task, PRs are the review inbox
+  /${NAME}:qa <TICKET>      → independent verification, UC×test matrix, browser pass for UI UCs, PASS/GAPS
+  /${NAME}:ship <TICKET>    → draft PR with the verdict up front, label review, QA report as a comment
+  /${NAME}:review <pr#>     → severity-ranked review, APPROVED/CHANGES_REQUESTED, autofix on its own PRs
+  aisdlc add <TICKET>       → queue it: worktree per task, implement → qa → ship → review
+
+Before the spec:  /${NAME}:brainstorm, /${NAME}:discover, /${NAME}:synthetic-users, /${NAME}:backlog,
+                  /${NAME}:ux-shape, /${NAME}:ux-setup → briefs under specs/briefs/
+From an issue:    /${NAME}:issue (file/normalize) · /${NAME}:triage · /${NAME}:root-cause · /${NAME}:fix-issue <n>
+                  (a human-labelled bug is the approval; aisdlc add --issue <n> queues the chain)
+After the PR:     /${NAME}:continue · /${NAME}:fix-pr · /${NAME}:autopilot · /${NAME}:review-prs ·
+                  /${NAME}:merge-buddy · /${NAME}:merge (interactive only) · /${NAME}:followup ·
+                  /${NAME}:close-fixed · /${NAME}:changelog
+QA surface:       /${NAME}:test-env · /${NAME}:integration-tests · /${NAME}:ux-review
+Harness:          /${NAME}:retro — rank what the runs cost, by cause
 
 Skills (load with the Skill tool):
-- spec-authoring — the UC table format: atomic, observable, stably-numbered criteria
-- task-router    — keeping CLAUDE.md small: router table, playbooks, path-scoped rules
-- dense-testing  — density floors, UC ids in test names, and what must never be weakened
-- harness-eval   — measuring the harness on a cheap model, and fixing instructions not tiers
+- spec-authoring      — the UC table format: atomic, observable, stably-numbered criteria
+- task-router         — keeping CLAUDE.md small: router table, playbooks, path-scoped rules
+- dense-testing       — density floors, UC ids in test names, and what must never be weakened
+- harness-eval        — measuring the harness on a cheap model, and fixing instructions not tiers
+- pipeline-contracts  — descriptors, operations, chain markers, verdict tokens, claim lock, labels
+- code-review         — severity scale, verdict rule, review checklist, spec-review lenses
+- discovery           — brief format, evidence tags, Definition of Ready
 
-Agent: auto-qa — verifies an implementation against its spec before a human reads it.
+Agents: auto-qa — verifies an implementation against its spec; code-reviewer — reviews a PR spec-first.
+
+Tracker and browser access go through the descriptors named in .claude/sdlc.md — never call gh or a
+browser directly from a /${NAME} command.
 
 Enforced by hooks, not by good intentions: force pushes and --no-verify are blocked, and a
 session that deletes or skips a test is blocked from finishing. If a test contradicts the

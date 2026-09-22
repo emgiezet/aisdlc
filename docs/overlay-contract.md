@@ -65,21 +65,21 @@ rather than implying a policy tier exists.
 Measured against the private fork, these are improvements with no organisation-specific content,
 and they belong in this repository:
 
-1. The queue's phase list extended past `implement qa ship` with separate review and security
-   passes, each a fresh headless invocation that reads its report rather than its exit code.
-2. `num_turns == 0` treated as failure — the CLI reports a no-op as success, which is the worst
-   outcome for an unattended queue.
-3. `invoke_claude` redirecting `< /dev/null`; without it the phase loop consumes its own input and
-   a task ships having run only the first phase.
-4. A GitHub-issue queue with an atomic claim, so two machines that share nothing but the remote
-   cannot build the same branch.
-5. A file-scope check after the verification phase, diffing the branch against the scope the task
+1. A file-scope check after the verification phase, diffing the branch against the scope the task
    declared.
-6. Portable mechanical guards, each driven by a project configuration file rather than by
+2. A separate security pass as its own queue phase, reading a report rather than an exit code
+   (the review pass landed with SDLC-005/006; security is still folded into it).
+3. Portable mechanical guards, each driven by a project configuration file rather than by
    hardcoded paths.
-7. An installer that registers this checkout with every agent runtime on `PATH`, with `--check`
+4. An installer that registers this checkout with every agent runtime on `PATH`, with `--check`
    and `--dry-run` modes.
-8. The artefact chain ahead of the spec: an intent capture step and a written implementation plan,
-   both committed, both human-approved.
+5. The artefact chain ahead of the spec as *committed, human-approved* documents: the discovery
+   commands (SDLC-008) write briefs; an approved implementation plan between spec and implement
+   does not exist yet.
+
+Landed: the `review` queue phase and `num_turns == 0` as failure (SDLC-005); `invoke_claude`
+reading from `/dev/null`; the issue queue with an atomic claim (`aisdlc add --issue`, SDLC-005);
+tracker and browser descriptors as the parameterisation this document asked for — a second
+organisation installs the plugin unmodified and points `.claude/sdlc.md` at its own descriptor.
 
 Each is a separate change with its own tests. None requires the overlay to exist first.
