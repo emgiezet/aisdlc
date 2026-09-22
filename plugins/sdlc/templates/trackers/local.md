@@ -46,7 +46,7 @@ see Prerequisites.
 ### get-issue
 `cat $I` — read the frontmatter keys and the body as they stand.
 ### search-issues
-`for f in .aisdlc/tracker/issues/*.md; do { [ '{state}' = all ] || grep -q "^state: {state}" "$f"; } && grep -qi -- '{query}' "$f" && basename "$f" .md; done`
+`q=$(printf '%s' '{query}' | sed -E 's/(^| )(is|state|label|author|in|repo):[^ ]+//g; s/"//g; s/^ +| +$//g'); for f in .aisdlc/tracker/issues/*.md; do { [ '{state}' = all ] || grep -q "^state: {state}" "$f"; } && grep -qiF -- "$q" "$f" && basename "$f" .md; done` — GitHub-style qualifiers (`is:open`, `label:bug`) are stripped; `{state}` filters structurally.
 ### create-issue
 `n=$(( $(ls .aisdlc/tracker/issues | sed 's/\.md$//' | sort -n | tail -1) + 1 )); printf -- '---\nnumber: %s\ntitle: %s\nstate: open\nlabels: [%s]\nassignees: []\nauthor: %s\ncreated: %s\n---\n%s\n\n## Comments\n' "$n" '{title}' '{labels}' "{me}" "$now" "$(cat {body-file})" > .aisdlc/tracker/issues/$n.md; echo "$n"`
 ### comment-issue
@@ -100,7 +100,7 @@ no-op — labels are free-form strings here.
 **comment-issue**/**comment-pr** with `🤖 /sdlc:{command} claimed $now`. Read back: label and
 assignee present.
 ### check-claim
-Issue: `me=${AISDLC_USER:-local-user}; grep -q '^labels: .*in-progress' $I || { echo free; exit 0; }; grep -q "^assignees: .*${me}" $I && { echo mine; exit 0; }; line=$(grep -E '🤖 .* claimed' $I | tail -1); login=$(echo "$line" | sed 's/.*@//;s/:.*//' ); ts=$(echo "$line" | grep -oE '[0-9]{4}-[0-9T:-]+Z' | head -1); [ -z "$ts" ] && { echo "other:${login:-unknown}"; exit 0; }; [ $(( $(date -u +%s) - $(date -d "$ts" +%s 2>/dev/null || echo 0) )) -gt 3600 ] && echo "stale:$login" || echo "other:$login"`
+Issue: `me=${AISDLC_USER:-local-user}; grep -q '^labels: .*in-progress' $I || { echo free; exit 0; }; grep -m1 '^assignees:' $I | sed 's/^assignees: *\[//; s/\].*//' | tr ',' '\n' | tr -d ' ' | grep -qxF "$me" && { echo mine; exit 0; }; line=$(grep -E '🤖 .* claimed' $I | tail -1); login=$(echo "$line" | sed 's/.*@//;s/:.*//' ); ts=$(echo "$line" | grep -oE '[0-9]{4}-[0-9T:-]+Z' | head -1); [ -z "$ts" ] && { echo "other:${login:-unknown}"; exit 0; }; [ $(( $(date -u +%s) - $(date -d "$ts" +%s 2>/dev/null || echo 0) )) -gt 3600 ] && echo "stale:$login" || echo "other:$login"`
 PR: `me=${AISDLC_USER:-local-user}; jq -e --argjson n {n} 'select(.number==$n).labels|index("in-progress")' $P >/dev/null || { echo free; exit 0; }; jq -e --argjson n {n} --arg me "$me" 'select(.number==$n).assignees|index($me)' $P >/dev/null && { echo mine; exit 0; }; cf=.aisdlc/tracker/prs/{n}.comments.md; ts_login=$(awk 'prev ~ /^[0-9]{4}/ && /🤖 .* claimed/ {print prev} {prev=$0}' "$cf" 2>/dev/null | tail -1); login=$(echo "$ts_login" | sed 's/.*@//'); ts=$(echo "$ts_login" | grep -oE '[0-9]{4}-[0-9T:-]+Z' | head -1); [ -z "$ts" ] && { echo "other:${login:-unknown}"; exit 0; }; [ $(( $(date -u +%s) - $(date -d "$ts" +%s 2>/dev/null || echo 0) )) -gt 3600 ] && echo "stale:$login" || echo "other:$login"`
 ### release
 **unlabel-issue**/**unlabel-pr** `in-progress`, then comment `🤖 /sdlc:{command} completed: {outcome}. Lock released.`
