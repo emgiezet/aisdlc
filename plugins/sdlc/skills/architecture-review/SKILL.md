@@ -18,10 +18,10 @@ availability tier written down, the review's only finding is that they are missi
 | Tier | Downtime / year | / 30 days | Topology it forces | Deploys | RPO / RTO (typical) |
 |---|---|---|---|---|---|
 | 99.5 % | 1.83 d | 3.6 h | one restartable instance, health-checked, restart < 5 min | rolling, off-peak | 24 h / 4 h |
-| 99.9 % | 8.77 h | 43.8 min | N+1 in one AZ, load-balanced, automated restart | rolling, any time | 1 h / 1 h |
-| 99.95 % | 4.38 h | 21.9 min | multi-AZ, automated failover of every stateful part | blue/green | 15 min / 30 min |
-| 99.99 % | 52.6 min | 4.38 min | multi-region active-passive, failover **rehearsed** ≤ 90 days ago, no single-AZ dependency | canary with automatic rollback | 5 min / 15 min |
-| 99.999 % | 5.26 min | 26 s | active-active multi-region, no single control plane, client-side retry + region steering | canary, per-region | ~0 / < 5 min |
+| 99.9 % | 8.77 h | 43.2 min | N+1 in one AZ, load-balanced, automated restart | rolling, any time | 1 h / 1 h |
+| 99.95 % | 4.38 h | 21.6 min | multi-AZ, automated failover of every stateful part | blue/green | 15 min / 30 min |
+| 99.99 % | 52.6 min | 4.32 min | multi-region active-passive, failover **rehearsed** ≤ 90 days ago, no single-AZ dependency | canary with automatic rollback | 5 min / 15 min |
+| 99.999 % | 5.26 min | 25.9 s | active-active multi-region, no single control plane, client-side retry + region steering | canary, per-region | ~0 / < 5 min |
 
 From 99.9 up: alerting on error-budget burn rate, not on host metrics; a runbook per failure
 domain; a post-mortem per breach. Below 99.9 those are good practice, not requirements.
@@ -57,10 +57,11 @@ The block below is required before a tier can be assessed. Rules:
 - **Traffic:** avg 120 rps · peak 900 rps (×7.5) · concurrency 400 · p95 payload 6 KB
 - **Growth:** +40 GB/month · retention 13 months
 - **RPO / RTO:** 15 min / 30 min
-- **Hard dependencies:** postgres (99.95, multi-AZ) · auth0 (99.99, vendor SLA) · payments API (99.9)
+- **Hard dependencies:** postgres (99.95, multi-AZ) · auth0 (99.99, vendor SLA page + Enterprise tier) · payments API (99.9)
 - **Soft dependencies:** search (degrades to DB query) · email (queued)
 - **Load test:** 1 350 rps sustained 30 min on 2026-08-30 — pass
 - **Failover rehearsal:** 2026-07-12, RTO measured 22 min
+- **Backup restore rehearsal:** 2026-06-03
 ```
 
 Template: [`references/targets-template.md`](references/targets-template.md).
