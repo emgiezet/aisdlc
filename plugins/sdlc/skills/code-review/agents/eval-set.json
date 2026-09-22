@@ -1,0 +1,12 @@
+[
+  {"query": "Review PR #42 — the diff deletes a test file and modifies a module listed in the spec's Out:", "should_trigger": true, "note": "core use case — code review with blocker and major findings"},
+  {"query": "What verdict should I give for a PR that only has minor style issues?", "should_trigger": true, "note": "verdict rule lookup — only minor/nit present → APPROVED"},
+  {"query": "The PR changed only specs/SDLC-007/spec.md — what review process applies?", "should_trigger": true, "note": "spec-only review: all files under specs/ → apply five lenses"},
+  {"query": "A reviewer found a major issue but the author documented a waiver — does it block?", "should_trigger": true, "note": "waiver format and validity check"},
+  {"query": "The slop-guard report has three blockers — how do I include them in the review?", "should_trigger": true, "note": "slop-guard import rule"},
+  {"query": "How do I format a finding that points to a specific line in a file?", "should_trigger": true, "note": "finding format with file:line"},
+  {"query": "Run /sdlc:qa on the SDLC-010 branch and tell me if it passes", "should_trigger": false, "note": "/sdlc:qa and auto-qa own QA verification — not code review"},
+  {"query": "What test density does this endpoint need?", "should_trigger": false, "note": "dense-testing owns density floors and coverage rules"},
+  {"query": "Merge PR #17 into main after the review passes", "should_trigger": false, "note": "/sdlc:merge owns the merge step"},
+  {"query": "Write a spec for the new authentication flow", "should_trigger": false, "note": "spec-authoring skill owns spec writing"}
+]

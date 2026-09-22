@@ -1,0 +1,12 @@
+[
+  {"query": "How do I post a comment on the PR from inside a /sdlc command without calling gh directly?", "should_trigger": true, "note": "descriptor operation lookup"},
+  {"query": "Another agent has the in-progress label on this PR — may I take it over?", "should_trigger": true, "note": "claim lock decision table"},
+  {"query": "What exact last lines does /sdlc:review print so the queue can parse the PR number?", "should_trigger": true, "note": "chain markers"},
+  {"query": "Which label goes on the PR after a CHANGES_REQUESTED review?", "should_trigger": true, "note": "pipeline label transitions"},
+  {"query": "Does a spec with kind: bugfix run without a human setting status approved?", "should_trigger": true, "note": "bugfix approval rule"},
+  {"query": "Where does the local file-backed tracker keep its issues and PRs?", "should_trigger": true, "note": "local provider layout"},
+  {"query": "What tokens can /sdlc:triage return?", "should_trigger": true, "note": "verdict tokens"},
+  {"query": "How many tests does a new endpoint need per changed symbol?", "should_trigger": false, "note": "dense-testing, not contracts"},
+  {"query": "Rewrite this UC so the result is observable", "should_trigger": false, "note": "spec-authoring"},
+  {"query": "Why does this scenario pass on Sonnet but fail on Haiku?", "should_trigger": false, "note": "harness-eval"}
+]

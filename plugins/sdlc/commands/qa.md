@@ -85,7 +85,7 @@ The report is an artefact, not a scratch file. **This phase is not optional and 
 finished without it.**
 
 ```bash
-git add specs/<TICKET>/qa-report.md <any test files written in Phase 2>
+git add specs/<TICKET>/qa-report.md specs/<TICKET>/qa/ <any test files written in Phase 2>
 git commit -m "test(<scope>): QA report and coverage gaps (<TICKET>)"
 git status --porcelain     # must print nothing
 ```

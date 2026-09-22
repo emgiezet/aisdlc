@@ -8,9 +8,16 @@ SANDBOX_DIR := $(or $(TMPDIR),/tmp)/aisdlc-sandbox
 SCRIPTS := plugins/sdlc/hooks/run-hook.cmd plugins/sdlc/hooks/session-start \
            plugins/sdlc/hooks/guard plugins/sdlc/bin/aisdlc \
            evals/harness/run.sh evals/harness/selftest.sh evals/harness/stub-claude
-COMMANDS := init spec mockup implement qa ship
-SKILLS := spec-authoring task-router dense-testing harness-eval
+COMMANDS := init spec mockup implement qa ship \
+            review fix-pr review-prs autopilot continue merge merge-buddy followup close-fixed changelog \
+            issue triage root-cause fix-issue \
+            brainstorm discover synthetic-users backlog ux-shape ux-setup \
+            test-env integration-tests ux-review retro arch-review
+SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review
+AGENTS := auto-qa code-reviewer
 PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing
+TRACKERS := TEMPLATE github local
+BROWSERS := TEMPLATE playwright agent-browser
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -39,8 +46,18 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 		test -f plugins/sdlc/skills/$$s/agents/eval-set.json || \
 		(echo "  ✗ skills/$$s/agents/eval-set.json MISSING" && exit 1); \
 	done
-	@test -f plugins/sdlc/agents/auto-qa.md && echo "  ✓ agents/auto-qa.md" || \
-		(echo "  ✗ agents/auto-qa.md MISSING" && exit 1)
+	@for a in $(AGENTS); do \
+		test -f plugins/sdlc/agents/$$a.md && echo "  ✓ agents/$$a.md" || \
+		(echo "  ✗ agents/$$a.md MISSING" && exit 1); \
+	done
+	@for t in $(TRACKERS); do \
+		test -f plugins/sdlc/templates/trackers/$$t.md && echo "  ✓ templates/trackers/$$t.md" || \
+		(echo "  ✗ templates/trackers/$$t.md MISSING" && exit 1); \
+	done
+	@for b in $(BROWSERS); do \
+		test -f plugins/sdlc/templates/browsers/$$b.md && echo "  ✓ templates/browsers/$$b.md" || \
+		(echo "  ✗ templates/browsers/$$b.md MISSING" && exit 1); \
+	done
 	@for p in $(PLAYBOOKS); do \
 		test -f plugins/sdlc/templates/playbooks/$$p.md && echo "  ✓ templates/playbooks/$$p.md" || \
 		(echo "  ✗ templates/playbooks/$$p.md MISSING" && exit 1); \
@@ -56,6 +73,19 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 			plugins/sdlc/templates/playbooks/$$p.md || exit 1; \
 	done
 	@echo "  ✓ every playbook within 70 lines"
+	@for c in $(COMMANDS); do \
+		awk -v f="$$c" 'END { if (NR > 220) { print "  ✗ commands/" f ".md is " NR " lines, budget 220"; exit 1 } }' \
+			plugins/sdlc/commands/$$c.md || exit 1; \
+	done
+	@echo "  ✓ every command within 220 lines"
+	@for d in $(addprefix trackers/,$(TRACKERS)) $(addprefix browsers/,$(BROWSERS)); do \
+		awk -v f="$$d" 'END { if (NR > 120) { print "  ✗ templates/" f ".md is " NR " lines, budget 120"; exit 1 } }' \
+			plugins/sdlc/templates/$$d.md || exit 1; \
+	done
+	@echo "  ✓ every descriptor within 120 lines"
+	@grep -rl 'TODO: SDLC-' plugins/sdlc/templates/browsers/ > /dev/null 2>&1 \
+		&& (echo "  ✗ browser descriptor still has TODO bodies" && exit 1) \
+		|| echo "  ✓ browser descriptors have no TODO bodies"
 	@echo "Checking shell scripts..."
 	@for s in $(SCRIPTS); do \
 		bash -n "$$s" || (echo "  ✗ $$s SYNTAX ERROR" && exit 1); \
@@ -94,6 +124,34 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 			plugins/slop-guard/rules/stacks.json > /dev/null \
 			&& echo "  ✓ stacks.json: implies refs are valid" \
 			|| (echo "  ✗ stacks.json: implies references an unknown tag" && exit 1); \
+		jq -e '[to_entries[] | select(.value.context7 != null) | select((.value.context7 | type) != "string" or (.value.context7 | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: context7 values are non-empty strings" \
+			|| (echo "  ✗ stacks.json: context7 field empty or wrong type" && exit 1); \
+	fi; \
+	if [ -f plugins/slop-guard/rules/registries.json ]; then \
+		jq . plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ slopguard registries.json"; \
+		jq -e '[to_entries[] | select((.value.url // "" | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty url" \
+			|| (echo "  ✗ registries.json: entry with empty or missing url" && exit 1); \
+		jq -e '[to_entries[] | select((.value.latest_jq // "" | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty latest_jq" \
+			|| (echo "  ✗ registries.json: entry with empty or missing latest_jq" && exit 1); \
+		jq -e '[to_entries[] | select((.value.published_jq // "" | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty published_jq" \
+			|| (echo "  ✗ registries.json: entry with empty or missing published_jq" && exit 1); \
+		jq -e '[to_entries[] | select((.value.manifests // [] | length) == 0)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all entries have non-empty manifests" \
+			|| (echo "  ✗ registries.json: entry with empty or missing manifests" && exit 1); \
+		jq -e '[to_entries[] | select(.value.url | contains("{package}") | not)] | length == 0' \
+			plugins/slop-guard/rules/registries.json > /dev/null \
+			&& echo "  ✓ registries.json: all urls contain {package}" \
+			|| (echo "  ✗ registries.json: url missing {package} placeholder" && exit 1); \
 	fi; \
 	test "$$(jq -r '.name' plugins/slop-guard/.claude-plugin/plugin.json)" = "slop-guard" \
 		|| (echo "  ✗ slopguard plugin name mismatch" && exit 1); \

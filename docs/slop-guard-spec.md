@@ -1,6 +1,6 @@
 # Slop Guard — specyfikacja implementacji pluginu Claude Code
 
-**Wersja dokumentu:** 0.2 (2026-09-17)
+**Wersja dokumentu:** 0.3 (2026-09-21)
 **Odbiorca:** agent kodujący (Claude Code) implementujący plugin + Max jako reviewer
 **Stack docelowy (tier 1):** PHP (Laravel/Symfony), Go, Python, TypeScript/React, Node.js, SQL (MySQL/PostgreSQL), Terraform, Kubernetes/Helm, Docker, CI (GitHub Actions/GitLab CI)
 **Stack docelowy (tier 2):** JVM (Java + Kotlin), C#, Ruby, Rust
@@ -16,7 +16,7 @@
 4. Architektura pluginu (układ, manifest, hooki, dispatcher, stan, format findingów, `rules/stacks.json`, katalog)
 5. Macierz narzędzi per technologia (pokrycie tier 1 / tier 2)
 6. Domyślne ustawienia narzędzi — PHP, Go, Python, TS/React/Node, SQL, Terraform, Kubernetes/Helm, Docker, CI, sekrety, SAST
-7. Polityki (Bash, zapis, odczyt, ustawienia projektu, konfiguracja `.slopguard.json`)
+7. Polityki (Bash, zapis, odczyt, ustawienia projektu, konfiguracja `.slopguard.json`, dokumentacja frameworków przez Context7, świeżość zależności)
 8. Katalog antywzorców — zestaw startowy
 9. Instalacja narzędzi, pinowanie, integralność
 10. Licencje i pochodzenie treści
@@ -200,6 +200,13 @@ slop-guard/
 │   └── hooks.json
 ├── bin/
 │   └── slopguard                     # dispatcher (decyzja D1: bash + jq; lib/*.sh obok)
+├── lib/
+│   ├── state.sh                      # blokady, zapis atomowy, stan sesji
+│   ├── detect.sh                     # detekcja stosu data-driven z rules/stacks.json
+│   ├── config.sh                     # rozwiązywanie .slopguard.json per projekt
+│   ├── typosquat.sh                  # heurystyki typosquattingu per ekosystem
+│   ├── docs.sh                       # śledzenie wywołań Context7, pamięć między sesjami
+│   └── deps.sh                       # sprawdzanie świeżości zależności
 ├── skills/
 │   ├── php-antipatterns/           # paths: **/*.php, **/*.blade.php
 │   │   ├── SKILL.md                # GENEROWANY z rules/catalog.yaml
@@ -219,6 +226,7 @@ slop-guard/
 │   └── security-reviewer.md
 ├── rules/
 │   ├── stacks.json                 # ŹRÓDŁO PRAWDY: tagi stosu, tiers, kotwice detekcji, globs, skill
+│   ├── registries.json             # ekosystemy pakietów: url, latest_jq, published_jq per rejestr
 │   ├── catalog.yaml                # ŹRÓDŁO PRAWDY: definicje AP-*
 │   ├── mapping/                    # regułę narzędzia → AP-id, severity, CWE
 │   │   ├── phpstan.yaml
@@ -292,10 +300,30 @@ slop-guard/
       "title": "Tool source",
       "description": "project-first | plugin-only | project-only",
       "default": "project-first"
+    },
+    "require_docs_lookup": {
+      "type": "boolean",
+      "title": "Require Context7 documentation lookup for frameworks",
+      "description": "Emit one-time Context7 reminder when editing framework files. Hook env: CLAUDE_PLUGIN_OPTION_REQUIRE_DOCS_LOOKUP.",
+      "default": true
+    },
+    "dependency_freshness": {
+      "type": "string",
+      "title": "Dependency freshness enforcement",
+      "description": "off | warn | error — controls slopguard deps-check escalation. Hook env: CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS.",
+      "default": "warn"
+    },
+    "dependency_cooldown_days": {
+      "type": "string",
+      "title": "Cooldown window for new releases (days)",
+      "description": "Packages published fewer than this many days ago receive verdict too-fresh. Hook env: CLAUDE_PLUGIN_OPTION_DEPENDENCY_COOLDOWN_DAYS.",
+      "default": "3"
     }
   }
 }
 ```
+
+Wartości `userConfig` trafiają do hooków jako `CLAUDE_PLUGIN_OPTION_<KEY>` (§3.1). Powyższe trzy opcje to kolejno: `CLAUDE_PLUGIN_OPTION_REQUIRE_DOCS_LOOKUP`, `CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS`, `CLAUDE_PLUGIN_OPTION_DEPENDENCY_COOLDOWN_DAYS`.
 
 ### 4.3 `hooks/hooks.json`
 
@@ -329,6 +357,12 @@ slop-guard/
         "hooks": [
           { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["pre-read"], "timeout": 5 }
         ]
+      },
+      {
+        "matcher": "mcp__context7__.*",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/slopguard", "args": ["note-docs"], "timeout": 5 }
+        ]
       }
     ],
     "PostToolUse": [
@@ -353,6 +387,7 @@ slop-guard/
 
 Uwagi:
 - Jeśli narzędzie `MultiEdit` lub `NotebookEdit` nie istnieje w danej wersji Claude Code, dokładny matcher po prostu nie zadziała — to bezpieczne.
+- Matcher `mcp__context7__.*` przechwytuje wywołania Context7 dokonane przez agenta. Brak serwera MCP → matcher się nie uruchamia, degradacja bezszumowa, identyczna z przypadkiem `MultiEdit` powyżej (§7.6).
 - `bin/slopguard` na Windows musi wskazywać na `slopguard.exe`. Rozwiązanie: launcher per platforma w `bin/` albo osobne wpisy z `shell` (decyzja w Etapie 1).
 
 ### 4.4 Dispatcher `slopguard` — podkomendy
@@ -363,18 +398,21 @@ Uwagi:
 | `pre-bash` | PreToolUse(Bash) | Polityka komend z `rules/policies/bash.yaml` → `deny`/`ask`/brak decyzji |
 | `pre-write` | PreToolUse(Write/Edit) | Skan sekretów w nowej treści, wykrycie dodawanych komentarzy wyciszających, ochrona konfiguracji linterów i baseline'ów |
 | `pre-read` | PreToolUse(Read) | Deny dla `.env*`, kluczy prywatnych, `*.pem`, `id_*`, plików credentials |
+| `note-docs` | PreToolUse(mcp__context7__.*) | Zapisuje odnotowany lookup do `docs-lookups.json`; nigdy nie emituje decyzji |
 | `post-write --tier=fast` | PostToolUse | Szybkie narzędzia na pliku, filtr nowego kodu, mapowanie do AP-id, feedback |
 | `post-write --tier=medium` | PostToolUse (asyncRewake) | Debounce 3 s na paczkę edycji, narzędzia medium na plikach/pakietach, `exit 2` tylko przy nowych findings ≥ threshold |
 | `stop-gate` | Stop | Narzędzia slow na plikach zmienionych w sesji, SCA przy zmianie manifestów, blokada przy blockerach, ochrona przed pętlą |
 | `doctor` | ręcznie | Raport: wykryty stos, narzędzia (wersje, źródło), konfiguracje, ostatnie czasy wykonania |
 | `scan <paths>` | ręcznie / CI | Pełny skan z formatem `--format=json\|sarif\|text` |
+| `deps-check [--json] [<root>]` | ręcznie / CI | Świeżość zależności wg `rules/registries.json`; kod wyjścia 1 przy findings `error`-poziom i `dependency_freshness=error` |
 
 ### 4.5 Stan sesji
 
 - Katalog: `${CLAUDE_PLUGIN_DATA}/sessions/<session_id>/`. Klucz uzupełniany o `agent_id`, gdy jest obecny.
-  - `profile.json` — wykryte stosy, narzędzia, źródła konfiguracji; od Etapu 1 zawiera pola `.stacks` (tablica tagów), `.stacks_source` (`"auto"` | `"file"` | `"file-paths"`) i `.stacks_warnings` (tablica ostrzeżeń, pusta gdy brak).
+  - `profile.json` — wykryte stosy, narzędzia, źródła konfiguracji; od Etapu 1 zawiera pola `.stacks` (tablica tagów), `.stacks_source` (`"auto"` | `"file"` | `"file-paths"`) i `.stacks_warnings` (tablica ostrzeżeń); `.framework_versions` — mapa tag → wersja wyciągnięta z lockfile dla tagów z polem `context7` w `rules/stacks.json`; nieobecny lockfile → brak klucza, nigdy `null`.
   - `touched.json` — pliki zmienione w sesji wraz z hashem treści.
   - `findings.json` — findings z fingerprintem `sha256(tool|rule|file|normalized_snippet)`, licznik blokad, status.
+  - `docs-lookups.json` — tablica obiektów `{ library, ts }` — odnotowane wywołania narzędzi Context7 w tej sesji; deduplikacja po `library`; zapis atomowy.
   - `stop-iterations` — licznik iteracji bramki.
 - Sprzątanie: sesje starsze niż 7 dni są usuwane przy `session-start`.
 - Blokady plikowe (`flock`) przy zapisie — hooki działają równolegle.
@@ -1598,6 +1636,87 @@ Uszkodzony plik `.slopguard.json` powoduje fallback do autodetekcji, **nigdy** d
 
 `.slopguard.json` jest chroniony przez `pre-write` jako bezwarunkowe `ask` (§7.2C, lista `tool_configs`). Uzasadnienie: nieautoryzowana zmiana listy stosu może cicho zredukować pokrycie — np. usunięcie `java` z listy wyłączyłoby skill i reguły Opengrep dla plików Java na czas całej sesji. Użytkownik musi jawnie potwierdzić każdą zmianę.
 
+
+### 7.6 Dokumentacja frameworków przez Context7
+
+**Dlaczego hook nie może wywołać Context7**
+
+Hooki to procesy bash uruchamiane przez środowisko Claude Code. Narzędzia MCP należą do warstwy agenta — agent je widzi i wywołuje, hook nie. §3.1 rejestruje wprost, że subagenty dostarczane przez plugin nie obsługują pola `mcpServers`. Z tego wynika, że plugin nie może **pobierać** dokumentacji z Context7; może natomiast **instruować** agenta, kiedy ma to zrobić, i **obserwować**, czy to zrobił.
+
+**Mechanizm obserwacji**
+
+`PreToolUse` z matcherem `mcp__context7__.*` przechwytuje każde wywołanie narzędzi Context7 — `mcp__context7__resolve-library-id` i `mcp__context7__get-library-docs`. Dopasowanie uruchamia `slopguard note-docs`, który wyciąga bibliotekę z `tool_input.libraryName // tool_input.context7CompatibleLibraryID // tool_input.query` i zapisuje wpis do `docs-lookups.json` w stanie sesji (§4.5).
+
+Jeśli serwer Context7 nie jest zainstalowany, matcher nigdy się nie uruchamia — to zamierzony tryb degradacji, identyczny z sytuacją, gdy narzędzie `MultiEdit` nie istnieje w danej wersji Claude Code (§4.3, Uwagi). **Brak Context7 nigdy nie generuje `deny`.**
+
+**Podział ról z `rules/catalog.yaml`**
+
+| Aspekt | `rules/catalog.yaml` | Context7 |
+|---|---|---|
+| Zakres | Antywzorce security / performance / supply-chain | Konwencje specyficzne dla wersji frameworku |
+| Zależność od wersji | Nie — reguły są stałe | Tak — to właśnie główna wartość narzędzia |
+| Detektor | Tak — narzędzie lub reguła Opengrep | Nie — wiedza wstrzyknięta w kontekst przez agenta |
+| Koszt utrzymania | Fixture per wpis, test w CI | Zerowy — dokumentacja żyje po stronie Context7 |
+| Waga decyzyjna | Egzekwowana automatycznie (blocker / error / warn) | Informacyjna; przekazana przez prewencję w kontekście |
+
+**Reguła konfliktu:** Context7 nigdy nie podnosi ani nie obniża severity wpisu z `rules/catalog.yaml`. Katalog jest jedynym arbitrem tego, co jest blokerem, co jest `error`, a co ostrzeżeniem.
+
+**Pole `context7` w `rules/stacks.json`**
+
+Wybrane tagi stosu mają opcjonalne pole `context7` zawierające **czytelną dla człowieka nazwę zapytania** do `mcp__context7__resolve-library-id`. Nie jest to hardkodowany identyfikator biblioteki — identyfikatory są rozwiązywane w czasie wykonania przez agenta. Pole jest obecne dla tagów: `laravel`, `symfony`, `doctrine`, `react`, `vite`, `express`, `terraform`.
+
+```json
+"laravel": { "…": "…", "context7": "laravel" }
+```
+
+**Wstrzyknięcie przy pierwszej edycji**
+
+`pre-write` emituje jednorazowy kontekst języka przy pierwszej edycji pliku danego języka w sesji (§8.8 — gwarancja prewencji per język). Gdy wykryty stos ma wpis `context7` w `rules/stacks.json`, a `profile.json.framework_versions` zawiera wersję dla tego tagu, komunikat jest rozszerzony o jedną linię:
+
+```text
+Framework: laravel 11.x — consult Context7: mcp__context7__resolve-library-id("laravel"), then mcp__context7__get-library-docs(id, topic)
+```
+
+Co najwyżej jedno takie zdanie na sesję per tag. Wstrzyknięcie jest pomijane, gdy `CLAUDE_PLUGIN_OPTION_REQUIRE_DOCS_LOOKUP=false`.
+
+**Pamięć między sesjami**
+
+Odnotowane wyszukiwania są persystowane w `${CLAUDE_PLUGIN_DATA}/docs-seen/<library>@<major.minor>`. Przy kolejnej sesji `docs_recall` sprawdza, czy lookup dla tej kombinacji biblioteki i wersji już się odbył — jeśli tak, wstrzyknięcie przy pierwszej edycji jest pomijane. Uzasadnienie: plugin, który denerwuje przy każdej sesji, zostaje wyłączony. Zapis minor bumpu inwaliduje pamięć (`laravel@11.0` ≠ `laravel@11.1`), bo minor bump może oznaczać zmianę API.
+
+### 7.7 Świeżość zależności
+
+**Aktualność ≠ zmienność**
+
+Ta polityka nie jest kolejnym zakazem `@latest`. §5.1 i reguła `go-latest` w `rules/policies/bash.yaml` zabraniają już zmiennych referencji wersji (`@latest`, `*`, mutowalnych tagów). Niniejsza sekcja dotyczy innego problemu: **nowa zależność powinna wejść do projektu przypiętą do aktualnej stabilnej wersji** w momencie jej dodania.
+
+Przykład: `"some-pkg": "1.0.0"` jest przypięta — ale jeśli `1.0.0` jest przestarzałe o główną wersję względem aktualnego stabilnego `2.3.1`, agent dodaje coś zaległego. Plugin to odnotowuje; agent decyduje.
+
+**Okno cooldown a ryzyko supply-chain**
+
+Zalecenie aktualnej wersji opublikowanej kilka godzin wcześniej wprowadza agenta wprost w okno supply-chain, przed którym strzegą `lib/typosquat.sh` i listy `popular-packages`. Dlatego wersja opublikowana krócej niż **`dependency_cooldown_days`** temu (domyślnie 3) otrzymuje werdykt `too-fresh` zamiast wymagania jej przyjęcia. Werdykt `too-fresh` jest `ask`, nie `deny`. Ma on pierwszeństwo przed `major-behind`: lepsza zaległa wersja niż nieznane ryzyko nowej.
+
+**`rules/registries.json`**
+
+Jeden wpis per ekosystem (npm, packagist, pypi, crates, rubygems, nuget, go, maven). Każdy wpis deklaruje manifesty projektu (`manifests`), opcjonalne pliki blokujące wersje (`lockfiles`), URL rejestru z placeholderem `{package}`, wyrażenie `jq` do najnowszej stabilnej wersji (`latest_jq`) i wyrażenie `jq` do znacznika czasu publikacji konkretnej wersji (`published_jq`, zmienna `$v`). Ekosystem, którego endpoint nie mógł zostać zweryfikowany na żywo, jest pomijany w pliku — nie wpisywany „na zgadywanie". Plik jest jedynym źródłem prawdy dla endpointów rejestrów; nie duplikujemy ich zawartości w innych plikach.
+
+**`slopguard deps-check [--json] [<root>]`**
+
+Przeszukuje manifesty z `rules/registries.json`, zbiera zależności i dla każdej z nich — tylko przy `allow_network=true` — pobiera metadane przez `deps_fetch`. Werdykty per zależność:
+
+| Werdykt | Znaczenie |
+|---|---|
+| `ok` | Przypiętа do aktualnej stabilnej wersji |
+| `minor-behind` | Dostępna nowsza wersja minor/patch w obrębie tej samej wersji głównej |
+| `major-behind` | Dostępna nowsza wersja główna |
+| `too-fresh` | Wersja opublikowana krócej niż `dependency_cooldown_days` temu |
+| `unknown` | Brak danych (wyłączona sieć, błąd rejestru, wersja nieodnaleziona) |
+
+Tryb pracy jest kontrolowany przez `dependency_freshness` (`off | warn | error`, domyślnie `warn`). Kod wyjścia: 0 przy `warn` lub braku findings; 1 przy findings `error`-poziom i `dependency_freshness=error`; 2 przy błędzie konfiguracji. Wynik `--json` to jeden obiekt JSON per zależność ze wspólnym polem `verdict`.
+
+**Bramka Stop — Etap 4**
+
+**Podłączenie `slopguard deps-check` do bramki Stop jest zaplanowane na Etap 4** — bramka Stop nie istnieje jeszcze w `hooks/hooks.json`. Dziś komenda jest uruchamiana ręcznie przez człowieka lub przez CI. Nie opisujemy bramki Stop tak, jakby już działała.
+
 ---
 
 ## 8. Katalog antywzorców — zestaw startowy (seed dla `rules/catalog.yaml`)
@@ -1760,9 +1879,11 @@ Tabele poniżej to minimalny zakres wersji 1.0.
 | AP-AGENT-005 | Czytanie plików z sekretami | pre-read / pre-bash deny + permissions |
 | AP-AGENT-006 | Wpisywanie prawdziwych poświadczeń „na chwilę do testu" | pre-write deny (betterleaks) |
 | AP-AGENT-007 | Zmiany poza zakresem zadania przy okazji naprawiania findings (formatowanie całych plików, refaktory) | skill + raport Stop (liczba zmienionych linii poza hunkami z findings) |
+| AP-AGENT-008 | Użycie API biblioteki lub frameworku bez sprawdzenia dokumentacji wersji w Context7 | pre-write `additionalContext` (pierwsza edycja plików frameworku w sesji); raport Stop `warn` przy `require_docs_lookup=true` (Etap 4) |
+| AP-AGENT-009 | Nowa zależność dodana bez weryfikacji aktualności; wersja przypięta do `@latest`, `*` lub mutowalnego tagu | pre-bash ask (dodanie zależności); `slopguard deps-check` warn/error wg `dependency_freshness` |
 
-Reguły AP-AGENT-* muszą być w kontekście zawsze, a skill bez `paths` ładuje do kontekstu tylko opis (pełna treść dopiero po wywołaniu). Dlatego:
-- skrót AP-AGENT-* (maks. 15 linii, < 1500 znaków) jest wstrzykiwany przez `session-start` na stdout — stdout `SessionStart` trafia do kontekstu;
+Reguły AP-AGENT-* muszą być w kontekście zawsze, a skill bez `paths` ładuje do kontekstu tylko opis (pełna treść dopiero po wywołaniu). Blok wstrzykiwany przez `session-start` jest ograniczony do **maks. 15 linii i 1500 znaków** — ta granica obejmuje AP-AGENT-001 do AP-AGENT-009 i każdy przyszły wpis. Dlatego:
+- skrót AP-AGENT-* jest wstrzykiwany przez `session-start` na stdout — stdout `SessionStart` trafia do kontekstu;
 - pełna wersja jest w skillu `agent-discipline`.
 
 **Gwarancja prewencji per język.** Skille z `paths` ładują się automatycznie przy pracy z pasującymi plikami, ale to decyzja modelu. Dlatego `pre-write` przy **pierwszej** edycji pliku danego języka w sesji zwraca w `additionalContext` listę blockerów tego języka (maks. 1500 znaków) z odesłaniem do skilla. Kolejne edycje tego języka — już bez tego kontekstu.
@@ -1959,6 +2080,8 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 - `session-start` (detekcja stosu, profil, kontekst AP-AGENT), `pre-bash`, `pre-write` (sekrety, suppressions, protected files, testy), `pre-read`.
 - `rules/stacks.json` z pełną listą tagów tier 1 i tier 2 (te, które przeszły sondę z Etapu 0); `lib/detect.sh` czyta `stacks.json` zamiast twardokodować stosy; `stacks_all`, `stack_known`, `stack_tier` dostępne dla innych modułów.
 - Obsługa `.slopguard.json` per projekt (§7.5): pola `stacks` i `paths`, fallback do autodetekcji przy błędzie parsowania, globalne `SG_STACKS`/`SG_STACKS_SOURCE`/`SG_STACKS_WARNINGS`; `.slopguard.json` dodany do listy chronionych plików (§7.2C).
+- Context7 trace (§7.6): matcher `mcp__context7__.*` w `hooks.json`, `slopguard note-docs`, `lib/docs.sh`, `docs-lookups.json`; `profile.json` zyskuje pole `.framework_versions`.
+- `slopguard deps-check` (§7.7): `lib/deps.sh`, `rules/registries.json`; uruchamiane ręcznie i w CI (podłączenie do Stop w Etapie 4).
 - Stan sesji, deduplikacja, logowanie do `${CLAUDE_PLUGIN_DATA}/logs/`.
 - ✅ Wszystkie przypadki kontraktu hooków dla polityk przechodzą; `detect_test.sh` zielony z i bez `SLOPGUARD_STACKS_JSON`; eval `agent-suppression-bait` i `dependency-bait` ≥ 0.8 z pluginem.
 
@@ -1975,6 +2098,7 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 **Etap 4 — Bramka Stop**
 - Psalm taint, `tsc --noEmit`, Checkov na katalogach, skan sekretów diffu sesji, SCA (govulncheck, composer/npm audit, pip-audit/osv-scanner) przy `allow_network`.
 - Ochrona pętli, raport końcowy (findings nierozwiązane, dodane suppressions, liczba zmienionych linii poza hunkami findings).
+- Podłączenie `slopguard deps-check` do bramki Stop (§7.7); sprawdzenie sesyjne AP-AGENT-010 przy `require_docs_lookup=true` — pliki frameworku edytowane bez odnotowanego lookupów Context7 → `warn` w raporcie końcowym, **nigdy `deny`**.
 - ✅ Kontrakt `stop-gate`; p95 < 5 min; tryby `advisory`/`balanced`/`strict` zachowują się zgodnie z 4.6.
 
 **Etap 5 — Prewencja: katalog + skille + subagent**
@@ -1990,7 +2114,7 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 
 ---
 
-## 12. Decyzje (D1, D2, D10 potwierdzone 2026-09-16; D13 potwierdzone 2026-09-17)
+## 12. Decyzje (D1, D2, D10 potwierdzone 2026-09-16; D13 potwierdzone 2026-09-17; D17–D20 potwierdzone 2026-09-21)
 
 | # | Decyzja | Rozstrzygnięcie | Blokująca |
 |---|---|---|---|
@@ -2010,6 +2134,10 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 | D14 | Dwupoziomowy model pokrycia | **Tier 1** (PHP, Go, Python, TS/Node, IaC, CI): natywne linery, analiza typów/dataflow. **Tier 2** (JVM, C#, Ruby, Rust): skill prewencyjny + Opengrep SAST, bez analizy typów — dobór według tego, co jest dostępne bez dodatkowego kompilatora. `SessionStart` informuje o tierze, żeby cisza detektora nie była mylona z czystością kodu | nie |
 | D15 | C/C++ | **Odłożone.** Sensowna analiza statyczna C/C++ wymaga `compile_commands.json` (generowanego przez cmake/bear) — narzędzia nieobecnego w macierzy pluginu. Reguły czysto syntaktyczne dawałyby fałszywe poczucie bezpieczeństwa ze względu na typy definiowane przez użytkownika i makra. Odnotowane w `docs/ideas.md` jako przyszła praca wymagająca oddzielnego projektu | nie |
 | D16 | `osv-scanner` | **Odłożone do Etapu 4.** `hooks/hooks.json` ma na razie tylko `SessionStart` i `PreToolUse`; bramka Stop, która wywołałaby `osv-scanner`, jeszcze nie istnieje. Pinowanie narzędzia teraz dodałoby nieużywaną zależność do `tools.lock.json`. `osv-scanner` wejdzie do `tools.lock.json` w tym samym commicie co handler Stop w Etapie 4 | nie |
+| D17 | Mechanizm Context7 w hooku | **Obserwacja, nie wywołanie.** Hook to proces bash; narzędzia MCP należą do warstwy agenta (§3.1). Matcher `mcp__context7__.*` w `PreToolUse` przechwytuje wywołania dokonane przez agenta i zapisuje bibliotekę do `docs-lookups.json`. Brak serwera Context7 → matcher się nie uruchamia, plugin degraduje bezszumowo; **brak Context7 nigdy nie generuje `deny`** | nie |
+| D18 | Cooldown dla nowych wersji pakietów | **3 dni, werdykt `too-fresh`** (nie `deny`). Zalecenie wersji opublikowanej kilka godzin wcześniej wcisnęłoby agenta w okno supply-chain, przed którym strzegą `lib/typosquat.sh` i listy `popular-packages`. `too-fresh` jest `ask` i ma pierwszeństwo przed `major-behind` | nie |
+| D19 | Domyślna wartość `dependency_freshness` | **`warn`**, nie `error`. `error` na pierwszym uruchomieniu w legacy repo dałby zaporę wyników i skłonił do wyłączenia pluginu — tym samym zniszczył cały cel narzędzia. `warn` powiadamia, nie blokuje; użytkownik może eskalować do `error` przez `userConfig` lub `.slopguard.json` | nie |
+| D20 | Zakres wymagania dokumentacji Context7 | **Ograniczony do frameworków i nowo dodawanych zależności.** Egzekwowanie per każdą bibliotekę kosztowałoby kilkanaście wywołań MCP na turę. Cel to wiedza specyficzna dla wersji frameworku (`laravel`, `symfony`, `doctrine`, `react`, `vite`, `express`, `terraform`) i dokumentacja świeżo dodawanej zależności | nie |
 
 ---
 

@@ -1,0 +1,13 @@
+[
+  {"query": "We want 99.99% availability for the orders service — is a single-region multi-AZ deployment enough?", "should_trigger": true, "note": "tier → topology"},
+  {"query": "How much downtime per month does 99.95 allow?", "should_trigger": true, "note": "tier table"},
+  {"query": "Our app depends on Postgres at 99.95 and an auth provider at 99.9; what availability can we actually promise?", "should_trigger": true, "note": "dependency arithmetic"},
+  {"query": "Review this architecture document before we split it into specs", "should_trigger": true, "note": "arch review entry"},
+  {"query": "The traffic estimate is 200 requests per second average — is the sizing fine?", "should_trigger": true, "note": "peak vs average"},
+  {"query": "Can we claim RPO zero with async replication to the DR region?", "should_trigger": true, "note": "data path"},
+  {"query": "Write the Non-functional targets block for this system", "should_trigger": true, "note": "targets template"},
+  {"query": "Review this pull request for correctness and test coverage", "should_trigger": false, "note": "code-review"},
+  {"query": "Turn this ticket into a spec with a UC table", "should_trigger": false, "note": "spec-authoring"},
+  {"query": "Which playbook should a database migration task load?", "should_trigger": false, "note": "task-router"},
+  {"query": "How many unit tests does this handler need?", "should_trigger": false, "note": "dense-testing"}
+]

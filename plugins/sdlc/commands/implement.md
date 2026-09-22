@@ -37,6 +37,12 @@ with a one-line reason, if:
 - the `Open questions` section still has unchecked boxes → "open questions block execution"
 - the UC table is empty or has a row with no observable result → "UC-<n> has no testable result"
 
+For `kind: bugfix` specs: first confirm `approved-by` is present and matches
+`^issue #[0-9]+` — if not, refuse with "bugfix spec requires approved-by: issue #<n>".
+Then run **get-issue** on issue `<n>` and confirm it still carries label `bug` — label absent
+means the approval is revoked; refuse with "bugfix approval revoked: issue #<n> no longer
+labelled bug".
+
 Refusing here costs one tool call. Guessing here costs a bad pull request that a human has to read,
 and the wandering that precedes the guess costs more than the whole task should.
 

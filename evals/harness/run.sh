@@ -189,6 +189,16 @@ score() {
             assert_ok "qa verdict: $want_verdict (committed)"
         fi
     fi
+
+    # artifacts_exist: each listed path must exist and be non-empty in the sandbox worktree
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if [ -f "$sandbox/$f" ] && [ -s "$sandbox/$f" ]; then
+            assert_ok "artifact: $f"
+        else
+            assert_fail "artifact: $f" "missing or empty in worktree (expected at $sandbox/$f)"
+        fi
+    done < <(jq -r '.assert.artifacts_exist // [] | .[]' "$scenario_json")
 }
 
 # --------------------------------------------------------------------------- #
@@ -214,6 +224,10 @@ for model in $MODELS; do
 
         printf '── %s × %s\n' "$scenario" "$model"
         make_sandbox "$sandbox"
+        while IFS= read -r setup_cmd; do
+            [ -n "$setup_cmd" ] || continue
+            (cd "$sandbox" && eval "$setup_cmd") || die "setup: $setup_cmd"
+        done < <(jq -r '.setup // [] | .[]' "$sjson")
         mkdir -p "$sandbox/specs/$ticket"
         cp "$sdir/spec.md" "$sandbox/specs/$ticket/spec.md"
         git -C "$sandbox" add -A

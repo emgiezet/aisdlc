@@ -1,0 +1,22 @@
+{
+  "name": "ui-flow",
+  "ticket": "SBX-4",
+  "description": "HTML balance page on the Go ledger service. Exercises the browser QA pass: auto-qa navigates to the rendered page, asserts visible text, and screenshots each UI UC. Validates the artifacts_exist scorer assertion. Requires Playwright installed on the runner (`npx playwright install chromium`).",
+  "setup": [
+    "mkdir -p .claude/browsers && cp \"$REPO_ROOT/plugins/sdlc/templates/browsers/playwright.md\" .claude/browsers/playwright.md",
+    "printf '%s\\n' '**Browser descriptor:** .claude/browsers/playwright.md' > .claude/sdlc.md"
+  ],
+  "phases": "implement qa",
+  "assert": {
+    "diff_contains": [
+      "/html/balance/"
+    ],
+    "files_changed": [
+      "services/ledger/internal/httpapi/server.go"
+    ],
+    "artifacts_exist": [
+      "specs/SBX-4/qa/UC-1.png"
+    ],
+    "qa_verdict": "PASS"
+  }
+}
