@@ -140,6 +140,151 @@ grep -q 'AISDLC_HEADLESS=1' "$REPO_ROOT/plugins/sdlc/bin/aisdlc" \
     || bad "headless marker" "hooks cannot tell a queued phase from an interactive session"
 
 # --------------------------------------------------------------------------- #
+printf '\nreview phase runs after ship with the PR number\n'
+R="$WORK/review-phase"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ -f "${D}review.log" ] && ok "review.log exists" || bad "review phase" "no review.log"
+grep -qE '/(sdlc:)?review 7 --autofix' "${D}review.log" 2>/dev/null \
+    && ok "review prompt contains PR number 7" \
+    || bad "review prompt" "PR number missing in review.log"
+
+# --------------------------------------------------------------------------- #
+printf '\n--no-pr strips ship and review\n'
+R="$WORK/no-pr"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .status)" = "done" ] && ok "--no-pr task done" \
+    || bad "--no-pr status" "status is $(task_field "$R" .status)"
+[ ! -f "${D}ship.log" ] && ok "ship phase absent" || bad "--no-pr" "ship.log exists"
+[ ! -f "${D}review.log" ] && ok "review phase absent" || bad "--no-pr" "review.log exists"
+
+# --------------------------------------------------------------------------- #
+printf '\nadd --issue claims once and refuses twice\n'
+R="$WORK/issue-claim"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: [bug]
+assignees: []
+author: selftest
+created: 2026-09-22T00:00:00Z
+---
+Test bug.
+
+## Comments
+ISSUE
+mkdir -p "$R/.claude"
+cat > "$R/.claude/sdlc.md" <<'SDLC'
+## Issue tracker
+- **Tracker descriptor:** `.claude/trackers/local.md`
+SDLC
+"$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1 \
+    && ok "first add --issue 42 succeeds" \
+    || bad "issue claim" "first add --issue failed"
+grep -q 'in-progress' "$R/.aisdlc/tracker/issues/42.md" \
+    && ok "issue has in-progress label" \
+    || bad "claim" "in-progress not in labels after claim"
+grep -q $'\360\237\244\226' "$R/.aisdlc/tracker/issues/42.md" \
+    && ok "claim comment appended" \
+    || bad "claim comment" "no robot comment in issue file"
+"$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1 \
+    && bad "double claim" "second add --issue 42 should have failed" \
+    || ok "second add --issue 42 refused: already claimed"
+
+# --------------------------------------------------------------------------- #
+printf '\nbugfix spec passes the gate only while the issue is labelled bug\n'
+R="$WORK/bugfix-gate-ok"
+fresh_repo "$R"
+cat > "$R/specs/SBX-1/spec.md" <<'BFSPEC'
+---
+ticket: SBX-1
+kind: bugfix
+status: approved
+approved-by: issue #42 (label bug, @selftest)
+---
+
+| id | actor | action | expected observable result | test |
+|----|-------|--------|----------------------------|------|
+| UC-1 | caller | calls Stub() | returns a non-empty string | unit |
+BFSPEC
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "bugfix spec"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+mkdir -p "$R/.aisdlc/tracker/issues"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: [bug]
+assignees: []
+author: selftest
+created: 2026-09-22T00:00:00Z
+---
+Test bug.
+
+## Comments
+ISSUE
+mkdir -p "$R/.claude"
+cat > "$R/.claude/sdlc.md" <<'SDLC'
+## Issue tracker
+- **Tracker descriptor:** `.claude/trackers/local.md`
+SDLC
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1 \
+    && ok "bugfix spec passes gate with bug label" \
+    || bad "bugfix gate" "add refused with bug label present"
+# Same spec, issue without bug label — gate must refuse.
+R="$WORK/bugfix-gate-no-label"
+fresh_repo "$R"
+cat > "$R/specs/SBX-1/spec.md" <<'BFSPEC'
+---
+ticket: SBX-1
+kind: bugfix
+status: approved
+approved-by: issue #42 (label bug, @selftest)
+---
+
+| id | actor | action | expected observable result | test |
+|----|-------|--------|----------------------------|------|
+| UC-1 | caller | calls Stub() | returns a non-empty string | unit |
+BFSPEC
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "bugfix spec"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+mkdir -p "$R/.aisdlc/tracker/issues"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: []
+assignees: []
+author: selftest
+created: 2026-09-22T00:00:00Z
+---
+Test bug (no bug label).
+
+## Comments
+ISSUE
+mkdir -p "$R/.claude"
+cat > "$R/.claude/sdlc.md" <<'SDLC'
+## Issue tracker
+- **Tracker descriptor:** `.claude/trackers/local.md`
+SDLC
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1 \
+    && bad "bugfix gate" "add should refuse without bug label" \
+    || ok "bugfix spec refused without bug label"
+
+# --------------------------------------------------------------------------- #
 printf '\nartifacts_exist scorer: present file passes, missing file fails\n'
 _AEDIR="$WORK/aexist"
 mkdir -p "$_AEDIR"
