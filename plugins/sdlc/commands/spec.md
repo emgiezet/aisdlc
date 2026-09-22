@@ -45,6 +45,12 @@ Never invent ticket content. An unreachable tracker is a stop, not a prompt to g
 If the profile names a domain glossary skill, load it — the spec must use the team's vocabulary
 rather than a paraphrase of it.
 
+If the profile's `Briefs live in:` directory (default `specs/briefs/`) contains a file whose
+slug or ticket id matches `$ARGUMENTS`, read it before writing anything. Use its Problem section
+as the seed for the spec's Problem, its Non-goals as the seed for `Out:`, and its Decisions as
+the seed for the Context section's recorded decisions. Evidence-tagged claims carry their tag
+into the spec unchanged; `[ASSUMPTION]` items become open questions.
+
 ---
 
 ## Phase 2: Ground it in the codebase

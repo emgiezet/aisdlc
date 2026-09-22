@@ -24,6 +24,11 @@ List the screens and states you are going to build, and say which `UC-<n>` each 
 the unglamorous ones — empty, loading, permission denied, validation failure. Those are where
 expectations diverge most and where mockups usually stay silent.
 
+If `specs/briefs/ux-<slug>.md` exists (where `<slug>` is derived from the ticket or flow name),
+read it before listing screens. Use its States table to seed the states list — empty, loading,
+error, denied, success — and its Direction section to set the visual language. Cover every state
+the brief names; add `TBD` states as disabled buttons in the state switcher.
+
 If no use case has a visible result, say so and stop: this ticket has nothing to mock up.
 
 ---
