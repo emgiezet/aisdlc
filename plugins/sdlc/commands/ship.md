@@ -1,6 +1,6 @@
 ---
-description: Turn a verified branch into a reviewable draft PR without a human in the loop — pushes, opens the PR with the spec and QA verdict up front, labels it ai-sdlc, and posts the QA report as a comment so the PR list doubles as the review inbox. Use as the last step after /sdlc:qa, or from the aisdlc queue.
-allowed-tools: Bash(git:*), Bash(gh:*), Read, Grep, Glob
+description: Turn a verified branch into a reviewable draft PR without a human in the loop — pushes, opens the PR with the spec and QA verdict up front, labels it for the review inbox, posts the QA report as a comment, and hands the pipeline label to /sdlc:review. Use as the last step after /sdlc:qa, from the aisdlc queue, or with --docs for a documentation-only branch.
+allowed-tools: Bash, Read, Grep, Glob
 ---
 
 # /sdlc:ship
@@ -8,10 +8,16 @@ allowed-tools: Bash(git:*), Bash(gh:*), Read, Grep, Glob
 The delivery end of the unattended pipeline. Its job is to make a human's next two minutes
 efficient: the PR must say what was asked, what the QA verdict is, and where to look first.
 
-`$ARGUMENTS` is the ticket id. Read `.claude/sdlc.md` for the specs directory, the pull request
-label, and the branch convention; paths below assume the default `specs/` and label `ai-sdlc`.
+`$ARGUMENTS` is the ticket id, optionally followed by `--no-qa` or `--docs`. Read `.claude/sdlc.md`
+for the specs directory, the pull request label, the pipeline labels, the branch convention and
+the **Tracker descriptor**; paths below assume the defaults `specs/` and `ai-sdlc`.
 
-Requires `specs/<TICKET>/spec.md` and, unless `--no-qa` is passed, `specs/<TICKET>/qa-report.md`.
+Every tracker action below is a bold operation name (**create-pr**). Execute it exactly as the
+descriptor file defines it; never substitute a CLI call of your own. `Tracker descriptor: none` →
+there is no delivery channel: write `specs/<TICKET>/pr-body.md`, report the branch, stop.
+
+Requires `specs/<TICKET>/spec.md` and, unless `--no-qa` or `--docs` is passed,
+`specs/<TICKET>/qa-report.md`.
 
 ---
 
@@ -22,6 +28,11 @@ not, print `no spec at specs/<TICKET>/spec.md — nothing to ship` and stop. Do 
 repo, do not look for the ticket in a tracker, do not ask where it went. A missing file is an
 answer, and finding that out must cost one tool call.
 
+**`--docs` replaces that check** with a diff check: every path in `git diff --name-only <base>..HEAD`
+must match `*.md`, `docs/**` or `CHANGELOG*`. Any other path → print
+`--docs: non-doc files in diff: <list>` and stop. `<TICKET>` may then be a slug (`changelog-1.2.0`)
+and no spec or QA report is required.
+
 Then refuse, with a one-line reason, if:
 
 - `specs/<TICKET>/qa-report.md` is missing → "run /sdlc:qa first"
@@ -31,13 +42,14 @@ Then refuse, with a one-line reason, if:
 - the current branch is `main`, `master`, or `develop` → "refusing to ship from a shared branch"
 - `git log <base>..HEAD` is empty → "nothing to ship"
 
-`gh` unavailable or unauthenticated → skip to Phase 4 (offline handoff) instead of failing.
+Run the descriptor's **auth-check**. A failure is not a stop: fall through to Phase 4.
 
 ---
 
 ## Phase 2: Open the PR
 
-1. Push: `git push -u origin HEAD`.
+1. Push: `git push -u origin HEAD` (skip when there is no `origin`; the `local` provider does not
+   need one).
 2. Compose the body from the spec and the QA report — never from the diff alone. Order
    matters: verdict and scope first, file tour last.
 
@@ -53,22 +65,33 @@ that is where an unattended run is most likely to have overstepped.
 
 ### How to verify
 <the exact CI commands that were run, so a reviewer can repeat them>
-<for UI work: the mockup path and the Playwright scenario names>
+<for UI work: the mockup path and the e2e scenario names>
 
 ### Review here first
 <the 1–3 riskiest changes, with file:line — money maths, permission checks, migrations>
+<if the spec's Context carries LOW_CONFIDENCE: "Root-cause analysis was LOW_CONFIDENCE — verify the diagnosis, not just the fix">
 
 ### Not covered
 <anything from the QA report's "Not verified" section, or "nothing">
 ```
 
-3. `gh pr create --draft --title "type(scope): <summary> (<TICKET>)" --body-file <tmp>`.
-   Always `--draft`: an agent-authored PR entering review unread is how the review habit dies.
-4. Label it with the profile's label: `gh pr edit --add-label <label>` (create it once if
-   missing). The label is what makes `aisdlc inbox` and a phone-sized `gh pr list` work.
-5. Post the QA report as a comment: `gh pr comment --body-file specs/<TICKET>/qa-report.md`.
-   In the comment, not the body — the body stays scannable, the evidence stays one click away.
-6. If a migration is in the diff, say so in the body and request review attention explicitly.
+   A `--docs` body is shorter: title, what changed and why, the `git log --oneline <base>..HEAD`.
+
+3. **create-pr** with title `type(scope): <summary> (<TICKET>)`, the body file, the profile's
+   default base, and `draft` set. Always a draft: an agent-authored PR entering review unread is how
+   the review habit dies. Keep the returned number and URL.
+4. **label-pr** twice: the profile's PR label (`ai-sdlc`) and the pipeline label `review`. The first
+   is what makes `aisdlc inbox` and a phone-sized PR list work; the second is what `/sdlc:review`
+   and `/sdlc:merge` read. Both labels were created by `/sdlc:init`; a missing one is logged by the
+   descriptor and never created here.
+5. **comment-pr** with `specs/<TICKET>/qa-report.md` as the body file (skip under `--docs`). In the
+   comment, not the body — the body stays scannable, the evidence stays one click away.
+6. If `specs/<TICKET>/qa/*.png` exist: **attach-image-evidence** with them, slug `pr-<n>`.
+7. If a migration is in the diff, say so in the body and request review attention explicitly.
+
+Under the `local` provider these operations write `.aisdlc/tracker/prs.jsonl`, the PR body to
+`specs/<TICKET>/pr-body.md` and comments beside it — the same steps, a different medium. Commit
+`pr-body.md`; it is the reviewable artefact when there is no remote.
 
 ---
 
@@ -76,18 +99,25 @@ that is where an unattended run is most likely to have overstepped.
 
 ```
 ## Shipped — <TICKET>
-PR: <url> (draft, label ai-sdlc)
+Labels: ai-sdlc · review (draft)
 QA: PASS · UC 8/8 · tests 448
 Review first: <file:line>
+
+Verdict: PASS
+PR: #<n> (<url — or the pr-body.md path under local>)
 ```
+
+The last two lines are the chain markers: the queue's `review` phase and `/sdlc:review` parse the
+number from `PR: #<n>`. Print them exactly, last, once.
 
 ---
 
-## Phase 4: Offline handoff
+## Phase 4: No delivery channel
 
-No `gh`, no auth, or no remote: write `specs/<TICKET>/pr-body.md` with the same content, leave
-the branch pushed if a remote exists, and report the branch name plus that path. The work must
-never be lost because the delivery channel was missing.
+**auth-check** failed, the descriptor is `none`, or the push was refused: write
+`specs/<TICKET>/pr-body.md` with the Phase 2 body, leave the branch pushed if a remote accepted it,
+and report the branch name plus that path with `Verdict:` and `PR: #0 (specs/<TICKET>/pr-body.md)`.
+The work must never be lost because the delivery channel was missing.
 
 ---
 
@@ -96,4 +126,5 @@ never be lost because the delivery channel was missing.
 - **A human-facing PR generator** — one that interviews the diff while you watch. This command is
   non-interactive, refuses on a blocking QA verdict, and attaches spec-derived evidence. Keep
   using the interactive one for branches you wrote yourself.
+- **`/sdlc:review`** — reads the PR this command opened. Ship never reviews its own work.
 - **Deployment readiness checks** — run those before merge, not before opening a draft.
