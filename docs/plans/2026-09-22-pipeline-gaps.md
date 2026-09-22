@@ -74,10 +74,13 @@ generated spec. `/sdlc:merge` is interactive-only.
 One `### <operation>` heading per operation, body = the exact shell command(s) with `{param}`
 placeholders, then `Returns:` one line. Operations, exact names:
 
-`current-user get-issue search-issues create-issue comment-issue close-issue label-issue
-unlabel-issue assign-issue get-pr list-prs search-prs create-pr update-pr comment-pr review-pr
-merge-pr get-pr-diff get-pr-checks get-run-failed-logs checkout-pr attach-image-evidence claim
-release check-claim`
+`auth-check current-user get-issue search-issues create-issue comment-issue close-issue
+label-issue unlabel-issue assign-issue get-pr list-prs search-prs create-pr update-pr comment-pr
+label-pr unlabel-pr assign-pr review-pr merge-pr get-pr-diff get-pr-checks get-run-failed-logs
+checkout-pr attach-image-evidence ensure-labels claim release check-claim`
+
+Parameter shapes and return values: `plugins/sdlc/templates/trackers/TEMPLATE.md` (committed in
+Task 1) is the authoritative list; `github.md` and `local.md` are the two implementations.
 
 Composite semantics:
 - **claim** `{kind issue|pr} {n} {command}` → **assign-issue/pr** to **current-user**, **label**
