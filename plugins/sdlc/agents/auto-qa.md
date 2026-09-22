@@ -38,7 +38,8 @@ do not mention.
      2. **click** and **fill** the required interactions.
      3. **assert-text** the expected observable result.
      4. **screenshot** `specs/<TICKET>/qa/UC-<n>.png`.
-   A screenshot is evidence only: it never turns `GAPS` into `PASS`.
+   A screenshot is evidence only: it never turns `GAPS` into `PASS`. Screenshots are
+   committed with the QA evidence when `/sdlc:qa` runs Phase 4.
 
 ## What counts as a gap
 

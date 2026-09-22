@@ -56,7 +56,7 @@ Run **get-pr-checks** `{n}`. For each failing required check, classify and act:
 |-------|----------|--------|
 | `real-bug` | failure names production code | fix with a new test; commit |
 | `test-bug` | assertion error inside test code | fix the test assertion; commit |
-| `flake` | non-deterministic or network failure | **get-run-failed-logs** `{run-id}`; re-run the check once via the descriptor; if it fails again → treat as `real-bug` |
+| `flake` | non-deterministic or network failure | **get-run-failed-logs** `{run-id}`; **rerun-check** `{run-id}`; if it fails again → treat as `real-bug` |
 | `infra` | runner setup, toolchain, dependency cache | **comment-pr** `⚠ NEEDS HUMAN: infra failure in <check>`; **label-pr** `blocked`; stop |
 
 Rules:

@@ -31,6 +31,10 @@ a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`.
 | `other:<login>` | absent | Print `issue <n> is claimed by <login>` and stop |
 | `other:<login>` | present | **comment-issue** `<n>` with an override notice; proceed |
 
+After the check-claim resolves to proceed: if the result was `free`, `stale:<login>`, or
+`other:<login>` (with `--force`), **claim** `issue <n> fix-issue`; record the returned
+ISO-8601 timestamp.
+
 ---
 
 ## Phase 2: Triage [GATE]
@@ -41,28 +45,25 @@ Parse the `Verdict:` line from the output.
 
 | Verdict | Action |
 |---------|--------|
-| `NO_ACTION_NEEDED` | Print the evidence from triage. Stop — nothing claimed, nothing written. |
-| `FEATURE` | Print `triage returned FEATURE — run /sdlc:spec GH-<n> and have a human approve it`. Stop. |
-| `BUG (spec draft — open questions)` | Print `triage left open questions in specs/GH-<n>/spec.md — resolve them before fixing`. Stop. |
-| `BUG` | Proceed |
+| `NO_ACTION_NEEDED` | **release** `issue <n> fix-issue` `no action needed`. Print evidence. Stop. |
+| `FEATURE` | **release** `issue <n> fix-issue` `feature — needs human approval`. Print message. Stop. |
+| `BUG` | Read `specs/GH-<n>/spec.md`; if `status: draft` → **release** `issue <n> fix-issue` `spec draft — resolve open questions or add bug label`; stop. Otherwise proceed. |
 
 ---
 
-## Phase 3: Claim and worktree [REQUIRED]
-
-**claim** `issue <n> fix-issue`. Record the returned ISO-8601 timestamp.
+## Phase 3: Worktree [REQUIRED]
 
 Derive a slug: take the issue title, lowercase it, keep ASCII letters and digits, replace spaces
 with `-`, truncate to 40 characters.
 
 ```bash
-git worktree add ai/GH-<n>-<slug> <profile base branch>
+git worktree add -b ai/GH-<n>-<slug> \
+    "$(dirname <repo>)/.aisdlc-worktrees/GH-<n>-<slug>" \
+    <profile base branch>
 ```
 
 All subsequent phases run inside this worktree. On any failure after this point, jump to
 Phase 8 (finally) with the failure reason.
-
----
 
 ## Phase 4: Root cause
 
@@ -124,7 +125,7 @@ This phase runs on every exit — success and failure.
 Remove the worktree on failure:
 
 ```bash
-git worktree remove --force ai/GH-<n>-<slug>
+git worktree remove --force "$(dirname <repo>)/.aisdlc-worktrees/GH-<n>-<slug>"
 ```
 
 **On success:** **release** `pr <m> fix-issue` `completed`.

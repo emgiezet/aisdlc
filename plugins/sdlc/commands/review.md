@@ -44,7 +44,7 @@ Stop with a one-line reason if:
 
 Record as findings inside the review — never a reason to stop the run:
 
-1. **get-pr** `mergeable` field → `CONFLICTED`: add `[blocker] merge conflicts`.
+1. **get-pr** `mergeable` field → `CONFLICTING`: add `[blocker] merge conflicts`.
 2. **get-pr-checks** `{n}` → each failing required check: `[major] CI check <name> failing`.
 
 ---
@@ -97,9 +97,9 @@ Write `/tmp/review-pr-{n}-body.md`: ranked findings, then the verdict line.
 
 **review-pr** `{n} {approve|request-changes} /tmp/review-pr-{n}-body.md`.
 
-C5 label transition:
-- `APPROVED` → **unlabel-pr** `changes-requested`; **label-pr** `merge-ready`
-- `CHANGES_REQUESTED` → **unlabel-pr** `merge-ready`; **label-pr** `changes-requested`
+C5 label transition (unlabel every other pipeline label, then label the new state):
+- `APPROVED` → **unlabel-pr** `review`; **unlabel-pr** `changes-requested`; **unlabel-pr** `blocked`; **label-pr** `merge-ready`
+- `CHANGES_REQUESTED` → **unlabel-pr** `review`; **unlabel-pr** `merge-ready`; **unlabel-pr** `blocked`; **label-pr** `changes-requested`
 
 ---
 
@@ -116,13 +116,13 @@ Fix in this order; push each category as a separate commit (never `--force`; nev
 2. **Findings** — address every `blocker` and `major` from Phase 5.
 3. **CI** — after findings are pushed, **get-pr-checks** `{n}`; for each failing check classify
    `real-bug | test-bug | flake | infra`:
-   - `flake`: **get-run-failed-logs** `{run-id}`; re-run once via the descriptor; if it fails again → treat as `real-bug`.
-   - `infra`: record `⚠ NEEDS HUMAN: infra failure in <check>`; label `blocked`; stop.
+   - `flake`: **get-run-failed-logs** `{run-id}`; **rerun-check** `{run-id}`; if it fails again → treat as `real-bug`.
+   - `infra`: record `⚠ NEEDS HUMAN: infra failure in <check>`; **unlabel-pr** `review`; **unlabel-pr** `merge-ready`; **unlabel-pr** `changes-requested`; **label-pr** `blocked`; stop.
    - Never skip, comment-out, or lower a threshold.
 
 After each push, re-dispatch Phase 5 (`code-reviewer`). On `APPROVED`: proceed to Phase 8.
 
-Stop immediately on `⚠ NEEDS HUMAN`: label `blocked`; do not loop further.
+Stop immediately on `⚠ NEEDS HUMAN`: **unlabel-pr** `review`; **unlabel-pr** `merge-ready`; **unlabel-pr** `changes-requested`; **label-pr** `blocked`; do not loop further.
 
 Maximum 3 re-review loops. After 3 loops without `APPROVED`: stop; do not push further.
 

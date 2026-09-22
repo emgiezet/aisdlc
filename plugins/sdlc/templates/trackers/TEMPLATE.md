@@ -39,10 +39,10 @@ equivalent, comment formatting}
 ### label-issue      {n} {label}
 ### unlabel-issue    {n} {label}
 ### assign-issue     {n} {user}
-### get-pr           {n} → number, title, body, state, labels, assignees, author, headRefName, baseRefName, mergeable, reviews, comments, url
-### list-prs         {state} {label} → number, title, labels, url, headRefName
+### get-pr           {n} → number, title, body, state, labels, assignees, author, headRefName, baseRefName, mergeable, reviews, comments, mergeCommit, url
+### list-prs         {state} {label} → number, title, labels, url, headRefName, isDraft, createdAt, author
 ### search-prs       {query} {state} → number, title, url
-### create-pr        {title} {body-file} {base} {draft} → number, url
+### create-pr        {title} {body-file} {base} {draft} [{verdict}] → number, url
 ### update-pr        {n} {title} {body-file}
 ### comment-pr       {n} {body-file}
 ### label-pr         {n} {label}
@@ -53,6 +53,7 @@ equivalent, comment formatting}
 ### get-pr-diff      {n}
 ### get-pr-checks    {n} → name, state, link
 ### get-run-failed-logs {run-id}
+### rerun-check      {run-id} → reruns only the failed jobs of a CI run
 ### checkout-pr      {n} → PR head checked out locally (forks included)
 ### attach-image-evidence {n} {slug} {image...} → comment with inline images; never touches the PR branch
 ### ensure-labels    {label...} → creates the missing ones

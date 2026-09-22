@@ -37,16 +37,16 @@ Returns: issue URL; number is its last path segment.
 ### close-issue
 `gh issue close {n} --comment '{comment}'`
 ### label-issue
-`gh label list --json name --jq '.[].name' | grep -qx '{label}' && gh api -X POST repos/{owner}/{repo}/issues/{n}/labels -f 'labels[]={label}' >/dev/null || echo "label {label} absent — skipped"`
+`gh label list --json name --jq '.[].name' | grep -qx '{label}' || { echo "label {label} absent — skipped"; exit 0; }; gh api -X POST repos/{owner}/{repo}/issues/{n}/labels -f 'labels[]={label}' >/dev/null`
 ### unlabel-issue
 `gh api -X DELETE repos/{owner}/{repo}/issues/{n}/labels/{label} >/dev/null 2>&1 || true`
 ### assign-issue
 `gh api -X POST repos/{owner}/{repo}/issues/{n}/assignees -f 'assignees[]={user}' >/dev/null`
 ### get-pr
-`gh pr view {n} --json number,title,body,state,isDraft,labels,assignees,author,headRefName,baseRefName,mergeable,reviews,comments,url,files`
+`gh pr view {n} --json number,title,body,state,isDraft,labels,assignees,author,headRefName,baseRefName,mergeable,reviews,comments,url,files,mergeCommit`
 Returns: JSON; `mergeable` is `MERGEABLE|CONFLICTING|UNKNOWN`.
 ### list-prs
-`gh pr list --state {state} --label '{label}' --json number,title,labels,url,headRefName,isDraft,createdAt --limit 50`
+`gh pr list --state {state} --label '{label}' --json number,title,labels,url,headRefName,isDraft,createdAt,author --limit 50`
 ### search-prs
 `gh pr list --search '{query}' --state {state} --json number,title,url,state`
 ### create-pr
@@ -63,7 +63,9 @@ same as **unlabel-issue**.
 ### assign-pr
 same as **assign-issue**.
 ### review-pr
-`gh pr review {n} --{verdict} --body-file {body-file}` where `{verdict}` is `approve` or `request-changes`.
+`me=$(gh api user --jq .login); pr_author=$(gh pr view {n} --json author --jq .author.login)`.
+Self-authored (`[ "$me" = "$pr_author" ]`): `{ printf '🤖 Review (self-authored PR) — Verdict: %s\n' "$([ '{verdict}' = approve ] && echo APPROVED || echo CHANGES_REQUESTED)"; cat {body-file}; } | gh pr comment {n} --body-file -`; labels applied separately by the caller.
+Otherwise: `gh pr review {n} --{verdict} --body-file {body-file}` where `{verdict}` is `approve` or `request-changes`.
 ### merge-pr
 `gh pr merge {n} --squash --delete-branch`
 ### get-pr-diff
@@ -72,6 +74,8 @@ same as **assign-issue**.
 `gh pr checks {n} --json name,state,link,workflow` — `state` is `SUCCESS|FAILURE|PENDING|…`.
 ### get-run-failed-logs
 `gh run view {run-id} --log-failed`
+### rerun-check
+`gh run rerun {run-id} --failed`
 ### checkout-pr
 `gh pr checkout {n} --detach` (in a linked worktree, never the primary checkout).
 ### attach-image-evidence
@@ -82,11 +86,12 @@ URLs need auth; still post them and say so.
 ### ensure-labels
 `for l in {label...}; do gh label create "$l" --force --color 5319e7 --description "ai-sdlc pipeline" >/dev/null; done`
 ### claim
-`gh api -X POST repos/{owner}/{repo}/issues/{n}/assignees -f 'assignees[]={me}' >/dev/null && gh api -X POST repos/{owner}/{repo}/issues/{n}/labels -f 'labels[]=in-progress' >/dev/null && gh issue comment {n} --body "🤖 /sdlc:{command} claimed $(date -u +%FT%TZ)"`
+`me=$(gh api user --jq .login); gh api -X POST repos/{owner}/{repo}/issues/{n}/assignees -f "assignees[]=$me" >/dev/null && gh api -X POST repos/{owner}/{repo}/issues/{n}/labels -f 'labels[]=in-progress' >/dev/null && gh issue comment {n} --body "🤖 /sdlc:{command} claimed $(date -u +%FT%TZ)"`
 Read back with **get-issue**/**get-pr**: all three signals present, else fail.
 ### check-claim
-From **get-issue**/**get-pr**: no `in-progress` label → `free`; label present and `{me}` in
-assignees → `mine`; else find the newest comment matching `^🤖 .* claimed (\S+)`: older than
-60 min → `stale:<its author>`, otherwise `other:<its author>` (fallback: first assignee).
+`me=$(gh api user --jq .login); data=$(gh {issue|pr} view {n} --json labels,assignees,comments)`.
+`echo "$data" | jq -e '[.labels[].name]|index("in-progress")' >/dev/null || { echo free; exit 0; }`.
+`echo "$data" | jq -e --arg me "$me" '[.assignees[].login]|index($me)' >/dev/null && { echo mine; exit 0; }`.
+`clm=$(echo "$data" | jq -r '[.comments[]|select(.body|test("🤖 .* claimed"))]|last'); login=$(echo "$clm"|jq -r '.author.login // empty'); ts=$(echo "$clm"|jq -r '.createdAt // empty'); [ -z "$ts" ] && echo "other:${login:-$(echo "$data"|jq -r '.assignees[0].login//"unknown"')}" || { [ $(( $(date -u +%s) - $(date -d "$ts" +%s) )) -gt 3600 ] && echo "stale:$login" || echo "other:$login"; }`
 ### release
 `gh api -X DELETE repos/{owner}/{repo}/issues/{n}/labels/in-progress >/dev/null 2>&1; gh issue comment {n} --body "🤖 /sdlc:{command} completed: {outcome}. Lock released."`

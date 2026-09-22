@@ -78,8 +78,9 @@ that is where an unattended run is most likely to have overstepped.
    A `--docs` body is shorter: title, what changed and why, the `git log --oneline <base>..HEAD`.
 
 3. **create-pr** with title `type(scope): <summary> (<TICKET>)`, the body file, the profile's
-   default base, and `draft` set. Always a draft: an agent-authored PR entering review unread is how
-   the review habit dies. Keep the returned number and URL.
+   default base, `draft` set, and the QA verdict (`PASS`/`GAPS`; `null` under `--docs`). Always a
+   draft: an agent-authored PR entering review unread is how the review habit dies. Keep the
+   returned number and URL.
 4. **label-pr** twice: the profile's PR label (`ai-sdlc`) and the pipeline label `review`. The first
    is what makes `aisdlc inbox` and a phone-sized PR list work; the second is what `/sdlc:review`
    and `/sdlc:merge` read. Both labels were created by `/sdlc:init`; a missing one is logged by the

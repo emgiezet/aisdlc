@@ -13,7 +13,16 @@
       "source": "./plugins/sdlc",
       "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy and descriptors for your repo; spec → mockup → implement → qa → ship → review runs unattended; issues enter through triage, PRs leave through a gated human merge",
       "version": "0.2.0",
-      "strict": true
+      "strict": true,
+      "skills": [
+        "./skills/code-review",
+        "./skills/dense-testing",
+        "./skills/discovery",
+        "./skills/harness-eval",
+        "./skills/pipeline-contracts",
+        "./skills/spec-authoring",
+        "./skills/task-router"
+      ]
     },
     {
       "name": "slop-guard",

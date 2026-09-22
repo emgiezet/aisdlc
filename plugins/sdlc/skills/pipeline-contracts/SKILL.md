@@ -33,7 +33,7 @@ Read back every mutation before reporting it done. `local` is a real provider (f
 |---|---|
 | Identity | **auth-check** **current-user** |
 | Issues | **get-issue** **search-issues** **create-issue** **comment-issue** **close-issue** **label-issue** **unlabel-issue** **assign-issue** |
-| Pull requests | **get-pr** **list-prs** **search-prs** **create-pr** **update-pr** **comment-pr** **label-pr** **unlabel-pr** **assign-pr** **review-pr** **merge-pr** **get-pr-diff** **get-pr-checks** **get-run-failed-logs** **checkout-pr** **attach-image-evidence** |
+| Pull requests | **get-pr** **list-prs** **search-prs** **create-pr** **update-pr** **comment-pr** **label-pr** **unlabel-pr** **assign-pr** **review-pr** **merge-pr** **get-pr-diff** **get-pr-checks** **get-run-failed-logs** **checkout-pr** **rerun-check** **attach-image-evidence** |
 | Labels | **ensure-labels** (only `/sdlc:init` calls it) |
 | Lock | **claim** **check-claim** **release** |
 | Browser | **boot-check** **open** **goto** **click** **fill** **assert-text** **screenshot** **close** |
@@ -82,6 +82,10 @@ Three signals on the issue or PR, all set by **claim** `{kind} {n} {command}`: a
 finally step even on failure, with `🤖 /sdlc:<command> aborted: <reason>. Lock released.`. A lock
 inherited from the previous chain step is kept and annotated `Lock retained — chain continues.`
 Hand-off issue → PR: **claim** the PR, then **release** the issue with outcome `handed off to PR #<n>`.
+
+**review-pr** on a PR the current user authored (GitHub refuses self-review): the descriptor posts
+the body as a comment headed `🤖 Review (self-authored PR) — Verdict: <token>` and returns success;
+the command sets labels exactly as for a real review.
 
 ## Pipeline labels
 
