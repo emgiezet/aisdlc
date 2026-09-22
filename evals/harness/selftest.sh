@@ -140,6 +140,26 @@ grep -q 'AISDLC_HEADLESS=1' "$REPO_ROOT/plugins/sdlc/bin/aisdlc" \
     || bad "headless marker" "hooks cannot tell a queued phase from an interactive session"
 
 # --------------------------------------------------------------------------- #
+printf '\nartifacts_exist scorer: present file passes, missing file fails\n'
+_AEDIR="$WORK/aexist"
+mkdir -p "$_AEDIR"
+_AEPNG="specs/SBX-4/qa/UC-1.png"
+# absent → check must detect failure
+if [ -f "$_AEDIR/$_AEPNG" ] && [ -s "$_AEDIR/$_AEPNG" ]; then
+    bad "artifacts_exist absent" "file should not exist yet"
+else
+    ok "absent artifact correctly detected as missing"
+fi
+# present and non-empty → check must pass
+mkdir -p "$_AEDIR/specs/SBX-4/qa"
+printf 'PNG' > "$_AEDIR/$_AEPNG"
+if [ -f "$_AEDIR/$_AEPNG" ] && [ -s "$_AEDIR/$_AEPNG" ]; then
+    ok "present non-empty artifact correctly detected"
+else
+    bad "artifacts_exist present" "file exists but check failed"
+fi
+unset _AEDIR _AEPNG
+# --------------------------------------------------------------------------- #
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
 rm -rf "$WORK"

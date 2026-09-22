@@ -12,18 +12,34 @@ prints the install command otherwise.
 ## Operations
 
 ### boot-check
-TODO: SDLC-009
+agent-browser --version
+Returns: exit 0 when binary is present and functional; exit 1 — install with `npm install -g agent-browser` or download the release binary from the project's GitHub releases page
+
 ### open
-TODO: SDLC-009
+agent-browser open {base-url}
+Returns: browser session opened at {base-url}
+
 ### goto
-TODO: SDLC-009
+agent-browser goto {url}
+Returns: page navigated to {url}
+
 ### click
-TODO: SDLC-009
+agent-browser click {selector}
+Returns: element at {selector} clicked
+
 ### fill
-TODO: SDLC-009
+agent-browser fill {selector} {text}
+Returns: field {selector} filled with {text}
+
 ### assert-text
-TODO: SDLC-009
+agent-browser get-text {selector}
+# Capture the output and compare to {text}; exit 1 with actual text if it does not include {text}
+Returns: exit 0 when element text includes {text}; exit 1 with actual text
+
 ### screenshot
-TODO: SDLC-009
+agent-browser screenshot --path {path}
+Returns: PNG written to {path}
+
 ### close
-TODO: SDLC-009
+agent-browser close
+Returns: browser session closed

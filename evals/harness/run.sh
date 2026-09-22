@@ -189,6 +189,16 @@ score() {
             assert_ok "qa verdict: $want_verdict (committed)"
         fi
     fi
+
+    # artifacts_exist: each listed path must exist and be non-empty in the sandbox worktree
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if [ -f "$sandbox/$f" ] && [ -s "$sandbox/$f" ]; then
+            assert_ok "artifact: $f"
+        else
+            assert_fail "artifact: $f" "missing or empty in worktree (expected at $sandbox/$f)"
+        fi
+    done < <(jq -r '.assert.artifacts_exist // [] | .[]' "$scenario_json")
 }
 
 # --------------------------------------------------------------------------- #

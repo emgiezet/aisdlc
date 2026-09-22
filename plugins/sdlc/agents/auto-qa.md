@@ -24,9 +24,21 @@ do not mention.
 4. **Then run everything.** The CI verification matrix
    (the `dense-testing` skill's `references/ci-matrix.md`, or the table in `.claude/sdlc.md`) for each touched stack. Report real
    output; never infer that a suite passes.
-5. **Then verify the UCs the tests do not cover** — by hand, with `curl` against a locally
-   started service, a database query, a Playwright scenario you write for the occasion. An
-   untested UC is not automatically broken, and not automatically working.
+5. **Then verify the UCs the tests do not cover.**
+
+   **API UCs** — `curl` against a locally started service or a database query. An untested
+   UC is not automatically broken, and not automatically working.
+
+   **UI UCs** — read `Browser descriptor:` from `.claude/sdlc.md`:
+   - `none`: write `browser: none — UI UCs verified by tests only` in the report; verdict
+     rule is unchanged.
+   - any path: open the descriptor; run **boot-check** (exit non-zero → log the install hint
+     and treat as `none`); run `/sdlc:test-env` to start the application; then for each UI UC:
+     1. **goto** the UC's starting URL.
+     2. **click** and **fill** the required interactions.
+     3. **assert-text** the expected observable result.
+     4. **screenshot** `specs/<TICKET>/qa/UC-<n>.png`.
+   A screenshot is evidence only: it never turns `GAPS` into `PASS`.
 
 ## What counts as a gap
 
@@ -53,11 +65,11 @@ it must be readable in 30 seconds:
 **Verdict: PASS** | **Verdict: GAPS (<n> findings, <n> blocking)**
 
 ## UC coverage
-| UC | requirement | test | verified |
-|----|-------------|------|----------|
-| UC-1 | 200 + balance as integer minor units | `TestGetBalance_UC1_…` | ✅ automated |
-| UC-2 | 404, no detail leaked | — | ⚠️ no test — checked by hand, passes |
-| UC-3 | entries listed newest first | `entries.spec.ts UC-3` | ❌ asserts presence, not order |
+| UC | requirement | test | screenshot | verified |
+|----|-------------|------|------------|----------|
+| UC-1 | 200 + balance as integer minor units | `TestGetBalance_UC1_…` | — | ✅ automated |
+| UC-2 | 404, no detail leaked | — | — | ⚠️ no test — checked by hand, passes |
+| UC-3 | entries listed newest first | `entries.spec.ts UC-3` | [UC-3.png](specs/T/qa/UC-3.png) | ❌ asserts presence, not order |
 
 Covered: 6/8 UCs automated · 1 manual · 1 failing
 
