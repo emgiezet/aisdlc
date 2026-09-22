@@ -30,7 +30,7 @@ created: <ISO-8601>
 ```
 
 PRs are lines of `.aisdlc/tracker/prs.jsonl`:
-`{"number":1,"branch":"…","title":"…","labels":["ai-sdlc","review"],"state":"open","verdict":"PASS","reviews":[],"body_path":"specs/<T>/pr-body.md","url":"local#1"}`.
+`{"number":1,"branch":"…","baseRefName":"…","title":"…","labels":["ai-sdlc","review"],"state":"open","isDraft":false,"createdAt":"…","verdict":null,"reviews":[],"body_path":"specs/<T>/pr-body.md","url":"local#1","author":"local-user","assignees":[],"mergeCommit":null}`.
 PR comments append to `.aisdlc/tracker/prs/{n}.comments.md`. A PR "URL" is `local#{n}`; chain
 markers print the body path: `PR: #{n} (specs/<T>/pr-body.md)`.
 
@@ -46,7 +46,7 @@ see Prerequisites.
 ### get-issue
 `cat $I` — read the frontmatter keys and the body as they stand.
 ### search-issues
-`grep -il -- '{query}' .aisdlc/tracker/issues/*.md | xargs -r -n1 basename | sed 's/\.md$//'`
+`for f in .aisdlc/tracker/issues/*.md; do { [ '{state}' = all ] || grep -q "^state: {state}" "$f"; } && grep -qi -- '{query}' "$f" && basename "$f" .md; done`
 ### create-issue
 `n=$(( $(ls .aisdlc/tracker/issues | sed 's/\.md$//' | sort -n | tail -1) + 1 )); printf -- '---\nnumber: %s\ntitle: %s\nstate: open\nlabels: [%s]\nassignees: []\nauthor: %s\ncreated: %s\n---\n%s\n\n## Comments\n' "$n" '{title}' '{labels}' "{me}" "$now" "$(cat {body-file})" > .aisdlc/tracker/issues/$n.md; echo "$n"`
 ### comment-issue
@@ -60,13 +60,13 @@ see Prerequisites.
 ### assign-issue
 `sed -i -E 's/^assignees: \[(.*)\]/assignees: [\1, {user}]/; s/\[, /[/' $I`
 ### get-pr
-`jq -c 'select(.number=={n})' $P`
+`n={n}; rec=$(jq --argjson n $n -c 'select(.number==$n)' $P); bp=$(echo "$rec"|jq -r '.body_path // empty'); br=$(echo "$rec"|jq -r '.branch // empty'); body=$([ -n "$bp" ] && cat "$bp" 2>/dev/null); cf=.aisdlc/tracker/prs/$n.comments.md; comments=$(cat "$cf" 2>/dev/null); mt=$(git merge-tree "$(git merge-base HEAD "$br" 2>/dev/null)" HEAD "$br" 2>/dev/null | { grep -qF '<<<<<<<' && echo CONFLICTING || echo MERGEABLE; }); mt=${mt:-MERGEABLE}; echo "$rec" | jq -c --arg body "$body" --arg comments "$comments" --arg mt "$mt" '(.branch) as $br | . + {body:$body,comments:$comments,mergeable:$mt,headRefName:$br}'`
 ### list-prs
-`jq -c 'select(.state=="{state}") | select(.labels|index("{label}"))' $P`
+`jq -c --arg s '{state}' --arg l '{label}' 'select(($s=="all") or (.state==$s)) | select(.labels|index($l)) | {number,title,labels,url,headRefName:.branch,isDraft:(.isDraft//false),createdAt:(.createdAt//""),author:(.author//"local-user")}' $P`
 ### search-prs
-`grep -i -- '{query}' $P | jq -c .`
+`jq -c --arg q '{query}' --arg s '{state}' 'select(($s=="all") or (.state==$s)) | select(.title|test($q;"i")) | {number,title,url}' $P`
 ### create-pr
-`n=$(( $(jq -s 'map(.number)|max // 0' $P 2>/dev/null) + 1 )); jq -nc --argjson n $n --arg b "$(git branch --show-current)" --arg t '{title}' --arg p '{body-file}' '{number:$n,branch:$b,title:$t,labels:[],state:"open",verdict:null,reviews:[],body_path:$p,url:("local#"+($n|tostring))}' >> $P; echo "local#$n"`
+`n=$(( $(jq -s 'map(.number)|max // 0' $P 2>/dev/null) + 1 )); me=${AISDLC_USER:-local-user}; jq -nc --argjson n $n --arg b "$(git branch --show-current)" --arg t '{title}' --arg p '{body-file}' --arg base '{base}' --arg v '{verdict}' --arg u "$me" --arg d "$now" '{number:$n,branch:$b,baseRefName:$base,title:$t,labels:[],state:"open",isDraft:false,createdAt:$d,verdict:($v|if . == "null" or . == "" then null else . end),reviews:[],body_path:$p,url:("local#"+($n|tostring)),author:$u,assignees:[],mergeCommit:null}' >> $P; echo "local#$n"`
 ### update-pr
 `jq -c --argjson n {n} --arg t '{title}' 'if .number==$n then .title=$t else . end' $P > $P.tmp && mv $P.tmp $P`
 ### comment-pr
@@ -78,15 +78,17 @@ see Prerequisites.
 ### assign-pr
 `jq -c --argjson n {n} 'if .number==$n then .assignees=((.assignees//[])+["{user}"]|unique) else . end' $P > $P.tmp && mv $P.tmp $P`
 ### review-pr
-`jq -c --argjson n {n} --arg v '{verdict}' --arg u "{me}" --arg d "$now" 'if .number==$n then .reviews+=[{by:$u,verdict:$v,at:$d}] else . end' $P > $P.tmp && mv $P.tmp $P` then **comment-pr**.
+`jq -c --argjson n {n} --arg v '{verdict}' --arg u "${AISDLC_USER:-local-user}" --arg d "$now" 'if .number==$n then .reviews+=[{by:$u,verdict:$v,at:$d}]|.verdict=$v else . end' $P > $P.tmp && mv $P.tmp $P` then **comment-pr**.
 ### merge-pr
-`b=$(jq -r 'select(.number=={n}).branch' $P); git merge --squash "$b" && git commit -m "$(jq -r 'select(.number=={n}).title' $P) (#{n})"` then set `.state="merged"` as in **update-pr**.
+`b=$(jq -r 'select(.number=={n}).branch' $P); git merge --squash "$b" && git commit -m "$(jq -r 'select(.number=={n}).title' $P) (#{n})"; mc=$(git rev-parse HEAD); jq -c --argjson n {n} --arg mc "$mc" 'if .number==$n then .state="merged"|.mergeCommit=$mc else . end' $P > $P.tmp && mv $P.tmp $P`
 ### get-pr-diff
 `git diff $(git merge-base HEAD "$(jq -r 'select(.number=={n}).branch' $P)")...$(jq -r 'select(.number=={n}).branch' $P)`
 ### get-pr-checks
 `[ -f .aisdlc/tracker/checks/{n}.json ] && cat .aisdlc/tracker/checks/{n}.json || echo '[]'` — a repo's CI may write this file; absent means no checks.
 ### get-run-failed-logs
 `cat .aisdlc/tracker/runs/{run-id}.log 2>/dev/null || echo "no local run log"`
+### rerun-check
+`echo "no CI runs under local"; exit 1`
 ### checkout-pr
 `git checkout --detach "$(jq -r 'select(.number=={n}).branch' $P)"`
 ### attach-image-evidence
@@ -98,6 +100,7 @@ no-op — labels are free-form strings here.
 **comment-issue**/**comment-pr** with `🤖 /sdlc:{command} claimed $now`. Read back: label and
 assignee present.
 ### check-claim
-Issue: `grep -q '^labels: .*in-progress' $I || echo free`; then `grep -q "^assignees: .*{me}" $I && echo mine`; else newest `- <ISO> @<login>: 🤖 .* claimed` line: older than 60 min → `stale:<login>`, else `other:<login>`. PR: same over `.labels`, `.assignees`, and the comments file.
+Issue: `me=${AISDLC_USER:-local-user}; grep -q '^labels: .*in-progress' $I || { echo free; exit 0; }; grep -q "^assignees: .*${me}" $I && { echo mine; exit 0; }; line=$(grep -E '🤖 .* claimed' $I | tail -1); login=$(echo "$line" | sed 's/.*@//;s/:.*//' ); ts=$(echo "$line" | grep -oE '[0-9]{4}-[0-9T:-]+Z' | head -1); [ -z "$ts" ] && { echo "other:${login:-unknown}"; exit 0; }; [ $(( $(date -u +%s) - $(date -d "$ts" +%s 2>/dev/null || echo 0) )) -gt 3600 ] && echo "stale:$login" || echo "other:$login"`
+PR: `me=${AISDLC_USER:-local-user}; jq -e --argjson n {n} 'select(.number==$n).labels|index("in-progress")' $P >/dev/null || { echo free; exit 0; }; jq -e --argjson n {n} --arg me "$me" 'select(.number==$n).assignees|index($me)' $P >/dev/null && { echo mine; exit 0; }; cf=.aisdlc/tracker/prs/{n}.comments.md; ts_login=$(awk 'prev ~ /^[0-9]{4}/ && /🤖 .* claimed/ {print prev} {prev=$0}' "$cf" 2>/dev/null | tail -1); login=$(echo "$ts_login" | sed 's/.*@//'); ts=$(echo "$ts_login" | grep -oE '[0-9]{4}-[0-9T:-]+Z' | head -1); [ -z "$ts" ] && { echo "other:${login:-unknown}"; exit 0; }; [ $(( $(date -u +%s) - $(date -d "$ts" +%s 2>/dev/null || echo 0) )) -gt 3600 ] && echo "stale:$login" || echo "other:$login"`
 ### release
 **unlabel-issue**/**unlabel-pr** `in-progress`, then comment `🤖 /sdlc:{command} completed: {outcome}. Lock released.`

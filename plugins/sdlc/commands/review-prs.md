@@ -18,6 +18,8 @@ Every tracker action is a bold operation (**list-prs**). Execute it exactly as t
 
 **current-user** to get your login.
 
+For each listed PR, **get-pr** `{n}` to obtain the `reviews` field.
+
 Filter out PRs whose `reviews` list already contains a review by **current-user**.
 
 Sort the remaining PRs newest first (highest PR number first).

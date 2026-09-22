@@ -27,7 +27,7 @@ Determine state using the first matching row:
 | `unreviewed` | pipeline label is `review`; `reviews` list is empty | `/sdlc:review {n} --autofix` |
 | `changes-requested` | pipeline label is `changes-requested` | `/sdlc:fix-pr {n}` |
 | `red-ci` | pipeline label is `review` or `merge-ready`; any required check is failing | `/sdlc:fix-pr {n} --ci-only` |
-| `conflicted` | `mergeable == CONFLICTED` | `/sdlc:fix-pr {n}` |
+| `conflicted` | `mergeable == CONFLICTING` | `/sdlc:fix-pr {n}` |
 | `merge-ready` | pipeline label is `merge-ready`; all required checks green | `/sdlc:merge {n}` (only with `--allow-merge`; otherwise stop) |
 
 `<T>` is the ticket id from the PR title or body; if absent, skip the `unfinished-plan` check.

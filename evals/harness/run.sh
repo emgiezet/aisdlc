@@ -224,6 +224,10 @@ for model in $MODELS; do
 
         printf '── %s × %s\n' "$scenario" "$model"
         make_sandbox "$sandbox"
+        while IFS= read -r setup_cmd; do
+            [ -n "$setup_cmd" ] || continue
+            (cd "$sandbox" && eval "$setup_cmd") || die "setup: $setup_cmd"
+        done < <(jq -r '.setup // [] | .[]' "$sjson")
         mkdir -p "$sandbox/specs/$ticket"
         cp "$sdir/spec.md" "$sandbox/specs/$ticket/spec.md"
         git -C "$sandbox" add -A

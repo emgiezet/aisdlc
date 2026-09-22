@@ -39,7 +39,7 @@ Phase 6 to refresh the `last_run` timestamp. Stop after Phase 6.
 
 For each merged PR in ascending order:
 
-1. Read the PR title and body.
+1. **get-pr** `{n}` to obtain the PR title and body.
 2. Extract every match of the pattern `(?i)(?:Fixes|Closes)\s+#([0-9]+)` from both fields.
 3. Collect tuples `(issue_n, pr_n)`.
 

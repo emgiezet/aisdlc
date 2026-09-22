@@ -81,9 +81,9 @@ Issue: #<n> (<url>)
 
 ### BUG
 
-If the issue lacks label `bug`, **label-issue** `<n>` `bug` before writing the spec.
+`mkdir -p specs/GH-<n>`. Write `specs/GH-<n>/spec.md` with these exact frontmatter keys.
 
-`mkdir -p specs/GH-<n>`. Write `specs/GH-<n>/spec.md` with these exact frontmatter keys:
+If the issue already carries the `bug` label, include `approved-by` and set `status: approved`:
 
 ```yaml
 ---
@@ -92,6 +92,18 @@ title: <issue title>
 kind: bugfix
 status: approved
 approved-by: issue #<n> (label bug, @<author>)
+stacks: [<detected stacks>]
+---
+```
+
+If the issue lacks the `bug` label, omit `approved-by` and set `status: draft`:
+
+```yaml
+---
+ticket: GH-<n>
+title: <issue title>
+kind: bugfix
+status: draft
 stacks: [<detected stacks>]
 ---
 ```
@@ -109,13 +121,22 @@ Body sections follow the `spec-authoring` layout:
 If there are open questions: set `status: draft` (overrides the frontmatter above) and report:
 
 ```
-Verdict: BUG (spec draft — open questions)
+Verdict: BUG
 specs/GH-<n>/spec.md written — status: draft, open questions remain
 
 Issue: #<n> (<url>)
 ```
 
-Otherwise:
+If the issue lacks the `bug` label and there are no open questions:
+
+```
+Verdict: BUG
+specs/GH-<n>/spec.md written — status: draft; label the issue `bug` to approve
+
+Issue: #<n> (<url>)
+```
+
+Otherwise (bug label present, no open questions):
 
 ```
 Verdict: BUG

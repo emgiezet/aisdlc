@@ -30,13 +30,13 @@ Record the resolved base as `<since>`.
 
 ## Phase 2: Collect merged PRs since the base
 
-1. **list-prs** `merged` with the profile label — retrieve number, title, url, and merge
-   commit SHA for each.
-2. Enumerate merge commits reachable since `<since>`:
+1. **list-prs** `merged` with the profile label — retrieve number, title, and url for each.
+2. For each listed PR, **get-pr** `{n}` and record the `mergeCommit` field.
+3. Enumerate all commits reachable since `<since>`:
    ```bash
-   git log <since>..HEAD --format="%H" --merges
+   git log <since>..HEAD --format="%H"
    ```
-3. Keep only PRs whose merge commit SHA appears in that list. If the intersection is empty:
+4. Keep only PRs whose `mergeCommit` SHA appears in that list. If the intersection is empty:
    print `nothing to release since <since>` and stop. Do not write to `CHANGELOG.md`.
 
 ---

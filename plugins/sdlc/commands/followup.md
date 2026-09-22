@@ -41,8 +41,8 @@ If an open issue whose body already contains the comment URL or text excerpt is 
 2. **comment-pr** `<pr#>` with body `Filed as Issue: #<m> (existing)`.
 3. Stop. Report:
    ```
-   Issue: #<m> (<url>)
    PR: #<pr#> (<pr-url>)
+   Issue: #<m> (<url>)
    ```
 
 ---
@@ -99,8 +99,8 @@ Filed as Issue: #<m> (<issue-url>)
 Issue title: <title>
 Assignee: @<login> | unresolved
 
-Issue: #<m> (<issue-url>)
 PR: #<pr#> (<pr-url>)
+Issue: #<m> (<issue-url>)
 ```
 
 ---

@@ -285,25 +285,121 @@ SDLC
     || ok "bugfix spec refused without bug label"
 
 # --------------------------------------------------------------------------- #
-printf '\nartifacts_exist scorer: present file passes, missing file fails\n'
-_AEDIR="$WORK/aexist"
-mkdir -p "$_AEDIR"
-_AEPNG="specs/SBX-4/qa/UC-1.png"
-# absent → check must detect failure
-if [ -f "$_AEDIR/$_AEPNG" ] && [ -s "$_AEDIR/$_AEPNG" ]; then
-    bad "artifacts_exist absent" "file should not exist yet"
-else
-    ok "absent artifact correctly detected as missing"
-fi
-# present and non-empty → check must pass
-mkdir -p "$_AEDIR/specs/SBX-4/qa"
-printf 'PNG' > "$_AEDIR/$_AEPNG"
-if [ -f "$_AEDIR/$_AEPNG" ] && [ -s "$_AEDIR/$_AEPNG" ]; then
-    ok "present non-empty artifact correctly detected"
-else
-    bad "artifacts_exist present" "file exists but check failed"
-fi
-unset _AEDIR _AEPNG
+printf '\nartifacts_exist scorer uses real score() from run.sh\n'
+declare -i A_PASS=0 A_FAIL=0
+assert_ok()   { A_PASS+=1; }
+assert_fail() { A_FAIL+=1; }
+_SCORE_TMP="$WORK/score_fn.sh"
+awk '/^score\(\) \{$/{f=1} f{print} /^}$/ && f{f=0; exit}' \
+    "$HARNESS_DIR/run.sh" > "$_SCORE_TMP"
+# shellcheck source=/dev/null
+. "$_SCORE_TMP"
+_SBOX="$WORK/scorer-sandbox"
+mkdir -p "$_SBOX"
+git -C "$_SBOX" init -q -b master
+git -C "$_SBOX" config user.email score@localhost
+git -C "$_SBOX" config user.name score
+touch "$_SBOX/.keep"
+git -C "$_SBOX" add -A
+git -C "$_SBOX" commit -q -m "init"
+_SBASE="$(git -C "$_SBOX" rev-parse HEAD)"
+_SSCEN="$WORK/scorer-scen.json"
+printf '{"assert":{"artifacts_exist":["specs/SBX-4/qa/UC-1.png"]}}\n' > "$_SSCEN"
+# absent → score must record a failure
+A_PASS=0; A_FAIL=0
+score "$_SBOX" "$_SSCEN" "SBX-4" "$_SBASE" >/dev/null 2>&1
+[ "$A_FAIL" -gt 0 ] \
+    && ok "absent artifact: score() records a failure" \
+    || bad "artifacts_exist absent" "score() did not flag missing artifact"
+# present non-empty → score must pass
+mkdir -p "$_SBOX/specs/SBX-4/qa"
+printf 'PNG' > "$_SBOX/specs/SBX-4/qa/UC-1.png"
+A_PASS=0; A_FAIL=0
+score "$_SBOX" "$_SSCEN" "SBX-4" "$_SBASE" >/dev/null 2>&1
+[ "$A_FAIL" -eq 0 ] \
+    && ok "present artifact: score() records a pass" \
+    || bad "artifacts_exist present" "score() flagged a present artifact as missing"
+unset _SCORE_TMP _SBOX _SBASE _SSCEN
+# --------------------------------------------------------------------------- #
+printf '\nclaim failure: die and create no task\n'
+R="$WORK/issue-claim-fail"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues"
+mkdir -p "$R/.claude"
+cat > "$R/.claude/sdlc.md" <<'SDLC'
+## Issue tracker
+- **Tracker descriptor:** `.claude/trackers/local.md`
+SDLC
+"$AISDLC" add --issue 99 --repo "$R" >/dev/null 2>&1 \
+    && bad "claim failure" "add should have failed when claim cannot be established" \
+    || ok "add --issue fails when claim fails"
+task_count="$(find "$R/.aisdlc/tasks" -name 'task.json' 2>/dev/null | wc -l | tr -d ' ')"
+[ "${task_count:-0}" -eq 0 ] \
+    && ok "no task created after failed claim" \
+    || bad "claim failure" "${task_count} task(s) created after failed claim"
+# --------------------------------------------------------------------------- #
+printf '\nissue released after ship, prs.jsonl created\n'
+R="$WORK/issue-handoff"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: [bug]
+assignees: []
+author: selftest
+created: 2026-09-22T00:00:00Z
+---
+Test bug.
+
+## Comments
+ISSUE
+mkdir -p "$R/.claude"
+cat > "$R/.claude/sdlc.md" <<'SDLC'
+## Issue tracker
+- **Tracker descriptor:** `.claude/trackers/local.md`
+SDLC
+"$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+grep -q 'handed off to PR #7' "$R/.aisdlc/tracker/issues/42.md" \
+    && ok "issue released with 'handed off to PR #7'" \
+    || bad "issue handoff" "$(grep 'completed\|handed\|aborted' \
+       "$R/.aisdlc/tracker/issues/42.md" 2>/dev/null | head -1 || echo 'no release comment')"
+[ -f "$R/.aisdlc/tracker/prs.jsonl" ] \
+    && ok "prs.jsonl created after PR claim" \
+    || bad "PR claim" "prs.jsonl not created"
+# --------------------------------------------------------------------------- #
+printf '\nissue released aborted when a phase fails\n'
+R="$WORK/issue-abort"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: [bug]
+assignees: []
+author: selftest
+created: 2026-09-22T00:00:00Z
+---
+Test bug.
+
+## Comments
+ISSUE
+mkdir -p "$R/.claude"
+cat > "$R/.claude/sdlc.md" <<'SDLC'
+## Issue tracker
+- **Tracker descriptor:** `.claude/trackers/local.md`
+SDLC
+"$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1
+AISDLC_STUB=blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+grep -qE 'aborted:' "$R/.aisdlc/tracker/issues/42.md" \
+    && ok "issue released with aborted: when a phase fails" \
+    || bad "issue abort" "$(grep 'completed\|handed\|aborted' \
+       "$R/.aisdlc/tracker/issues/42.md" 2>/dev/null | head -1 || echo 'no release comment')"
 # --------------------------------------------------------------------------- #
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

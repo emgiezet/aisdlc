@@ -76,7 +76,7 @@ placeholders, then `Returns:` one line. Operations, exact names:
 
 `auth-check current-user get-issue search-issues create-issue comment-issue close-issue
 label-issue unlabel-issue assign-issue get-pr list-prs search-prs create-pr update-pr comment-pr
-label-pr unlabel-pr assign-pr review-pr merge-pr get-pr-diff get-pr-checks get-run-failed-logs
+label-pr unlabel-pr assign-pr review-pr merge-pr get-pr-diff get-pr-checks get-run-failed-logs rerun-check
 checkout-pr attach-image-evidence ensure-labels claim release check-claim`
 
 Parameter shapes and return values: `plugins/sdlc/templates/trackers/TEMPLATE.md` (committed in
