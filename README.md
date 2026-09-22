@@ -125,6 +125,7 @@ Before there is a ticket at all: `/sdlc:brainstorm`, `/sdlc:discover`, `/sdlc:sy
 | `/sdlc:brainstorm` · `/sdlc:discover` · `/sdlc:synthetic-users` · `/sdlc:backlog` · `/sdlc:ux-shape` · `/sdlc:ux-setup` | Discovery, before a spec exists: one question at a time, evidence-tagged product briefs, synthetic panels that never count as evidence, epics and stories filed through `/sdlc:issue`, a UX direction, the repo's design contract as a path-scoped rule. |
 | `/sdlc:test-env` · `/sdlc:integration-tests` · `/sdlc:ux-review` | Boot the app portably and reuse it warm; write E2E tests against the running app with real locators; review a PR's UI against the design contract in a real browser. |
 | `/sdlc:retro` | Classify finished runs, rank their causes by cost and wall-clock, and map each to the harness file that owns it. |
+| `/sdlc:arch-review` | Grade a planned architecture against its numbers: elicits the traffic profile, availability tier and RPO/RTO one question at a time, checks the topology and dependency chain against what the tier forces, writes `arch-review.md` with a `SOUND`/`GAPS` verdict. |
 
 ### Skills
 
@@ -136,6 +137,7 @@ Before there is a ticket at all: `/sdlc:brainstorm`, `/sdlc:discover`, `/sdlc:sy
 | `harness-eval` | How to measure the harness on a cheap model, and a table mapping each failure symptom to the instruction file that caused it. |
 | `pipeline-contracts` | The vocabulary every command shares: tracker and browser descriptors and their operations, chain markers, verdict tokens, the claim lock, pipeline labels, the bugfix approval rule. |
 | `code-review` | Severity scale, the verdict rule, the review checklist, and the five lenses of a specification review. |
+| `architecture-review` | Availability tiers 99.5–99.999 with the downtime, topology, deploy strategy and RPO/RTO each forces; dependency-chain arithmetic; traffic-profile rules; the `Non-functional targets` block. |
 | `discovery` | Brief and product-brief formats, evidence tags that never upgrade, the Definition of Ready. |
 
 Plus the `auto-qa` and `code-reviewer` agents, the `guard` hook, `bin/aisdlc`, and the shipped

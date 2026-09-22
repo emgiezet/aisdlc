@@ -63,6 +63,7 @@ commands travel in a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`, v
 | `/sdlc:review` | `APPROVED` `CHANGES_REQUESTED` | the submitted review |
 | `/sdlc:triage` | `NO_ACTION_NEEDED` `BUG` `FEATURE` | route decision |
 | `/sdlc:root-cause` | `LOW_CONFIDENCE` | trailing flag, copied into the PR body by ship |
+| `/sdlc:arch-review` | `SOUND` `GAPS` | architecture verdict; `GAPS` = a blocker or unwaived major |
 | any autofix loop | `⚠ NEEDS HUMAN` | stop; a person decides |
 
 ## Claim lock

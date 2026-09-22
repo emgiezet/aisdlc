@@ -39,6 +39,7 @@ After the PR:     /${NAME}:continue · /${NAME}:fix-pr · /${NAME}:autopilot · 
                   /${NAME}:close-fixed · /${NAME}:changelog
 QA surface:       /${NAME}:test-env · /${NAME}:integration-tests · /${NAME}:ux-review
 Harness:          /${NAME}:retro — rank what the runs cost, by cause
+Architecture:     /${NAME}:arch-review <EPIC|path> — grade a planned architecture against its traffic profile, availability tier and RPO/RTO
 
 Skills (load with the Skill tool):
 - spec-authoring      — the UC table format: atomic, observable, stably-numbered criteria
@@ -47,6 +48,7 @@ Skills (load with the Skill tool):
 - harness-eval        — measuring the harness on a cheap model, and fixing instructions not tiers
 - pipeline-contracts  — descriptors, operations, chain markers, verdict tokens, claim lock, labels
 - code-review         — severity scale, verdict rule, review checklist, spec-review lenses
+- architecture-review — availability tiers and what each forces, dependency arithmetic, traffic profile, RPO/RTO
 - discovery           — brief format, evidence tags, Definition of Ready
 
 Agents: auto-qa — verifies an implementation against its spec; code-reviewer — reviews a PR spec-first.
