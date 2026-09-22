@@ -12,8 +12,8 @@ COMMANDS := init spec mockup implement qa ship \
             review fix-pr review-prs autopilot continue merge merge-buddy followup close-fixed changelog \
             issue triage root-cause fix-issue \
             brainstorm discover synthetic-users backlog ux-shape ux-setup \
-            test-env integration-tests ux-review retro
-SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery
+            test-env integration-tests ux-review retro arch-review
+SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review
 AGENTS := auto-qa code-reviewer
 PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing
 TRACKERS := TEMPLATE github local
