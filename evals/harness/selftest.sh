@@ -370,6 +370,14 @@ grep -q 'handed off to PR #7' "$R/.aisdlc/tracker/issues/42.md" \
 [ -f "$R/.aisdlc/tracker/prs.jsonl" ] \
     && ok "prs.jsonl created after PR claim" \
     || bad "PR claim" "prs.jsonl not created"
+# The hand-off is a real lock swap: exactly one PR record, released (no in-progress) once review passed.
+[ "$(jq -s 'map(select(.number == 7)) | length' "$R/.aisdlc/tracker/prs.jsonl" 2>/dev/null)" = "1" ] \
+    && ok "one PR record for #7, not a duplicate" \
+    || bad "PR record" "expected one record for PR 7"
+jq -e 'select(.number == 7) | (.labels | index("in-progress")) == null and (.reviews | map(.verdict) | index("APPROVED"))' \
+    "$R/.aisdlc/tracker/prs.jsonl" >/dev/null 2>&1 \
+    && ok "PR lock released with APPROVED after review" \
+    || bad "PR release" "$(jq -c 'select(.number == 7) | {labels, reviews}' "$R/.aisdlc/tracker/prs.jsonl" 2>/dev/null)"
 # --------------------------------------------------------------------------- #
 printf '\nissue released aborted when a phase fails\n'
 R="$WORK/issue-abort"
@@ -400,6 +408,39 @@ grep -qE 'aborted:' "$R/.aisdlc/tracker/issues/42.md" \
     && ok "issue released with aborted: when a phase fails" \
     || bad "issue abort" "$(grep 'completed\|handed\|aborted' \
        "$R/.aisdlc/tracker/issues/42.md" 2>/dev/null | head -1 || echo 'no release comment')"
+
+# --------------------------------------------------------------------------- #
+printf '\ncancel gives a queued issue claim back; retry takes it again\n'
+R="$WORK/issue-cancel"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues" "$R/.claude"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: [bug]
+assignees: []
+author: selftest
+created: 2026-09-22T00:00:00Z
+---
+Test bug.
+
+## Comments
+ISSUE
+printf -- '- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
+"$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1
+ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+"$AISDLC" cancel "$ID" --repo "$R" >/dev/null 2>&1
+grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/42.md" \
+    && bad "cancel release" "in-progress still on the issue after cancel" \
+    || ok "cancel released the issue claim"
+"$AISDLC" retry "$ID" --repo "$R" >/dev/null 2>&1 \
+    && ok "retry re-queued the cancelled issue task" \
+    || bad "retry" "retry failed"
+grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/42.md" \
+    && ok "retry re-claimed the issue" \
+    || bad "retry claim" "no in-progress after retry"
 # --------------------------------------------------------------------------- #
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

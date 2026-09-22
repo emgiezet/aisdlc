@@ -258,26 +258,32 @@ tracker_local_issue_has_label() {
     grep -E "^labels:" "$issue_file" | grep -qw "$label"
 }
 
+# Assignees as one login per line, from a `assignees: [a, b]` frontmatter line.
+_local_assignees() {
+    grep -m1 '^assignees:' "$1" | sed 's/^assignees:[[:space:]]*\[//; s/\].*$//' | tr ',' '\n' | tr -d ' ' | sed '/^$/d'
+}
+
+# Epoch of the newest `🤖 … claimed <ISO>` comment by <login> in a comments stream on stdin.
+_newest_claim_epoch() {
+    local login="$1" iso
+    iso="$(grep -F "@${login}:" | grep -F 'claimed' | grep -oE 'claimed [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z' | tail -1 | cut -d' ' -f2)"
+    [ -n "$iso" ] && date -u -d "$iso" +%s 2>/dev/null
+}
+
 tracker_local_check_claim() {
     local repo="$1" n="$2" identity="${AISDLC_USER:-local-user}"
     local issue_file="$repo/.aisdlc/tracker/issues/$n.md"
     [ -f "$issue_file" ] || { printf 'free'; return 0; }
-    grep -qE "^labels:.*in-progress" "$issue_file" 2>/dev/null || { printf 'free'; return 0; }
-    local assignee
-    assignee="$(grep -m1 '^assignees:' "$issue_file" | \
-                sed 's/assignees:[[:space:]]*//' | sed 's/\[//; s/\].*//' | \
-                cut -d',' -f1 | tr -d ' ')"
-    [ "$assignee" = "$identity" ] && { printf 'mine'; return 0; }
-    # Apply the stale test only to another claimant's claim.
-    local last_claimed epoch_now epoch_claimed
-    last_claimed="$(grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
-                    "$issue_file" 2>/dev/null | tail -1)"
-    epoch_now="$(date -u +%s)"
-    epoch_claimed="$(date -u -d "${last_claimed:-0}" +%s 2>/dev/null || echo "$epoch_now")"
-    if [ "$((epoch_now - epoch_claimed))" -gt 3600 ]; then
-        printf 'stale:%s' "$assignee"; return 0
+    grep -qE "^labels:.*\bin-progress\b" "$issue_file" 2>/dev/null || { printf 'free'; return 0; }
+    _local_assignees "$issue_file" | grep -qxF "$identity" && { printf 'mine'; return 0; }
+    local other epoch_claimed
+    other="$(_local_assignees "$issue_file" | head -1)"
+    # Stale only for another claimant, measured from their newest claim comment.
+    epoch_claimed="$(_newest_claim_epoch "${other:-unknown}" < "$issue_file" || true)"
+    if [ -n "$epoch_claimed" ] && [ "$(( $(date -u +%s) - epoch_claimed ))" -gt 3600 ]; then
+        printf 'stale:%s' "${other:-unknown}"; return 0
     fi
-    printf 'other:%s' "${assignee:-unknown}"
+    printf 'other:%s' "${other:-unknown}"
 }
 
 tracker_local_claim() {
@@ -354,52 +360,77 @@ tracker_github_issue_has_label() {
 }
 
 tracker_github_check_claim() {
-    local repo="$1" n="$2" identity slug
+    local repo="$1" n="$2" identity slug json
     slug="$(gh_repo_slug "$repo")"
     identity="$(gh api user --jq '.login' 2>/dev/null || printf 'unknown')"
-    local labels
-    labels="$(gh issue view "$n" --repo "$slug" --json labels --jq '.labels[].name' 2>/dev/null || true)"
-    printf '%s' "$labels" | grep -qxF 'in-progress' || { printf 'free'; return 0; }
-    local assignee
-    assignee="$(gh issue view "$n" --repo "$slug" --json assignees --jq '.assignees[0].login' 2>/dev/null || true)"
-    [ "$assignee" = "$identity" ] && { printf 'mine'; return 0; }
-    printf 'other:%s' "${assignee:-unknown}"
+    json="$(gh issue view "$n" --repo "$slug" --json labels,assignees,comments 2>/dev/null)" || { printf 'free'; return 0; }
+    printf '%s' "$json" | jq -e '.labels[].name | select(. == "in-progress")' >/dev/null 2>&1 || { printf 'free'; return 0; }
+    printf '%s' "$json" | jq -e --arg me "$identity" '.assignees[] | select(.login == $me)' >/dev/null 2>&1 && { printf 'mine'; return 0; }
+    local other epoch_claimed
+    other="$(printf '%s' "$json" | jq -r '.assignees[0].login // "unknown"')"
+    epoch_claimed="$(printf '%s' "$json" | jq -r --arg o "$other" \
+        '[.comments[] | select(.author.login == $o and (.body | test("claimed")))] | last | .createdAt // empty' \
+        | xargs -r -I{} date -u -d {} +%s 2>/dev/null)"
+    if [ -n "$epoch_claimed" ] && [ "$(( $(date -u +%s) - epoch_claimed ))" -gt 3600 ]; then
+        printf 'stale:%s' "$other"; return 0
+    fi
+    printf 'other:%s' "$other"
 }
 
+# Every mutation must succeed, then the three signals are read back — a claim that is not
+# observable is not a claim.
 tracker_github_claim() {
     local repo="$1" n="$2" identity iso slug
     slug="$(gh_repo_slug "$repo")"
-    identity="$(gh api user --jq '.login' 2>/dev/null || printf 'unknown')"
+    identity="$(gh api user --jq '.login')" || return 1
     iso="$(ts)"
-    gh issue edit "$n" --repo "$slug" --add-label "in-progress" --add-assignee "$identity" 2>/dev/null || true
-    gh issue comment "$n" --repo "$slug" --body "\360\237\244\226 /sdlc:aisdlc claimed $iso" 2>/dev/null || true
+    gh issue edit "$n" --repo "$slug" --add-label "in-progress" --add-assignee "$identity" >/dev/null || return 1
+    gh issue comment "$n" --repo "$slug" --body "$(printf '\360\237\244\226') /sdlc:aisdlc claimed $iso" >/dev/null || return 1
+    [ "$(tracker_github_check_claim "$repo" "$n")" = "mine" ]
 }
 
 tracker_github_release() {
-    local repo="$1" n="$2" outcome="${3:-done}" iso slug
+    local repo="$1" n="$2" outcome="${3:-done}" slug
     slug="$(gh_repo_slug "$repo")"
-    iso="$(ts)"
-    gh issue edit "$n" --repo "$slug" --remove-label "in-progress" 2>/dev/null || true
-    gh issue comment "$n" --repo "$slug" --body "\360\237\244\226 /sdlc:aisdlc completed: $outcome. Lock released." 2>/dev/null || true
+    gh issue edit "$n" --repo "$slug" --remove-label "in-progress" >/dev/null 2>&1 || true
+    gh issue comment "$n" --repo "$slug" --body "$(printf '\360\237\244\226') /sdlc:aisdlc completed: $outcome. Lock released." >/dev/null 2>&1 || true
 }
 
 # ---------- PR lifecycle ----------
 
+# The PR record already exists when ship used the local descriptor's create-pr; the claim
+# mutates it. A ship that never wrote one (a stub, an older descriptor) gets a full record.
 tracker_local_pr_claim() {
     local repo="$1" n="$2" ticket="$3"
-    local prs_file="$repo/.aisdlc/tracker/prs.jsonl"
-    local identity="${AISDLC_USER:-local-user}"
-    mkdir -p "$(dirname "$prs_file")"
-    jq -cn --argjson n "$n" --arg t "$ticket" --arg u "local#$n" --arg a "$identity" \
-        '{number:$n,title:$t,state:"open",labels:["ai-sdlc","review"],assignees:[$a],url:$u,verdict:null}' \
-        >> "$prs_file"
+    local prs_file="$repo/.aisdlc/tracker/prs.jsonl" comments="$repo/.aisdlc/tracker/prs/$n.comments.md"
+    local identity="${AISDLC_USER:-local-user}" tmp iso
+    iso="$(ts)"
+    mkdir -p "$(dirname "$prs_file")" "$(dirname "$comments")"
+    touch "$prs_file"
+    tmp="${prs_file}.tmp.$$"
+    if jq -e --argjson n "$n" 'select(.number == $n)' "$prs_file" >/dev/null 2>&1; then
+        jq -c --argjson n "$n" --arg a "$identity" \
+            'if .number == $n then .labels = ((.labels // []) + ["in-progress"] | unique) | .assignees = (((.assignees // []) + [$a]) | unique) else . end' \
+            "$prs_file" > "$tmp" && mv "$tmp" "$prs_file"
+    else
+        jq -cn --argjson n "$n" --arg t "$ticket" --arg u "local#$n" --arg a "$identity" --arg s "$ticket" \
+            '{number:$n,branch:null,title:$t,labels:["ai-sdlc","review","in-progress"],assignees:[$a],state:"open",verdict:null,reviews:[],body_path:("specs/"+$s+"/pr-body.md"),url:$u,mergeCommit:null}' \
+            >> "$prs_file"
+    fi
+    printf -- '\n---\n%s @%s\n\360\237\244\226 /sdlc:aisdlc claimed %s\n' "$iso" "$identity" "$iso" >> "$comments"
+    jq -e --argjson n "$n" --arg a "$identity" \
+        'select(.number == $n and (.labels | index("in-progress")) and (.assignees | index($a)))' "$prs_file" >/dev/null
 }
 
 tracker_github_pr_claim() {
-    local repo="$1" n="$2" slug identity
+    local repo="$1" n="$2" slug identity iso
     slug="$(gh_repo_slug "$repo")"
-    identity="$(gh api user --jq '.login' 2>/dev/null || printf 'unknown')"
-    gh pr edit "$n" --repo "$slug" --add-label "review" --add-assignee "$identity" 2>/dev/null || true
+    identity="$(gh api user --jq '.login')" || return 1
+    iso="$(ts)"
+    gh pr edit "$n" --repo "$slug" --add-label "in-progress" --add-assignee "$identity" >/dev/null || return 1
+    gh pr comment "$n" --repo "$slug" --body "$(printf '\360\237\244\226') /sdlc:aisdlc claimed $iso" >/dev/null || return 1
+    gh pr view "$n" --repo "$slug" --json labels,assignees 2>/dev/null \
+        | jq -e --arg me "$identity" '(.labels | map(.name) | index("in-progress")) and (.assignees | map(.login) | index($me))' >/dev/null
 }
 
 tracker_pr_claim() {
@@ -410,21 +441,24 @@ tracker_pr_claim() {
     esac
 }
 
+# <outcome> is the review verdict when the review phase ran, otherwise a plain description.
 tracker_local_pr_release() {
-    local repo="$1" n="$2" verdict="$3"
-    local prs_file="$repo/.aisdlc/tracker/prs.jsonl"
+    local repo="$1" n="$2" outcome="$3"
+    local prs_file="$repo/.aisdlc/tracker/prs.jsonl" comments="$repo/.aisdlc/tracker/prs/$n.comments.md"
     [ -f "$prs_file" ] || return 0
     local tmp="${prs_file}.tmp.$$"
-    jq -c --argjson n "$n" --arg v "$verdict" \
-        'if .number == $n then .assignees = [] | .verdict = $v else . end' \
+    jq -c --argjson n "$n" --arg v "$outcome" \
+        'if .number == $n then .assignees = [] | .labels = (.labels - ["in-progress"]) | (if ($v == "APPROVED" or $v == "CHANGES_REQUESTED") then .reviews += [{by:"aisdlc",verdict:$v}] else . end) else . end' \
         "$prs_file" > "$tmp" && mv "$tmp" "$prs_file"
+    mkdir -p "$(dirname "$comments")"
+    printf -- '\n---\n%s @aisdlc\n\360\237\244\226 /sdlc:aisdlc completed: %s. Lock released.\n' "$(ts)" "$outcome" >> "$comments"
 }
 
 tracker_github_pr_release() {
-    local repo="$1" n="$2" verdict="$3" slug identity
+    local repo="$1" n="$2" outcome="$3" slug
     slug="$(gh_repo_slug "$repo")"
-    identity="$(gh api user --jq '.login' 2>/dev/null || printf 'unknown')"
-    gh pr edit "$n" --repo "$slug" --remove-assignee "$identity" 2>/dev/null || true
+    gh pr edit "$n" --repo "$slug" --remove-label "in-progress" >/dev/null 2>&1 || true
+    gh pr comment "$n" --repo "$slug" --body "$(printf '\360\237\244\226') /sdlc:aisdlc completed: $outcome. Lock released." >/dev/null 2>&1 || true
 }
 
 tracker_pr_release() {
@@ -782,7 +816,7 @@ execute_task() {
     # Read the phase list up front rather than streaming it into the loop: whatever runs
     # inside must not be able to consume the list it is iterating over.
     local phase failed="" phase_list
-    local ship_pr_num="" ship_pr="" ship_pr_paren="" ship_result=""
+    local ship_pr_num="" ship_pr="" ship_pr_paren="" ship_result="" pr_claimed=0 review_ran=0
     phase_list="$(jq -r '.phases[]' "$(task_file "$repo" "$id")")"
     while read -r phase; do
         [ -n "$phase" ] || continue
@@ -827,12 +861,19 @@ execute_task() {
                 ship_pr="$(printf '%s' "$ship_result" | grep -oE 'https://[^ ]*/pull/[0-9]+' | head -1 || true)"
             fi
             [ -n "$ship_pr" ] && task_set "$repo" "$id" --arg u "$ship_pr" '.pr_url = $u'
-            # Claim the PR in the tracker and hand off the issue lock.
+            # Hand the lock over: the PR must be observably claimed before the issue is released.
             if [ -n "$issue_n" ] && [ -n "$ship_pr_num" ]; then
-                tracker_pr_claim "$repo" "$ship_pr_num" "$issue_kind" "$ticket"
-                tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" \
-                    "handed off to PR #${ship_pr_num}"
+                if tracker_pr_claim "$repo" "$ship_pr_num" "$issue_kind" "$ticket"; then
+                    tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" \
+                        "handed off to PR #${ship_pr_num}"
+                    pr_claimed=1
+                else
+                    printf '[%s] could not claim PR #%s — issue lock kept\n' "$(ts)" "$ship_pr_num" >> "$log"
+                fi
             fi
+        fi
+        if [ "$phase" = "review" ]; then
+            review_ran=1
         fi
     done <<< "$phase_list"
 
@@ -848,10 +889,14 @@ execute_task() {
         set_status "$repo" "$id" failed
         say "  ✗ $id — $failed failed${hint} · worktree kept at $wt"
         say "    aisdlc logs $id"
-        # Release PR claim (if ship ran) or the issue (if ship did not).
+        # Release whichever lock this run holds: the PR after a verified hand-off, else the issue.
         if [ -n "$issue_n" ]; then
-            if [ -n "$ship_pr_num" ]; then
-                tracker_pr_release "$repo" "$ship_pr_num" "$issue_kind" "CHANGES_REQUESTED"
+            if [ "$pr_claimed" = 1 ]; then
+                if [ "$failed" = "review" ]; then
+                    tracker_pr_release "$repo" "$ship_pr_num" "$issue_kind" "CHANGES_REQUESTED"
+                else
+                    tracker_pr_release "$repo" "$ship_pr_num" "$issue_kind" "aborted: $err"
+                fi
             else
                 tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: $err"
             fi
@@ -873,10 +918,14 @@ execute_task() {
         [ -n "$pr_url" ] && task_set "$repo" "$id" --arg u "$pr_url" '.pr_url = $u'
     fi
 
-    # Release the PR claim after successful review, or the issue if ship never ran.
+    # Release whichever lock is held. The verdict is recorded only when the review phase ran.
     if [ -n "$issue_n" ]; then
-        if [ -n "$ship_pr_num" ]; then
-            tracker_pr_release "$repo" "$ship_pr_num" "$issue_kind" "APPROVED"
+        if [ "$pr_claimed" = 1 ]; then
+            if [ "$review_ran" = 1 ]; then
+                tracker_pr_release "$repo" "$ship_pr_num" "$issue_kind" "APPROVED"
+            else
+                tracker_pr_release "$repo" "$ship_pr_num" "$issue_kind" "done (no review phase)"
+            fi
         else
             tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "done"
         fi
@@ -1097,6 +1146,21 @@ cmd_retry() {
     local branch; branch="$(task_get "$repo" .branch "$id")"
     [ -n "$branch" ] && git -C "$repo" branch -D "$branch" >/dev/null 2>&1
 
+    # An --issue task released its lock when it failed; a retry must hold one again before it
+    # is queued, or two machines can build the same issue.
+    if [ "$(task_get "$repo" .is_issue "$id")" = "true" ]; then
+        local ticket issue_n kind claim
+        ticket="$(task_get "$repo" .ticket "$id")"; issue_n="${ticket#GH-}"
+        kind="$(tracker_kind "$repo")"
+        claim="$(tracker_check_claim "$repo" "$issue_n" "$kind")"
+        case "$claim" in
+            free|stale:*|mine) ;;
+            *) die "issue $issue_n is claimed by ${claim#other:} — not re-queued" ;;
+        esac
+        [ "$claim" = mine ] || tracker_claim "$repo" "$issue_n" "$kind" "aisdlc" \
+            || die "could not re-claim issue $issue_n"
+    fi
+
     set_status "$repo" "$id" queued
     task_set "$repo" "$id" '.error = null | .worktree = null | .branch = null'
     flock "$(state_dir "$repo")/queue.lock" \
@@ -1113,6 +1177,13 @@ cmd_cancel() {
     repo="$(resolve_repo "$repo")"
     local dir; dir="$(state_dir "$repo")"
     [ -d "$(task_dir "$repo" "$id")" ] || die "no such task: $id"
+
+    # A queued --issue task still holds the claim taken by `add`; give it back. A running one
+    # releases its own lock when the phase loop exits.
+    if [ "$(task_get "$repo" .is_issue "$id")" = "true" ] && [ "$(task_get "$repo" .status "$id")" = "queued" ]; then
+        local ticket; ticket="$(task_get "$repo" .ticket "$id")"
+        tracker_release "$repo" "${ticket#GH-}" "$(tracker_kind "$repo")" "aisdlc" "cancelled before start"
+    fi
 
     flock "$dir/queue.lock" bash -c '
         grep -vxF "$2" "$1/queue.jsonl" > "$1/queue.jsonl.tmp" || true
