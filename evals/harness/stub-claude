@@ -57,18 +57,36 @@ case "$prompt" in
         printf 'package pkg\n\n// Stub implementation for %s.\nfunc Stub() string { return "%s" }\n' "$ticket" "$ticket" > "pkg/stub.go"
         printf 'package pkg\n\nimport "testing"\n\nfunc TestStub_UC1(t *testing.T) {\n\tif Stub() == "" {\n\t\tt.Fatal("empty")\n\t}\n}\n' > "pkg/stub_test.go"
         commit "feat(pkg): stub implementation for UC-1 ($ticket)"
+        result false 6 "stub phase complete" 0.05
         ;;
     /qa*)
         mkdir -p "specs/$ticket"
         printf '# QA report — %s\n**Verdict: PASS**\n\n## UC coverage\n| UC | test | verified |\n|----|------|----------|\n| UC-1 | TestStub_UC1 | automated |\n\nCovered: 1/1\n' \
             "$ticket" > "specs/$ticket/qa-report.md"
         commit "test(pkg): QA report ($ticket)"
+        result false 6 "stub phase complete" 0.05
         ;;
     /ship*)
+        mkdir -p "specs/$ticket"
         printf 'stub PR body\n' > "specs/$ticket/pr-body.md"
         commit "docs: PR body ($ticket)"
-        echo "would open https://example.com/stub/pull/1" >&2
+        result false 6 "stub ship done\\nPR: #7 (specs/$ticket/pr-body.md)" 0.05
+        ;;
+    /review*)
+        result false 2 "Verdict: APPROVED" 0.02
+        ;;
+    /triage*)
+        issue_n="${ticket#GH-}"
+        mkdir -p "specs/$ticket"
+        printf -- '---\nticket: %s\nkind: bugfix\nstatus: approved\napproved-by: issue #%s (label bug, @stub)\n---\n\n| id | actor | action | expected observable result | test |\n|----|-------|--------|----------------------------|------|\n| UC-1 | caller | calls Stub() | returns a non-empty string | unit |\n' \
+            "$ticket" "$issue_n" > "specs/$ticket/spec.md"
+        commit "docs: triage spec for $ticket"
+        result false 2 "Verdict: BUG" 0.02
+        ;;
+    /root-cause*)
+        result false 2 "root cause complete" 0.02
+        ;;
+    *)
+        result false 6 "stub phase complete" 0.05
         ;;
 esac
-
-result false 6 "stub phase complete" 0.05
