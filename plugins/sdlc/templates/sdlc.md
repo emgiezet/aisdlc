@@ -16,17 +16,33 @@ value, because the pipeline has nowhere to put its output otherwise.
 - **Branch naming:** `ai/<TICKET>-<slug>` for agent runs
 - **Pull request label:** `ai-sdlc`
 - **Default base ref:** `origin/main`
+- **Briefs live in:** `specs/briefs/` — discovery artefacts (`/sdlc:brainstorm`, `/sdlc:discover`,
+  `/sdlc:ux-shape`) that precede a spec.
 
 ## Issue tracker
 
 - **Kind:** `none`
-  <!-- one of: jira-mcp | github | none.
-       jira-mcp → fetch with getJiraIssue / getConfluencePage via the Atlassian MCP server
-       github   → fetch with `gh issue view <n> --json title,body,labels`
-       none     → the spec comes from a description, a URL, or a file -->
+  <!-- one of: github | local | jira-mcp | none.
+       github   → issues, PRs, reviews and checks through the tracker descriptor below
+       local    → file-backed tracker under .aisdlc/tracker/ (no remote needed; what selftest uses)
+       jira-mcp → /sdlc:spec reads tickets via getJiraIssue; PRs still need github or local
+       none     → the spec comes from a description, a URL, or a file; nothing after ship runs -->
+- **Tracker descriptor:** `none`
+  <!-- .claude/trackers/github.md | .claude/trackers/local.md — copied from the plugin's
+       templates/trackers/ by /sdlc:init. Commands name operations (**get-pr**); this file runs them. -->
+- **Pipeline labels:** `review`, `changes-requested`, `merge-ready`, `blocked`
+  <!-- exactly one on an open PR, set by ship/review/continue; plus the PR label above, always -->
+- **Claim label:** `in-progress`
+  <!-- the lock: assignee + this label + a 🤖 comment; stale after 60 minutes -->
 - **Ticket id pattern:** `[A-Z]+-[0-9]+`
 - **When the tracker is unreachable:** say so in one line and continue from the text you were
   given. Never invent ticket content.
+
+## Browser
+
+- **Browser descriptor:** `none`
+  <!-- .claude/browsers/playwright.md | .claude/browsers/agent-browser.md | none.
+       none → UI use cases are verified by tests only; QA says so in one line and moves on -->
 
 ## Contracts and decisions
 
@@ -69,3 +85,10 @@ Things an unattended run must never touch, whatever a spec says. Additive to eac
 - Generated files and lock files, unless the spec names them
 - CI configuration, unless the spec is about CI
 - <!-- add yours: vendored code, legacy modules mid-migration, anything under a freeze -->
+
+## Definition of Ready
+
+<!-- optional; written by /sdlc:init --discovery. When present, /sdlc:issue and /sdlc:triage
+     refuse a ticket that fails a line, naming it. -->
+
+- `none`
