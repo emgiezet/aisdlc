@@ -1,0 +1,11 @@
+[
+  {"query": "I have an idea for a feature — help me think it through before writing a spec", "should_trigger": true, "note": "core brainstorm path; brief format and evidence tags needed"},
+  {"query": "Tag every claim in this product brief as evidence, assumption, or synthetic", "should_trigger": true, "note": "the evidence-tag rules live here"},
+  {"query": "Is this brief ready to pass to /sdlc:spec or does it need more research?", "should_trigger": true, "note": "Definition of Ready lives in this skill"},
+  {"query": "Write a product brief for the benefits portal from these interview notes", "should_trigger": true, "note": "product-brief section list and evidence tagging"},
+  {"query": "We have a brief but the Problem section is all assumptions — what do we do?", "should_trigger": true, "note": "backlog readiness gate and collection-plan rule"},
+  {"query": "The brief has no UX states defined — what states does /sdlc:mockup need?", "should_trigger": true, "note": "ux-brief format (Direction/Scope/States) is in this skill"},
+  {"query": "Write tests for the payment endpoint so the QA report passes", "should_trigger": false, "note": "dense-testing owns coverage floors; this skill owns briefs"},
+  {"query": "Set up the task router and playbooks for this repository", "should_trigger": false, "note": "task-router owns the instruction hierarchy; not a discovery concern"},
+  {"query": "Review this pull request for security issues", "should_trigger": false, "note": "code-review and pipeline-contracts own PR review"}
+]
