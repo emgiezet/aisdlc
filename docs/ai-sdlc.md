@@ -141,7 +141,7 @@ failure mode to fear is a confident PR that quietly does the wrong thing.
 | Metric | Why it matters | Where |
 |--------|----------------|-------|
 | PRs merged per week | The throughput claim, tested | `gh pr list --label ai-sdlc --state merged` |
-| $ per merged PR | The economics, per task and per model | `.aisdlc/tasks/*/task.json` → `cost_usd` |
+| $ per merged PR | The economics, per task and per model | `.aisdlc/tasks/*/task.json` → `cost_usd` (null for subscription-billed runs) |
 | First-pass QA rate | `PASS` without human intervention — the harness's real score | QA verdicts |
 | `BLOCKED` rate and reasons | Recurring reasons are a spec-format or playbook defect | `BLOCKED.md` files |
 | Haiku pass rate | Independence from the top model | `make harness-eval MODEL=haiku` |
@@ -149,6 +149,41 @@ failure mode to fear is a confident PR that quietly does the wrong thing.
 
 Watch the ratio between generated and merged. A rising generated count with a flat merged count
 means the harness is producing work that reviewers reject — noise dressed as throughput.
+
+## Queue configuration
+
+The queue runner reads per-repo defaults from `.aisdlc/config.json`, written by `/sdlc:init`.
+All settings can also be overridden by environment variable or by a flag on `aisdlc add`.
+Precedence for every setting: CLI flag > `.aisdlc/config.json` > environment variable > built-in default.
+
+| Setting | Config key | Env variable | Default | Notes |
+|---------|------------|--------------|---------|-------|
+| model | `model` | `AISDLC_MODEL` | `sonnet` | Any model name accepted by `claude --model` |
+| per-phase budget | `budget` | `AISDLC_BUDGET` | `5` | USD ceiling per phase; ignored when `billing=subscription` |
+| base ref | `base` | `AISDLC_BASE` | auto-detected | Branch or remote ref to branch from |
+| workers | `workers` | `AISDLC_WORKERS` | `3` | Parallel workers for `aisdlc run` |
+| label | `label` | `AISDLC_LABEL` | `ai-sdlc` | PR label applied by ship |
+| specs dir | `specs_dir` | `AISDLC_SPECS_DIR` | `specs` | Root for spec files |
+| billing | `billing` | `AISDLC_BILLING` | `api` | `api` or `subscription` — see below |
+
+### billing = subscription
+
+On a Claude Pro/Max subscription the CLI reports no per-token cost, so every phase records
+`total_cost_usd: 0`. Zero is indistinguishable from "a phase that ran instantly and did
+nothing useful", which is exactly the class of silent failure the queue tries to surface.
+Setting `billing: subscription` makes the difference explicit:
+
+- `--max-budget-usd` is **not** passed to `claude`. A spend cap that cannot be enforced reads
+  as a guarantee; omitting it is more honest and has no effect on behaviour.
+- `cost_usd` in `task.json` is recorded as JSON `null`, not `0`. A null unambiguously means
+  "cost data unavailable" rather than "this task was free".
+- The phase log notes the billing mode: a log read weeks later explains its own missing numbers.
+- `/sdlc:retro` renders null costs as `n/a` and excludes them from averages. The `$ per merged PR`
+  metric shows `n/a — subscription billing` when all tasks in the window have null cost.
+
+The zero-turn failure check is **unaffected**: a phase that completes with `num_turns == 0` is
+still a hard failure regardless of billing mode. That guard is what prevents a silent no-op from
+being reported as a successful PR; billing mode has no bearing on whether Claude ran.
 
 ## Failure modes
 

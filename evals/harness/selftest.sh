@@ -442,6 +442,58 @@ grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/42.md" \
     && ok "retry re-claimed the issue" \
     || bad "retry claim" "no in-progress after retry"
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+printf '\nbilling=subscription: null cost, no --max-budget-usd in args\n'
+R="$WORK/billing-sub"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc"
+printf '{"billing":"subscription"}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "billing=subscription: task done" \
+    || bad "billing=subscription status" "$(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+_cost_raw="$(jq '.cost_usd' "$(ls "$R"/.aisdlc/tasks/*/task.json | head -1)")"
+[ "$_cost_raw" = "null" ] \
+    && ok "billing=subscription: cost_usd is null" \
+    || bad "billing=subscription cost_usd" "expected null, got $_cost_raw"
+# stub-claude writes its args to stderr, which invoke_claude appends to the phase log
+! grep -q -- '--max-budget-usd' "${D}implement.log" \
+    && ok "billing=subscription: --max-budget-usd absent from invoke" \
+    || bad "billing=subscription args" "--max-budget-usd found in implement.log"
+grep -q 'billing subscription' "${D}implement.log" \
+    && ok "billing=subscription: mode logged in phase log" \
+    || bad "billing=subscription log" "billing subscription not in implement.log"
+# 0-turn failure path must still fire in subscription mode (billing must not weaken this gate)
+R="$WORK/billing-sub-noop"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc"
+printf '{"billing":"subscription"}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] \
+    && ok "billing=subscription: 0-turn phase still a hard failure" \
+    || bad "billing=subscription 0-turn" "status $(task_field "$R" .status), expected failed"
+# --------------------------------------------------------------------------- #
+printf '\nbilling=api (default): numeric cost, --max-budget-usd present\n'
+R="$WORK/billing-api"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "billing=api: task done" \
+    || bad "billing=api status" "$(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+_cost_raw="$(jq '.cost_usd' "$(ls "$R"/.aisdlc/tasks/*/task.json | head -1)")"
+[ "$_cost_raw" != "null" ] && [ -n "$_cost_raw" ] \
+    && ok "billing=api: cost_usd is numeric ($_cost_raw)" \
+    || bad "billing=api cost_usd" "expected numeric, got $_cost_raw"
+grep -q -- '--max-budget-usd' "${D}implement.log" \
+    && ok "billing=api: --max-budget-usd present in invoke" \
+    || bad "billing=api args" "--max-budget-usd absent from implement.log"
+unset _cost_raw
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
 rm -rf "$WORK"

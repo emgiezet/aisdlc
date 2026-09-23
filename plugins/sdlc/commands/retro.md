@@ -73,20 +73,23 @@ Print: `ID | class`. One row per task.
 
 ## Phase 3: Cause ranking [UC-2]
 
-Sum `cost_usd` and wall-clock seconds (`updated − created`) per class:
+Sum `cost_usd` and wall-clock seconds (`updated − created`) per class. Tasks billed under
+a Claude Pro/Max subscription have `cost_usd: null` — they carry no cost data (the CLI
+reports no per-token pricing on a subscription plan). Exclude null-cost tasks from cost
+averages; render their cost column as `n/a`.
 
 ```bash
 jq -rn --arg since "<since-date>" '
   [inputs | select((.status == "done" or .status == "failed") and .updated >= $since)
-          | {id, status, cost: (.cost_usd // 0),
+          | {id, status, cost: .cost_usd,
              wall: ((.updated | fromdateiso8601) - (.created | fromdateiso8601)),
              attempts, error, pr_url}]
   | group_by(.status)   # replace with your class labels in memory
   | .[]
   | {class: .[0].status, count: length,
-     cost:  (map(.cost) | add),
+     cost:  (map(select(.cost != null) | .cost) | if length == 0 then null else add end),
      wall:  (map(.wall) | add)}
-  | [.class, .count, .cost, .wall] | @tsv
+  | [.class, .count, (.cost // "n/a"), .wall] | @tsv
 ' .aisdlc/tasks/*/task.json
 ```
 
@@ -115,7 +118,8 @@ Compute from `task.json` files only. Read `BLOCKED.md` for the top-three blocked
 extract the first line of each (`head -1 specs/<ticket>/BLOCKED.md` in the task's repo).
 
 ```
-$ per merged PR:    <sum cost_usd where status=done> / <count where status=done and pr_url non-null>
+$ per merged PR:    <sum cost_usd where status=done and cost_usd != null> / <count where status=done and pr_url non-null and cost_usd != null>
+                    (omit the metric and print "n/a — subscription billing" when all done tasks have null cost_usd)
 First-pass PASS %:  <clean count> / <total finished> × 100
 BLOCKED rate %:     <blocked count> / <total finished> × 100
   Top causes:       <first line of BLOCKED.md for the 3 highest-cost blocked tasks>

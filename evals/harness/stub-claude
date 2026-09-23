@@ -13,6 +13,7 @@
 #   noop      returns "Unknown command" with 0 turns — the silent no-op the runner must catch
 #   blocked   implement writes BLOCKED.md and exits non-zero
 set -uo pipefail
+printf 'stub-claude args: %s\n' "$*" >&2
 
 cat > /dev/null   # consume stdin, exactly as the real CLI does
 
