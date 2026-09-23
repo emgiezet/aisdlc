@@ -89,6 +89,13 @@ Collect its ranked findings list and `Verdict:` line.
 After the agent returns: check `.aisdlc/slop-guard/report.json` (or the path in `.claude/sdlc.md`).
 Import any blocker items as additional `[blocker]` findings.
 
+Also read `specs/<TICKET>/scope-report.md` if it exists (committed by the `scope-check` queue
+phase before ship). Import its findings as follows:
+- Any file classified **out of bounds** → add `[blocker] scope violation: <file> (out of bounds)`
+- Any file classified **undeclared** → add `[major] scope gap: <file> (not declared in spec)`
+- `Verdict: BLOCKED` → the PR should not have reached review; add `[blocker] scope-check BLOCKED`
+
+
 ---
 
 ## Phase 6: Verdict + labels [REQUIRED]

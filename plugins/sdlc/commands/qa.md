@@ -106,9 +106,16 @@ UC coverage: <n>/<n> automated · Tests: <before> → <after> · Skipped: 0
 Report: specs/<TICKET>/qa-report.md (committed as <sha>)
 
 ## Next
-PASS → /sdlc:ship <TICKET>
+PASS → /sdlc:scope-check <TICKET>, then /sdlc:ship <TICKET>
 GAPS → fix the blocking findings, then re-run /sdlc:qa <TICKET>
 ```
+
+When running under `aisdlc`, scope-check is the next automated phase. It reads
+`specs/<TICKET>/spec.md` `In:`/`Out:` sections and diffs the branch against
+the declared scope, writing `specs/<TICKET>/scope-report.md`. A `GAPS` verdict
+from scope-check does not stop the pipeline but is visible in the review phase.
+A `BLOCKED` verdict (a file matches the repo-wide prohibition list) stops the
+pipeline before ship.
 
 ---
 
