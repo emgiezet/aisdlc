@@ -2138,10 +2138,35 @@ Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu doł�
 - Stan sesji, deduplikacja, logowanie do `${CLAUDE_PLUGIN_DATA}/logs/`.
 - ✅ Wszystkie przypadki kontraktu hooków dla polityk przechodzą; `detect_test.sh` zielony z i bez `SLOPGUARD_STACKS_JSON`; eval `agent-suppression-bait` i `dependency-bait` ≥ 0.8 z pluginem.
 
-**Etap 2 — Detekcja tier fast**
-- `post-write --tier=fast`: Ruff, ESLint (bez type-info), pint/php-cs-fixer (raport), hadolint, kube-linter, kubeconform, actionlint, zizmor, sqlfluff, squawk, `terraform fmt`.
-- Filtr nowego kodu (`git diff -U0`), mapowanie do AP-id, format komunikatu 4.7.
-- ✅ Fixtures dla tych narzędzi; p95 < 2 s; brak regresji w politykach.
+**Etap 2 — Detekcja tier fast** *(częściowo zrealizowany 2026-09-23)*
+
+**Dostarczone w tym etapie:**
+- `hooks/post-write` (PostToolUse hook) + `bin/slopguard post-write --tier=fast`.
+- `hooks/hooks.json` — dodany wpis `PostToolUse` dla `Write|Edit|MultiEdit|NotebookEdit`, timeout 20 s.
+- `lib/diff.sh` — filtr zmienionych linii (§2 Z2): `diff_changed_ranges`, `diff_is_untracked`, `diff_line_in_ranges`.
+- `lib/dispatch.sh` — dispatcher tier fast: routing pliku do narzędzi po rozszerzeniu/nazwie, per-tool timeout (`SLOPGUARD_FAST_TOOL_TIMEOUT`, domyślnie 8 s), Z2 filtr, dedup po fingerprincie, emit przez `finding_add`.
+- Pięć okablowanych narzędzi (wg `tools/tools.lock.json`): **Ruff** (Python), **ESLint bez type-info** (JS/TS), **hadolint** (Dockerfile), **kube-linter** (Kubernetes YAML), **zizmor** (GitHub Actions YAML).
+- `rules/mapping/{ruff,eslint,hadolint,kube-linter,zizmor}.yaml` — mapowanie ID reguł narzędzia na AP-id, severity, category, CWE.
+- Fixtures: `tests/fixtures/{python,ts,docker,kubernetes,ci}/bad/*.{py,ts,Dockerfile,yaml,yml}`.
+- `tests/dispatch_test.sh` — 36 asercji: mapowania, diff-filtr, untracked, fail-open (missing/timeout), cap 20, dedup, routing, end-to-end §4.7 format.
+- Tryby egzekwowania §4.6: `advisory` → `additionalContext`; `balanced`/`strict` → `exit 2` + stderr przy blocker/error, `additionalContext` przy warn.
+- Wynik: **280 passed, 0 failed** (`tests/run-tests`).
+
+**Pozostałe narzędzia tier fast (nie są w `tools.lock.json` — wymagają Etapu 0 pinowania z sha256):**
+- `kubeconform` — walidacja schematów K8s (wymaga też lokalnego cache schematów).
+- `actionlint` — poprawność workflow GitHub Actions.
+- `squawk` — bezpieczne migracje PostgreSQL.
+- `sqlfluff` — lint SQL.
+- `terraform fmt` / `tofu fmt` — formatowanie Terraform (raport).
+- `pint --test` / `php-cs-fixer --dry-run` — styl PHP (tylko raport; uruchamiane gdy projekt ma konfigurację).
+- `gofmt`/`goimports` — formatowanie Go (tier F wg specyfikacji, ale uruchamiane przez golangci-lint w tierze M).
+
+Pinowanie każdego z powyższych narzędzi (URL + sha256 per platformę w `tools.lock.json`) jest Etapem 0 i musi poprzedzać okablowanie w dispatcharze.
+
+**Kryteria akceptacji pierwotne (pełne spełnienie po dodaniu brakujących narzędzi):**
+- `post-write --tier=fast`: Ruff ✅, ESLint (bez type-info) ✅, pint/php-cs-fixer ⬜, hadolint ✅, kube-linter ✅, kubeconform ⬜, actionlint ⬜, zizmor ✅, sqlfluff ⬜, squawk ⬜, `terraform fmt` ⬜.
+- Filtr nowego kodu (`git diff -U0`) ✅, mapowanie do AP-id ✅, format komunikatu §4.7 ✅.
+- Fixtures dla narzędzi ✅ (dla okablowanych); p95 < 2 s ✅ (na stub); brak regresji w politykach ✅.
 
 **Etap 3 — Detekcja tier medium (asyncRewake)**
 - PHPStan (w tym `max` dla nowych plików), golangci-lint (`--new-from-rev`), ESLint z type-info, Pyright, tflint, Checkov (plik), Opengrep z pierwszym zestawem własnych reguł (6.11), debounce paczek edycji, własny timeout dispatchera.
