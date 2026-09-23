@@ -56,6 +56,31 @@ ln -s ~/.claude/plugins/marketplaces/aisdlc/plugins/sdlc/bin/aisdlc ~/.local/bin
 Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI (for the queue runner). `gh` only for the
 `github` tracker; without one `/sdlc:init` selects the file-backed `local` provider.
 
+### 🔐 Credentials for the queue runner
+
+`aisdlc run` shells out to `claude -p`. It sets no credentials of its own — whatever authenticates
+your `claude` CLI authenticates the queue. An API key is one option of four, not a requirement:
+
+| Option | How | Billed against |
+|---|---|---|
+| Pro / Max subscription | `claude setup-token` on a machine with a browser, then export the `CLAUDE_CODE_OAUTH_TOKEN` it prints (valid one year) | your plan's message limits |
+| API key | `ANTHROPIC_API_KEY` | per token, Console |
+| Cloud provider | `CLAUDE_CODE_USE_BEDROCK=1` (or Vertex / Foundry) plus that cloud's credentials | your AWS / GCP / Azure bill |
+| LLM gateway | `ANTHROPIC_BASE_URL` at your proxy, `ANTHROPIC_AUTH_TOKEN` for it | wherever the gateway routes |
+
+Two things to know before picking the subscription route:
+
+- **`ANTHROPIC_API_KEY` wins if it is set.** A key in the environment forces Console billing and
+  bypasses the subscription identity, so the runner host must not export one.
+- **Cost accounting goes quiet.** The queue reads `total_cost_usd` from each phase and enforces
+  `--max-budget-usd`. A subscription reports no per-token cost, so `/sdlc:retro` will rank every
+  task at `$0` and the spend cap stops being the real ceiling — your plan's rate window is. The
+  `num_turns == 0` check still catches a phase that never ran, so a silent no-op cannot pass as
+  success.
+
+Details per option: [Claude Code deployment](https://code.claude.com/docs/en/third-party-integrations),
+[Pro/Max with Claude Code](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan).
+
 Then, once per repository, in an interactive session:
 
 | Host | Command | What it writes |
@@ -303,7 +328,7 @@ aisdlc logs <id>                                 # read what it actually did
 
 ```bash
 make validate       # manifests, required files, instruction budgets, shellcheck
-make selftest       # 36 assertions over the queue runner, using a stub claude — no API calls
+make selftest       # 41 assertions over the queue runner, using a stub claude — no API calls
 make eval-dry       # skill trigger sets, structural check only
 make harness-eval MODEL=haiku [SCENARIO=go-endpoint]   # the real thing; costs money
 ```
