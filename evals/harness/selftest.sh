@@ -520,7 +520,7 @@ D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 grep -q 'Verdict: GAPS' "${D}scope-report.md" 2>/dev/null \
     && ok "scope GAPS: verdict is GAPS" \
     || bad "scope GAPS verdict" "$(grep 'Verdict:' "${D}scope-report.md" 2>/dev/null || echo 'no Verdict line')"
-grep -q '**undeclared**' "${D}scope-report.md" 2>/dev/null \
+grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
     && ok "scope GAPS: undeclared files listed in report" \
     || bad "scope GAPS report" "no **undeclared** entry found"
 [ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
@@ -548,7 +548,7 @@ grep -q 'Verdict: BLOCKED' "${D}scope-report.md" 2>/dev/null \
 [ ! -f "${D}ship.log" ] \
     && ok "scope BLOCKED: ship phase never ran" \
     || bad "scope BLOCKED chain" "ship.log exists — pipeline was not stopped"
-grep -q '**out of bounds**' "${D}scope-report.md" 2>/dev/null \
+grep -qF '**out of bounds**' "${D}scope-report.md" 2>/dev/null \
     && ok "scope BLOCKED: out-of-bounds file listed in report" \
     || bad "scope BLOCKED report" "no **out of bounds** entry found"
 # --------------------------------------------------------------------------- #
