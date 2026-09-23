@@ -222,7 +222,54 @@ Grok jest aktywny gdy `GROK_PLUGIN_ROOT` jest ustawiony ORAZ (`CLAUDE_PLUGIN_ROO
 Grok nie obsługuje decyzji `ask`; `hook_ask` pod Grokiem emituje `{"decision":"deny","reason":…}` (fail-closed).
 
 
+### 3.7 omp (Oh My Pi) — fakty o platformie (zweryfikowane 2026-09)
+
+omp udostępnia pluginy przez ten sam format katalogu co Claude Code (`.claude-plugin/marketplace.json`), ale **nie czyta `hooks/hooks.json`**. Egzekwowanie polityk odbywa się przez moduł rozszerzenia JS/TS.
+
+**Marketplace i manifest**
+- omp odczytuje `.omp-plugin/marketplace.json` priorytetowo; jeśli plik nie istnieje, cofa się do `.claude-plugin/marketplace.json`. Aktualnie plugin używa `.claude-plugin/marketplace.json` (zweryfikowane).
+- Komendy (`commands/*.md`), skille (`skills/<name>/SKILL.md`) i subagenty (`agents/*.md`) są wykrywane natywnie — tak samo jak w Claude Code.
+- Hooki (`hooks/hooks.json`) są **ignorowane** przez omp; bez adaptera plugin instaluje się jako dokumentacja z zerowym egzekwowaniem.
+
+**Moduł rozszerzenia**
+- Punkt wejścia deklarowany w `package.json` → klucz `omp.extensions`, np. `["./extensions/omp.mjs"]`.
+- Format: `.mjs` (lub `.ts`) z domyślnym eksportem factory:
+  ```js
+  export default function (pi) {
+    pi.on("tool_call", async (event, ctx) => { /* … */ });
+  }
+  ```
+- `tool_call` zwraca `{ block: true, reason }` żeby zablokować wywołanie; brak zwracanej wartości = przepuszcza; rzucony błąd też blokuje (fail-closed).
+- `ctx.hasUI` jest `false` w trybie headless/print/subagent — zawsze sprawdzaj przed `ctx.ui.confirm`.
+- `pi.sendMessage(...)` wysyła trwałą wiadomość; używaj do wstrzykiwania kontekstu, nigdy do decyzji.
+
+**Mapowanie nazw narzędzi omp → podkomendy slopguard**
+
+| `event.toolName` omp | Pole wejściowe | Mapuje na |
+|---|---|---|
+| `bash` | `command` | `slopguard pre-bash` z `{tool_name:"Bash",tool_input:{command}}` |
+| `read` | `path` (odcinaj selektor `:10-20`) | `slopguard pre-read` z `{tool_name:"Read",tool_input:{file_path}}` |
+| `write` | `path`, `content` | `slopguard pre-write` z `{tool_name:"Write",tool_input:{file_path,content}}` |
+| `edit` | `input` (tekst łatki; nagłówek `[path#TAG]` + wiersze `+`) | `slopguard pre-write` z `{tool_name:"Write",tool_input:{file_path:<z nagłówka>,content:<treść łatki>}}` |
+
+**Zmienne środowiskowe przekazywane do subprocesów**
+- `CLAUDE_PLUGIN_ROOT` — katalog pluginu, wyprowadzany z `import.meta.url` (nigdy nie hardcode).
+- `CLAUDE_PLUGIN_DATA` — trwały katalog danych; `${XDG_DATA_HOME:-$HOME/.local/share}/claude/plugins/<name>` jeśli nie jest już ustawiony.
+- `AISDLC_HEADLESS=1` gdy `ctx.hasUI` jest `false` — istniejące skrypty polityk używają tej flagi do zamiany `ask` na `deny`.
+
+**Translacja decyzji**
+
+| Stdout polityki | Wynik omp |
+|---|---|
+| `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":R}}` | `{ block: true, reason: R }` |
+| `permissionDecision:"ask"` | `ctx.hasUI` → `ctx.ui.confirm(...)`; odmowa lub brak UI → `{ block: true, reason: R }` |
+| `{"hookSpecificOutput":{"additionalContext":C}}` | brak blokady; `C` surfaced przez `pi.sendMessage` |
+| puste stdout, exit 0 | przepuszcza |
+| exit 2 ze stderr (konwencja sdlc `guard`) | `{ block: true, reason: <stderr> }` |
+| brak subprocesu, timeout lub nieparsowalne wyjście | przepuszcza + log przez `pi.logger` (fail-open dla infrastruktury) |
+
 ---
+
 
 ## 4. Architektura pluginu
 
@@ -434,8 +481,11 @@ Uwagi:
 |---|---|---|---|---|
 | Claude / Codex | domyślny (brak `GROK_PLUGIN_ROOT` lub różne ścieżki) | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}` | JSON envelope lub exit 0 | `additionalContext` na stdout |
 | Grok | `GROK_PLUGIN_ROOT` ustawiony ORAZ (`CLAUDE_PLUGIN_ROOT` pusty lub równy) | `{"decision":"deny","reason":…}` | exit 0, brak wyjścia | stderr |
+| omp | n/d — brak `hooks/hooks.json`; egzekwowanie przez `extensions/omp.mjs` | `{ block: true, reason }` zwrócony z handlera `tool_call` | brak zwrotu (lub `undefined`) | `pi.sendMessage(...)` |
 
 `hook_ask` pod Grokiem emituje `{"decision":"deny","reason":…}` (fail-closed — Grok nie obsługuje interaktywnych pytań).
+
+Na omp decyzja `ask` jest tłumaczona na `ctx.ui.confirm(...)` gdy `ctx.hasUI` jest `true`; przy `ctx.hasUI === false` (tryb headless) lub odmowie użytkownika adapter zwraca `{ block: true, reason }`. Przekazywanie `AISDLC_HEADLESS=1` do subprocesów powoduje, że skrypty polityk same obniżają `ask` do `deny` zanim adapter przetłumaczy wynik.
 
 ### 4.4 Dispatcher `slopguard` — podkomendy
 

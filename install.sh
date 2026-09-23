@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — prints installation instructions for Claude Code, Codex, and Grok.
+# install.sh — prints installation instructions for Claude Code, Codex, Grok, and omp.
 # It changes nothing on its own: plugin installation happens inside each host.
 set -euo pipefail
 
@@ -14,7 +14,7 @@ command -v gh >/dev/null 2>&1 || echo "note: gh is absent — ship will write th
 cat <<EOF
 
 git, jq, flock: needed by the queue runner (aisdlc run).
-claude CLI: needed only by the queue runner — the interactive commands work on all three hosts.
+claude CLI: needed only by the queue runner — the interactive commands work on all four hosts.
 
 --- Claude Code ---
 
@@ -53,13 +53,27 @@ To set up a repository, start a Grok session in the repo and run:
 
   /init
 
+--- omp ---
+
+Register this checkout as a marketplace source:
+
+  omp plugin marketplace add $HERE
+
+Then install the plugin:
+
+  omp plugin install sdlc@aisdlc
+
+To set up a repository, start an omp session in the repo and run:
+
+  /sdlc:init
+
 --- Queue runner (requires the claude CLI) ---
 
 Put the queue runner on your PATH:
 
   ln -s $HERE/plugins/sdlc/bin/aisdlc ~/.local/bin/aisdlc
 
-aisdlc run starts headless claude -p sessions. It does not work with Codex or Grok.
+aisdlc run starts headless claude -p sessions. It does not work with Codex, Grok, or omp.
 
 To try it without touching a real repository:
 
