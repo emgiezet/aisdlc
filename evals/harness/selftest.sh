@@ -738,6 +738,7 @@ rm -f "$STUB_GH_STATE" "$STUB_GH_LOG"
 
 # The tracker helpers are internal, so drive them directly. `help` is the one argument that
 # defines every function and exits zero without touching the queue.
+# shellcheck source=/dev/null
 ( source "$AISDLC" help >/dev/null 2>&1; tracker_github_pr_claim "$R" 7 ) \
     && ok "claim succeeds while gh pr edit fails" \
     || bad "pr claim" "tracker_github_pr_claim returned non-zero"
@@ -750,6 +751,7 @@ grep -q 'gh pr edit' "$STUB_GH_LOG" \
 
 # Seed the label explicitly: an assertion that passes on an empty tracker proves nothing.
 printf '{"labels":["ai-sdlc","in-progress"],"assignees":["selftest-user"]}\n' > "$STUB_GH_STATE"
+# shellcheck source=/dev/null
 ( source "$AISDLC" help >/dev/null 2>&1; tracker_github_pr_release "$R" 7 APPROVED ) >/dev/null 2>&1
 jq -e '(.labels | index("in-progress")) | not' "$STUB_GH_STATE" >/dev/null \
     && ok "release removed the in-progress label" \

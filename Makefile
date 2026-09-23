@@ -14,7 +14,8 @@ SANDBOX_DIR := $(or $(TMPDIR),/tmp)/aisdlc-sandbox
 CONFIG_STRICT := $(if $(CI),--strict,)
 SCRIPTS := plugins/sdlc/hooks/run-hook.cmd plugins/sdlc/hooks/session-start \
            plugins/sdlc/hooks/guard plugins/sdlc/bin/aisdlc \
-           evals/harness/run.sh evals/harness/selftest.sh evals/harness/stub-claude
+           evals/harness/run.sh evals/harness/selftest.sh evals/harness/stub-claude \
+           evals/harness/stub-gh
 COMMANDS := init spec mockup implement qa ship \
             review fix-pr review-prs autopilot continue merge merge-buddy followup close-fixed changelog \
             issue triage root-cause fix-issue \
@@ -176,7 +177,7 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	@command -v shellcheck > /dev/null 2>&1 && \
 		(shellcheck -S warning plugins/sdlc/hooks/guard plugins/sdlc/hooks/session-start \
 		            plugins/sdlc/bin/aisdlc evals/harness/run.sh evals/harness/selftest.sh \
-		            evals/harness/stub-claude && echo "  ✓ shellcheck clean") || \
+		            evals/harness/stub-claude evals/harness/stub-gh && echo "  ✓ shellcheck clean") || \
 		echo "  – shellcheck not installed, skipped"
 	@if test -x plugins/sdlc/tests/run-tests; then \
 		echo "Running sdlc hook tests..."; \
