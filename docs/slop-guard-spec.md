@@ -15,7 +15,7 @@
 3. Fakty o platformie Claude Code (zweryfikowane 2026-09)
 4. Architektura pluginu (układ, manifest, hooki, dispatcher, stan, format findingów, `rules/stacks.json`, katalog)
 5. Macierz narzędzi per technologia (pokrycie tier 1 / tier 2)
-6. Domyślne ustawienia narzędzi — PHP, Go, Python, TS/React/Node, SQL, Terraform, Kubernetes/Helm, Docker, CI, sekrety, SAST
+6. Konfiguracje bazowe narzędzi (przykłady) — PHP, Go, Python, TS/React/Node, SQL, Terraform, Kubernetes/Helm, Docker, CI, sekrety, SAST
 7. Polityki (Bash, zapis, odczyt, ustawienia projektu, konfiguracja `.slopguard.json`, dokumentacja frameworków przez Context7, świeżość zależności, rozszerzenia projektu)
 8. Katalog antywzorców — zestaw startowy
 9. Instalacja narzędzi, pinowanie, integralność
@@ -77,7 +77,7 @@ Plugin, który na trzech warstwach:
 **Z1. Konfiguracja projektu ma pierwszeństwo.**
 - Jeśli repo ma `phpstan.neon`, `.golangci.yml`, `eslint.config.*`, `pyproject.toml [tool.ruff]` itd., plugin uruchamia narzędzie z konfiguracją projektu.
 - Konfiguracje bazowe pluginu (sekcja 6) to fallback dla repo bez własnej konfiguracji.
-- Opcjonalnie działają jako „nakładka security" (tylko reguły z kategorii `security`), gdy projektowa konfiguracja ich nie obejmuje.
+- Kiedy projekt nie ma własnej konfiguracji narzędzia, konfiguracja bazowa uruchamia się jako **nakładka security**: raportowane są wyłącznie findings z kategorii `security`. Repozytorium, które nigdy nie zaprosiło naszych reguł stylu, nie powinno ich otrzymywać — security jest tym, po co guard jest instalowany. Reguła bez wpisu w `rules/mapping/<tool>.yaml` nie jest traktowana jako security i jest pomijana w trybie nakładki (defaulting unknown to security przywróciłby dokładnie ten szum, który to usuwa). Knob `config_source` (`CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE`) zmienia tryb: `overlay` (domyślnie) — nakładka security; `full` — wszystkie findings konfiguracji bazowej; `project-only` — narzędzie nie uruchamia się, gdy brak własnej konfiguracji projektu.
 
 **Z2. Ocenia się nowy kod.**
 - Findings z kategorii `maintainability` i `performance` są filtrowane do zmienionych linii (`git diff -U0`). Pliki nieśledzone są traktowane w całości.
@@ -323,7 +323,7 @@ slop-guard/
 │       ├── bash.yaml               # polityka PreToolUse dla komend
 │       ├── suppressions.yaml       # wzorce komentarzy wyciszających per język
 │       └── protected-files.yaml    # konfiguracje linterów, baseline'y, lockfile
-├── configs/baseline/               # fallback konfiguracje narzędzi (sekcja 6)
+├── configs/baseline/               # przykłady konfiguracji narzędzi; nakładka security do adopcji (sekcja 6)
 ├── tools/
 │   ├── tools.lock.json             # wersje + URL + sha256 dla każdej platformy
 │   ├── node/                       # package.json + package-lock.json (stos ESLint)
@@ -384,6 +384,12 @@ slop-guard/
       "description": "project-first | plugin-only | project-only",
       "default": "project-first"
     },
+    "config_source": {
+      "type": "string",
+      "title": "Config source mode",
+      "description": "overlay | full | project-only — controls what is reported when no project config exists. Hook env: CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE.",
+      "default": "overlay"
+    },
     "require_docs_lookup": {
       "type": "boolean",
       "title": "Require Context7 documentation lookup for frameworks",
@@ -406,7 +412,7 @@ slop-guard/
 }
 ```
 
-Wartości `userConfig` trafiają do hooków jako `CLAUDE_PLUGIN_OPTION_<KEY>` (§3.1). Powyższe trzy opcje to kolejno: `CLAUDE_PLUGIN_OPTION_REQUIRE_DOCS_LOOKUP`, `CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS`, `CLAUDE_PLUGIN_OPTION_DEPENDENCY_COOLDOWN_DAYS`.
+Wartości `userConfig` trafiają do hooków jako `CLAUDE_PLUGIN_OPTION_<KEY>` (§3.1). Cztery opcje zadeklarowane explicite z env-var: `CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE`, `CLAUDE_PLUGIN_OPTION_REQUIRE_DOCS_LOOKUP`, `CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS`, `CLAUDE_PLUGIN_OPTION_DEPENDENCY_COOLDOWN_DAYS`.
 
 ### 4.3 `hooks/hooks.json`
 
@@ -781,12 +787,14 @@ Pierwszy wiersz zawiera `(auto)` przy autodetekcji albo `(.slopguard.json)` gdy 
 
 ---
 
-## 6. Domyślne ustawienia narzędzi (konfiguracje bazowe + wywołania)
+## 6. Konfiguracje bazowe narzędzi (przykłady + wywołania)
 
-Wszystkie pliki trafiają do `configs/baseline/`. Dispatcher:
+Pliki w `configs/baseline/` są **przykładami**, nie domyślną konfiguracją operacyjną. Projekt adoptuje je jawnie — `slopguard adopt-config <tool>` kopiuje plik do repo — lub ignoruje je. Dopóki nie zostaną adoptowane, dispatcher uruchamia narzędzie z konfiguracją bazową jako **nakładką security**: do projektu trafiają wyłącznie findings z kategorii `security` (§2 Z1, §9.1). Zaadoptowany plik staje się własnością projektu i jest chroniony przed zapisem przez agenta (zmiana wymaga decyzji człowieka; `pre-write` pyta o każdą edycję pliku konfiguracji narzędzia).
 
-1. szuka konfiguracji projektu (lista plików per narzędzie poniżej); jeśli istnieje — używa jej;
-2. w przeciwnym razie przekazuje bazową konfigurację flagą narzędzia (`-c`, `--config`) **bez kopiowania do repo**;
+Dispatcher:
+
+1. szuka konfiguracji projektu (lista plików per narzędzie poniżej); jeśli istnieje — używa jej i raportuje wszystkie findings;
+2. w przeciwnym razie przekazuje bazową konfigurację flagą narzędzia (`-c`, `--config`) **bez kopiowania do repo**; tryb raportowania zależy od `config_source` (domyślnie: tylko `security`);
 3. zapisuje źródło konfiguracji w `profile.json` i pokazuje je w `slopguard doctor`.
 
 Wszystkie wywołania mają **format maszynowy** (JSON/SARIF), **bez kolorów**, **bez auto-fix**. Katalogi cache narzędzi wskazują na `${CLAUDE_PLUGIN_DATA}/cache/<tool>`.
@@ -2156,6 +2164,31 @@ Warunkiem wejścia do Etapu 3 dla każdego języka jest przejście sondy Opengre
 2. Binarka pluginu: `${CLAUDE_PLUGIN_DATA}/tools/<name>/<version>/`.
 3. Binarka z `PATH` — **tylko** gdy wersja zgadza się z `tools.lock.json` (sprawdzenie `--version`). W przeciwnym razie ignoruj i loguj w `doctor`.
 4. Narzędzie z deskryptora projektu (`.slopguard/tools/<name>.yaml`, §7.8): sprawdzane po narzędziach spinowanych przez plugin. Deskryptor nie może nadpisać wywołania narzędzia wbudowanego — kolizja nazwy skutkuje `status: refused:pinned-tool-collision` przy ładowaniu deskryptora.
+
+
+#### Kolejność źródeł konfiguracji (`config_source`)
+
+Binarki i konfiguracje to dwa ortogonalne wymiary. `tool_source` decyduje, *skąd pochodzi binarka*; `config_source` decyduje, *co jest raportowane*, gdy projekt nie ma własnej konfiguracji.
+
+| Sytuacja | `config_source` | Zachowanie |
+|---|---|---|
+| Projekt ma własną konfigurację | dowolna | używa konfiguracji projektu; raportuje wszystkie findings |
+| Brak konfiguracji projektu | `overlay` (domyślnie) | uruchamia z konfiguracją bazową; raportuje wyłącznie findings z kategorii `security` |
+| Brak konfiguracji projektu | `full` | uruchamia z konfiguracją bazową; raportuje wszystkie findings |
+| Brak konfiguracji projektu | `project-only` | narzędzie nie uruchamia się |
+
+`tool_config_mode <tool>` (`lib/tools.sh`) zwraca `project` | `overlay` | `full` | `skip` — wartość `project` gdy istnieje konfiguracja projektu (niezależnie od knoba), pozostałe gdy jej brak. Filtr overlay stosuje **zmapowaną** kategorię z `rules/mapping/<tool>.yaml`; reguła bez wpisu mapowania nie jest traktowana jako security i jest pomijana (domyślne „security" przywróciłoby szum).
+
+Razem oba knoby tworzą pełną matrycę:
+
+| `tool_source` | projekt ma binarki | projekt ma konfigurację | `config_source` | Wynik |
+|---|---|---|---|---|
+| `project-first` | tak | tak | dowolna | binarka projektu + config projektu, wszystkie findings |
+| `project-first` | tak | nie | `overlay` | binarka projektu + config bazowa, tylko security |
+| `project-first` | nie | tak | dowolna | binarka pluginu + config projektu, wszystkie findings |
+| `project-first` | nie | nie | `overlay` | binarka pluginu + config bazowa, tylko security |
+| `project-only` | nie | — | dowolna | narzędzie pomijane |
+| dowolna | — | — | `project-only` | narzędzie pomijane (brak config projektu) |
 
 ### 9.2 `tools/tools.lock.json`
 
