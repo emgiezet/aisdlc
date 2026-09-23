@@ -65,4 +65,13 @@ To try it without touching a real repository:
 
   make sandbox
 
+Credentials: aisdlc run uses whatever authenticates your claude CLI. Options:
+
+  CLAUDE_CODE_OAUTH_TOKEN                   Pro/Max subscription (claude setup-token)
+  ANTHROPIC_API_KEY                         Anthropic Console, billed per token
+  CLAUDE_CODE_USE_BEDROCK=1                 AWS Bedrock (or Vertex / Foundry equivalents)
+  ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN LLM gateway
+
+If ANTHROPIC_API_KEY is set it wins over a subscription token and forces Console billing.
+
 EOF

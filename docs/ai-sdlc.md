@@ -197,6 +197,28 @@ is the Codex entry point: it points Codex agents at the same three-tier instruct
 (`CLAUDE.md` → task playbook → path-scoped rules) and lists the Codex command for each
 workflow step.
 
+## Credentials for the queue runner
+
+`aisdlc run` shells out to `claude -p` and sets no credentials of its own — whatever authenticates
+your `claude` CLI authenticates the queue. An API key is one option of four:
+
+| Option | Environment variable(s) | Billed against |
+|--------|------------------------|----------------|
+| Pro / Max subscription | `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` once) | plan message limits |
+| API key | `ANTHROPIC_API_KEY` | per token, Console |
+| Cloud provider | `CLAUDE_CODE_USE_BEDROCK=1` (or Vertex / Foundry) plus that cloud's credentials | AWS / GCP / Azure bill |
+| LLM gateway | `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` | wherever the gateway routes |
+
+Two things affect how the pipeline behaves:
+
+- **`ANTHROPIC_API_KEY` wins if it is set.** A key in the environment overrides a subscription token
+  and forces Console billing; the runner host must not export one when a subscription is intended.
+- **Cost accounting goes quiet on a subscription.** The queue reads `total_cost_usd` from each
+  completed phase. A subscription reports no per-token cost, so that value arrives as zero:
+  `/sdlc:retro` will rank every task at `$0`, `make harness-eval` cost columns will read zero,
+  and `--max-budget-usd` stops being the real ceiling — your plan's rate window is. The
+  `num_turns == 0` check still catches a phase that never ran.
+
 ## Getting started
 
 ```bash
