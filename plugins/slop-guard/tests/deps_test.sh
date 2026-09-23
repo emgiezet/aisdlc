@@ -205,8 +205,8 @@ _dt_rc=$?
 # =========================================================================== #
 
 (
-    CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
-    CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=error
+    export CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
+    export CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=error
     deps_check_main "${DEPS_WORK}/proj-major" > /dev/null 2>&1
 )
 _dt_rc=$?
@@ -216,8 +216,8 @@ _dt_rc=$?
 
 # --json must carry the same exit status: CI reads the JSON and the code.
 (
-    CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
-    CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=error
+    export CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
+    export CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=error
     deps_check_main --json "${DEPS_WORK}/proj-major" > /dev/null 2>&1
 )
 _dt_rc=$?
@@ -232,9 +232,9 @@ _dt_rc=$?
 (
     # Read by deps_check_main inside this subshell, not exported on purpose.
     # shellcheck disable=SC2034
-    CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
+    export CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
     # shellcheck disable=SC2034
-    CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
+    export CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
     deps_check_main "${DEPS_WORK}/proj-major" > /dev/null 2>&1
 )
 _dt_rc=$?
@@ -372,8 +372,8 @@ chmod +x "${DEPS_WORK}/fetch-crates.sh"
 _dt_crates_json="$(
     SLOPGUARD_REGISTRIES_JSON="${DEPS_WORK}/registries-crates.json"
     SLOPGUARD_FETCH_CMD="${DEPS_WORK}/fetch-crates.sh"
-    CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
-    CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
+    export CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
+    export CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
     deps_check_main --json "${DEPS_WORK}/proj-crates" 2>/dev/null
 )"
 
@@ -466,8 +466,8 @@ chmod +x "${DEPS_WORK}/fetch-pypi.sh"
 _dt_pypi_json="$(
     SLOPGUARD_REGISTRIES_JSON="${DEPS_WORK}/registries-pypi.json"
     SLOPGUARD_FETCH_CMD="${DEPS_WORK}/fetch-pypi.sh"
-    CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
-    CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
+    export CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
+    export CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
     deps_check_main --json "${DEPS_WORK}/proj-pypi-req" 2>/dev/null
 )"
 
@@ -566,8 +566,8 @@ chmod +x "${DEPS_WORK}/fetch-pypi-toml.sh"
 _dt_toml_json="$(
     SLOPGUARD_REGISTRIES_JSON="${DEPS_WORK}/registries-pypi-toml.json"
     SLOPGUARD_FETCH_CMD="${DEPS_WORK}/fetch-pypi-toml.sh"
-    CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
-    CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
+    export CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
+    export CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
     deps_check_main --json "${DEPS_WORK}/proj-pypi-toml" 2>/dev/null
 )"
 
@@ -662,8 +662,8 @@ chmod +x "${DEPS_WORK}/fetch-maven.sh"
 _dt_maven_json="$(
     SLOPGUARD_REGISTRIES_JSON="${DEPS_WORK}/registries-maven.json"
     SLOPGUARD_FETCH_CMD="${DEPS_WORK}/fetch-maven.sh"
-    CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
-    CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
+    export CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true
+    export CLAUDE_PLUGIN_OPTION_DEPENDENCY_FRESHNESS=warn
     deps_check_main --json "${DEPS_WORK}/proj-maven" 2>/dev/null
 )"
 
