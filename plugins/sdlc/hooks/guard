@@ -4,10 +4,14 @@
 # Usage (from hooks.json, via run-hook.cmd):
 #   guard pre-bash   — PreToolUse on Bash: deny force pushes, --no-verify, dangerous rm
 #   guard stop       — Stop: deny finishing a session that deleted or skipped tests
+#                      (advisory warning on Grok — Stop hooks are passive there)
 #
-# Contract: exit 0 = allow. exit 2 = block, with the reason on stderr (Claude reads it).
-# Any other failure mode must allow: a broken guard that blocks every session is worse
-# than no guard.
+# Contract:
+#   Claude/Codex PreToolUse — exit 0 = allow; exit 2 = block, reason on stderr.
+#   Grok PreToolUse         — exit 0 + stdout {"decision":"deny","reason":"..."} = block.
+#   Grok Stop               — always exit 0; findings printed to stderr as advisory.
+#   Any other failure mode must allow; a broken guard that blocks every session is worse
+#   than no guard.
 # Ownership boundary: this hook alone owns destructive git/rm commands and test
 # weakening. Slop Guard owns secrets, suppressions, dependency and lint policy.
 set -uo pipefail
@@ -23,7 +27,19 @@ fi
 INPUT="$(cat 2>/dev/null || true)"
 [ -n "$INPUT" ] || exit 0
 
+# Grok runtime detection: GROK_PLUGIN_ROOT set, CLAUDE_PLUGIN_ROOT absent.
+IS_GROK=""
+[ -n "${GROK_PLUGIN_ROOT:-}" ] && [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && IS_GROK=1
+
+# deny MSG — emit a blocking decision appropriate to the host and mode.
+#   Claude/Codex: write reason to stderr, exit 2.
+#   Grok PreToolUse: emit {"decision":"deny","reason":MSG} to stdout, exit 0.
+#   Not called from stop_check on Grok; stop_check emits an advisory instead.
 deny() {
+    if [ -n "$IS_GROK" ]; then
+        jq -n --arg r "$1" '{"decision":"deny","reason":$r}'
+        exit 0
+    fi
     printf '%s\n' "$1" >&2
     exit 2
 }
@@ -32,8 +48,13 @@ deny() {
 # pre-bash — block commands whose damage cannot be reviewed after the fact
 # --------------------------------------------------------------------------- #
 pre_bash() {
-    local cmd
-    cmd="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')"
+    local cmd input
+    input="$INPUT"
+    # Normalize Grok camelCase: toolInput → tool_input (only field consumed here)
+    if [ -n "$IS_GROK" ]; then
+        input="$(printf '%s' "$input" | jq 'if .toolInput != null then .tool_input = .toolInput else . end')"
+    fi
+    cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
     [ -n "$cmd" ] || exit 0
 
     # Force push: rewrites shared history. --force-with-lease is fine.
@@ -77,17 +98,22 @@ Fix what the hook reports instead of skipping it."
 }
 
 # --------------------------------------------------------------------------- #
-# stop — block a session that made the suite green by removing its teeth
+# stop — warn or block a session that made the suite green by removing its teeth
 # --------------------------------------------------------------------------- #
 TEST_PATH_RE='(_test\.(go|py|rb)|test_[^/]*\.py|\.(test|spec)\.(ts|tsx|js|jsx|mjs)$|Test\.php$|/tests?/|/Tests/|/__tests__/|/e2e/)'
 
 SKIP_ADD_RE='(t\.Skip\(|t\.Skipf\(|testing\.Short\(\)|\.skip\(|\.only\(|it\.skip|describe\.skip|xit\(|xdescribe\(|fdescribe\(|fit\(|markTestSkipped|@pytest\.mark\.skip|@unittest\.skip|@Ignore|->skip\(|Skip::)'
 
 stop_check() {
+    local input reentered
+    input="$INPUT"
+    # Normalize Grok camelCase: stopHookActive → stop_hook_active (only field consumed here)
+    if [ -n "$IS_GROK" ]; then
+        input="$(printf '%s' "$input" | jq 'if .stopHookActive != null then .stop_hook_active = .stopHookActive else . end')"
+    fi
     # Already re-entered from a previous block: warn once more, then let it finish.
     # Blocking forever would trap the session in a loop it cannot exit.
-    local reentered
-    reentered="$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false')"
+    reentered="$(printf '%s' "$input" | jq -r '.stop_hook_active // false')"
 
     git rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
@@ -133,6 +159,13 @@ $(printf '%s\n' "$skips" | sed 's/^/  + /')
 
     if [ "$reentered" = "true" ]; then
         printf 'guard: test-weakening findings are still present:\n%s\nRecord them in the PR body or BLOCKED.md — they will not pass review.\n' "$findings" >&2
+        exit 0
+    fi
+
+    # On Grok, Stop hooks are passive: emit an advisory to stderr and exit 0.
+    # Claude/Codex retain the blocking exit-2 behavior via deny().
+    if [ -n "$IS_GROK" ]; then
+        printf 'guard [advisory]: this session weakened the test suite.\n\n%s\nRestore the tests and make them pass.\n\nIf a test genuinely contradicts the spec, that is a decision for a human — stop and report the\ncontradiction (unattended runs: write specs/<TICKET>/BLOCKED.md and exit non-zero) instead of\nremoving the test.\n' "$findings" >&2
         exit 0
     fi
 

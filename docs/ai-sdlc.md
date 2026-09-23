@@ -177,6 +177,26 @@ Not a temporary list — these are the parts where being accountable is the job:
 - Evidence. Nothing a synthetic panel says, and nothing tagged `[ASSUMPTION]`, counts as evidence
   in a brief; only a person can gather what does.
 
+## Host support
+
+The harness runs on Claude Code, Codex, and Grok. The queue runner is Claude-only.
+
+| Capability | Claude Code | Codex | Grok |
+|------------|-------------|-------|------|
+| Knowledge skills (`npx skills`) | ✓ | ✓ | ✓ |
+| Full plugin (marketplace install) | ✓ | ✓ | ✓ |
+| Interactive commands (`init`, `spec`, `mockup`, `implement`, `qa`, `ship`, `review`, …) | `/sdlc:<name>` | `$<name>` | `/<name>` |
+| Unattended queue (`aisdlc run`) | ✓ | — | — |
+| `Stop` hook (test-deletion guard) | blocking | blocking | advisory (exit 0, stderr) |
+| `PreToolUse` hooks (force-push guard, secrets) | blocking | blocking | blocking |
+
+`aisdlc run` spawns headless `claude -p` sessions and has no Codex or Grok equivalent.
+
+`/sdlc:init` writes both `CLAUDE.md` and `AGENTS.md` into the target repository. `AGENTS.md`
+is the Codex entry point: it points Codex agents at the same three-tier instruction hierarchy
+(`CLAUDE.md` → task playbook → path-scoped rules) and lists the Codex command for each
+workflow step.
+
 ## Getting started
 
 ```bash

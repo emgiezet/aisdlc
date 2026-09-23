@@ -36,39 +36,40 @@ That installs the eight knowledge skills — the spec format, the test-density r
 architecture-review tier table, the pipeline contracts — so any agent you already use writes
 specs and tests the way this harness expects. Drop `--skill '*'` to cherry-pick.
 
-**The full pipeline — Claude Code:**
+**The full pipeline — Claude Code, Codex, Grok:**
 
-```
-/plugin marketplace add emgiezet/aisdlc
-/plugin install sdlc@aisdlc
-```
+| Host | Register marketplace | First command |
+|------|----------------------|---------------|
+| Claude Code | `/plugin marketplace add emgiezet/aisdlc` then `/plugin install sdlc@aisdlc` | `/sdlc:init` |
+| Codex | `codex plugin marketplace add <path>` then install sdlc in the Plugins Directory | `$init` |
+| Grok | add `path` to `~/.grok/config.toml` under `[[marketplace.sources]]`, then install from `/plugins` | `/init` |
+
+See `install.sh` (or run it) for the exact per-host steps.
+
+**Queue runner — Claude Code only:**
 
 ```bash
-# the queue runner — point the link at wherever Claude Code cloned the marketplace
+# requires the claude CLI; does not work with Codex or Grok
 ln -s ~/.claude/plugins/marketplaces/aisdlc/plugins/sdlc/bin/aisdlc ~/.local/bin/aisdlc
 ```
 
-Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI. `gh` only for the `github` tracker;
-without one `/sdlc:init` selects the file-backed `local` provider and every command still runs.
+Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI (for the queue runner). `gh` only for the
+`github` tracker; without one `/sdlc:init` selects the file-backed `local` provider.
 
 Then, once per repository, in an interactive session:
 
-```
-/sdlc:init
-```
+| Host | Command | What it writes |
+|------|---------|----------------|
+| Claude Code | `/sdlc:init` | `CLAUDE.md`, `AGENTS.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md` |
+| Codex | `$init` | same |
+| Grok | `/init` | same |
 
-It surveys the repo — stacks, directories, the exact commands CI runs, test conventions, what kinds
-of change the git history contains — proposes a router table for your approval, and writes
-`CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md` and the tracker/browser
-descriptors, calibrated to *this* repository. It ships **no** ready-made conventions for your stack
-on purpose: copying someone else's playbooks is what makes generic harnesses useless.
-
-Then ship something:
+Then ship something (Claude Code syntax shown; substitute `$spec`/`$implement` on Codex, `/spec`/`/implement` on Grok):
 
 ```
 /sdlc:spec ABC-123            → specs/ABC-123/spec.md, status: draft
    ↓ you read it, flip status: approved, commit         ← the only approval point
-aisdlc add ABC-123 && aisdlc run
+aisdlc add ABC-123 && aisdlc run    ← queue runner is Claude-only
 ```
 
 ## 🔄 Update

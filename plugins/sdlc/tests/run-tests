@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# run-tests — sdlc hook test runner.
+#
+# Defines ok()/bad() counters, sources test suites, and exits non-zero if any
+# case fails.  Convention mirrors plugins/slop-guard/tests/run-tests exactly.
+set -uo pipefail
+
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+PASS=0
+FAIL=0
+ok()  { printf '  ok    %s\n' "$1"; PASS=$((PASS + 1)); }
+bad() { printf '  FAIL  %s: %s\n' "$1" "$2"; FAIL=$((FAIL + 1)); }
+
+printf 'sdlc hook test suite\n\n'
+
+# shellcheck source=grok_hook_test.sh
+. "${TESTS_DIR}/grok_hook_test.sh"
+
+printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ] || exit 1

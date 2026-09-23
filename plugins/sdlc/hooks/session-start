@@ -17,6 +17,16 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
+# Grok: SessionStart stdout is ignored (passive hook); exit cleanly.
+if [ -n "${GROK_PLUGIN_ROOT:-}" ] && [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    exit 0
+fi
+
+# Unknown runtime: nothing to inject.
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    exit 0
+fi
+
 context_raw="AI SDLC harness active (${NAME} v${VERSION}).
 
 The pipeline. A spec is the only approval point; everything after it runs unattended:
@@ -64,8 +74,8 @@ If this repo has no CLAUDE.md task router yet, run /${NAME}:init before anything
 
 context_escaped=$(escape_for_json "$context_raw")
 
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  cat <<EOF
+# Claude JSON contract (hookSpecificOutput) — honoured by both Claude and Codex.
+cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
@@ -73,12 +83,5 @@ if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   }
 }
 EOF
-else
-  cat <<EOF
-{
-  "additional_context": "${context_escaped}"
-}
-EOF
-fi
 
 exit 0

@@ -186,6 +186,42 @@ Plugin, który na trzech warstwach:
 
 Slop Guard musi działać obok nich bez duplikowania komunikatów (sekcja 12, decyzja D9).
 
+### 3.6 Grok — fakty o platformie (zweryfikowane 2026-09)
+
+Grok (xAI) udostępnia plugin hooks z innymi konwencjami niż Claude Code. Zweryfikowane fakty:
+
+**Zmienne środowiskowe**
+- `GROK_PLUGIN_ROOT` — odpowiednik `CLAUDE_PLUGIN_ROOT`.
+- `GROK_PLUGIN_DATA` — trwały katalog danych; odpowiednik `CLAUDE_PLUGIN_DATA`.
+- `GROK_WORKSPACE_ROOT` — bieżący katalog roboczy; odpowiednik `CLAUDE_PROJECT_DIR`.
+- Grok **nie** ustawia `CLAUDE_PLUGIN_ROOT` ani `CLAUDE_PLUGIN_DATA`.
+
+**Pola zdarzeń (camelCase)**
+Grok wysyła zdarzenia hooków z polami w notacji camelCase zamiast snake_case:
+
+| Grok (camelCase)  | Canonical (snake_case) |
+|---|---|
+| `sessionId`       | `session_id`            |
+| `hookEventName`   | `hook_event_name`       |
+| `toolName`        | `tool_name`             |
+| `toolInput`       | `tool_input`            |
+
+Normalizacja odbywa się jednorazowo w `hook_input` (granica wejścia) — skrypty polityk używają wyłącznie snake_case.
+
+**Format odpowiedzi**
+
+| Host | Deny | Allow | Kontekst |
+|---|---|---|---|
+| Claude / Codex | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}` | JSON envelope lub exit 0 | `additionalContext` na stdout |
+| Grok | `{"decision":"deny","reason":…}` | exit 0, brak wyjścia | stderr |
+
+**Detekcja runtime**
+Grok jest aktywny gdy `GROK_PLUGIN_ROOT` jest ustawiony ORAZ (`CLAUDE_PLUGIN_ROOT` jest pusty LUB równy `GROK_PLUGIN_ROOT`). Sam `GROK_PLUGIN_ROOT` nie wystarczy — dziedziczona stara wartość w sesji Claude spowodowałaby odpowiedź w formacie Grok, który Claude ignoruje: każde deny stałoby się cichym allow.
+
+**Brak interaktywnego `ask`**
+Grok nie obsługuje decyzji `ask`; `hook_ask` pod Grokiem emituje `{"decision":"deny","reason":…}` (fail-closed).
+
+
 ---
 
 ## 4. Architektura pluginu
@@ -389,6 +425,17 @@ Uwagi:
 - Jeśli narzędzie `MultiEdit` lub `NotebookEdit` nie istnieje w danej wersji Claude Code, dokładny matcher po prostu nie zadziała — to bezpieczne.
 - Matcher `mcp__context7__.*` przechwytuje wywołania Context7 dokonane przez agenta. Brak serwera MCP → matcher się nie uruchamia, degradacja bezszumowa, identyczna z przypadkiem `MultiEdit` powyżej (§7.6).
 - `bin/slopguard` na Windows musi wskazywać na `slopguard.exe`. Rozwiązanie: launcher per platforma w `bin/` albo osobne wpisy z `shell` (decyzja w Etapie 1).
+
+**Kontrakt odpowiedzi hooków per platforma**
+
+`lib/hook.sh` emituje odpowiedzi w formacie właściwym dla aktywnego hosta. Skrypty polityk (`hooks/*`) nie muszą nic wiedzieć o hoście — normalizacja odbywa się na granicy wejścia/wyjścia:
+
+| Host | Wykrycie | Deny | Allow | Kontekst |
+|---|---|---|---|---|
+| Claude / Codex | domyślny (brak `GROK_PLUGIN_ROOT` lub różne ścieżki) | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}` | JSON envelope lub exit 0 | `additionalContext` na stdout |
+| Grok | `GROK_PLUGIN_ROOT` ustawiony ORAZ (`CLAUDE_PLUGIN_ROOT` pusty lub równy) | `{"decision":"deny","reason":…}` | exit 0, brak wyjścia | stderr |
+
+`hook_ask` pod Grokiem emituje `{"decision":"deny","reason":…}` (fail-closed — Grok nie obsługuje interaktywnych pytań).
 
 ### 4.4 Dispatcher `slopguard` — podkomendy
 

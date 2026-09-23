@@ -1,0 +1,44 @@
+{
+  "name": "aisdlc",
+  "description": "AI SDLC harness — the pipeline, the guardrails, and the evals that let cheap models deliver reviewable code",
+  "owner": {
+    "name": "aisdlc"
+  },
+  "plugins": [
+    {
+      "name": "sdlc",
+      "source": {
+        "type": "local",
+        "path": "./plugins/sdlc"
+      },
+      "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy and descriptors for your repo; spec → mockup → implement → qa → ship → review runs unattended; issues enter through triage, PRs leave through a gated human merge",
+      "category": "development",
+      "keywords": [
+        "sdlc",
+        "spec-driven",
+        "agents",
+        "harness",
+        "task-router",
+        "testing"
+      ],
+      "version": "0.2.0"
+    },
+    {
+      "name": "slop-guard",
+      "source": {
+        "type": "local",
+        "path": "./plugins/slop-guard"
+      },
+      "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code: per-language prevention skills, deterministic checks after each edit, and a Stop gate that blocks on unresolved blockers",
+      "category": "security",
+      "keywords": [
+        "security",
+        "sast",
+        "linting",
+        "anti-patterns",
+        "supply-chain"
+      ],
+      "version": "0.1.0"
+    }
+  ]
+}
