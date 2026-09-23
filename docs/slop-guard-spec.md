@@ -16,7 +16,7 @@
 4. Architektura pluginu (układ, manifest, hooki, dispatcher, stan, format findingów, `rules/stacks.json`, katalog)
 5. Macierz narzędzi per technologia (pokrycie tier 1 / tier 2)
 6. Domyślne ustawienia narzędzi — PHP, Go, Python, TS/React/Node, SQL, Terraform, Kubernetes/Helm, Docker, CI, sekrety, SAST
-7. Polityki (Bash, zapis, odczyt, ustawienia projektu, konfiguracja `.slopguard.json`, dokumentacja frameworków przez Context7, świeżość zależności)
+7. Polityki (Bash, zapis, odczyt, ustawienia projektu, konfiguracja `.slopguard.json`, dokumentacja frameworków przez Context7, świeżość zależności, rozszerzenia projektu)
 8. Katalog antywzorców — zestaw startowy
 9. Instalacja narzędzi, pinowanie, integralność
 10. Licencje i pochodzenie treści
@@ -1770,6 +1770,85 @@ Tryb pracy jest kontrolowany przez `dependency_freshness` (`off | warn | error`,
 
 **Podłączenie `slopguard deps-check` do bramki Stop jest zaplanowane na Etap 4** — bramka Stop nie istnieje jeszcze w `hooks/hooks.json`. Dziś komenda jest uruchamiana ręcznie przez człowieka lub przez CI. Nie opisujemy bramki Stop tak, jakby już działała.
 
+### 7.8 Rozszerzenia projektu — `.slopguard/`
+
+Katalog `.slopguard/` w głównym katalogu projektu jest opcjonalnym mechanizmem rozszerzeń dla repozytoriów, które potrzebują dostrojenia reguł lub dodania narzędzi spoza zestawu wbudowanego. Dwie klasy rozszerzeń:
+
+**(A) Nadpisania mapowania reguł** (`.slopguard/mapping/<tool>.yaml`) — projekt zmienia przypisanie identyfikatora AP-*, severity, kategorii lub CWE dla reguły narzędzia, które plugin już uruchamia.
+
+**(B) Deskryptory narzędzi** (`.slopguard/tools/<name>.yaml`) — projekt deklaruje linter lub analizator, którego plugin nie spinuje (`sqlfluff`, `actionlint`, `detekt` itd.): jak znaleźć binarke, jak ją wywołać, jak sparsować wynik.
+
+**Dlaczego nie ma zakresu `~/.config`**
+
+Plugin celowo nie obsługuje konfiguracji na poziomie użytkownika ani maszyny. Konfiguracja, która nie podróżuje z repozytorium, sprawia, że wyniki dewelopera różnią się od wyników CI — a to jest właśnie klasa błędów, której ten plugin ma zapobiegać. Rozszerzenie jest aktywne, jeśli jest widoczne w repozytorium; nigdzie indziej.
+
+**Kiedy zamiast rozszerzenia stosować fork**
+
+Rozszerzenia są przeznaczone dla narzędzi, które upstream nigdy nie spinuje. Jeśli narzędzie ma być wspierane i testowane w samym pluginie — ze stałymi fixture'ami i integracyjnymi testami — dodaj je do `tools/tools.lock.json` z sha256 i odpowiednim plikiem `rules/mapping/<tool>.yaml`. To jest praca Etapu 0 dla tego narzędzia. Deskryptory projektowe są dla wszystkiego, czego upstream nie chce spinować permanentnie.
+
+#### (A) Format nadpisania mapowania
+
+Identyczny z `rules/mapping/<tool>.yaml` pluginu. Pola opcjonalne — projekt podaje tylko te, które chce zmienić.
+
+```yaml
+rules:
+  AM04:
+    ap_id: AP-SQL-MAINT-002
+    severity: warn
+    category: maintainability
+    cwe: ""
+  S608:
+    severity: error
+```
+
+**Scalanie i licznik.** Scalanie odbywa się po identyfikatorze reguły: wpis projektu patch'uje wpis pluginu pole po polu; pola niepodane zachowują wartości pluginu. Obniżenie severity poniżej wartości pluginu jest **dozwolone i liczone** jako downgrade. Wyciszenie hałaśliwej reguły to uzasadniona decyzja projektowa — to, co nie może się zdarzyć, to ciche ominięcie bez śladu w audycie. Dlatego `ext_override_counts` zwraca dwie liczby: łączną liczbę nadpisań i liczbę downgradów severity. Downgrades są raportowane przez `session-start` i w raporcie Stop. Używanie downgradów do systematycznego zamykania oczu na findings bez uzasadnienia jest AP-AGENT-002.
+
+Ranking severity (od najwyższego): `blocker` > `error` > `warn` > `info`.
+
+#### (B) Format deskryptora narzędzia
+
+```yaml
+name: sqlfluff
+tier: fast
+match:
+  globs: ["**/*.sql"]
+  stacks: [sql]
+resolve:
+  project: [".venv/bin/sqlfluff", "vendor/bin/sqlfluff"]
+  path_sha256: "9f2c…"
+run:
+  args: ["lint", "--format", "json", "{file}"]
+  timeout: 8
+parse:
+  format: json
+  jq: '.[] | .violations[]? | {rule: .code, line: .line_no, message: .description}'
+```
+
+Obiekty wyjściowe pola `parse.jq` muszą zawierać pola `rule`, `line`, `message`; opcjonalnie `column` i `file`.
+
+**Cztery reguły bezpieczeństwa — każda konieczna**
+
+| Reguła | Dlaczego konieczna |
+|---|---|
+| `run.args` to tablica argv, nie ciąg powłoki | Ciąg `"command": "tool --format json $file"` umożliwia przemycenie `; rm -rf /` przez wartość pola. Tablica argv jest przekazywana bezpośrednio do `execv`; powłoka nie jest uruchamiana, interpolacja nie jest wykonywana. `{file}` jest podstawiane jako jeden element tablicy — nigdy przez ekspansję powłoki. |
+| `parse.jq` to wyrażenie jq, nie skrypt powłoki | Deskryptor opisuje dane, nie logikę. Jedynym nowym procesem jest deklarowana binarka; wyrażenie jq jest wywoływane przez `jq -e '<expr>'` na jej stdout. Pole nie może zawierać `\|sh`, `@base64d` ani niczego poza składnią jq; `ext_validate` odrzuca deskryptor przed uruchomieniem. |
+| Rozwiązywanie binarki: ścieżka projektu lub sha256 z PATH | Akceptacja dowolnej binarki z PATH bez weryfikacji to wektor supply-chain: podmiana `$PATH` w CI (np. przez złośliwy krok workflow) pozwoliłaby uruchomić dowolny kod. Ścieżki w `resolve.project` są relatywne do katalogu projektu i muszą być istniejącymi, wykonywalnymi plikami. Binarka z PATH jest akceptowana tylko gdy jej sha256 zgadza się z `resolve.path_sha256`. Deskryptor bez żadnego z tych pól jest odrzucany z widocznym ostrzeżeniem. |
+| Plugin nigdy nie instaluje narzędzia z deskryptora | `slopguard doctor --install` obsługuje wyłącznie `tools/tools.lock.json`. Brakująca binarka deskryptora to skip z notatką (`status: absent`) — dokładnie jak każde inne brakujące narzędzie. Plugin nie wywołuje `pip install`, `npm install` ani niczego równoważnego na rzecz deskryptora. |
+
+**Przypadki odmowy — tabela**
+
+| Sytuacja | Skutek |
+|---|---|
+| Brak `resolve.project` i brak `resolve.path_sha256` | `status: refused:no-resolve` + widoczne ostrzeżenie |
+| Sha256 binarki z PATH niezgodne z `resolve.path_sha256` | `status: refused:sha256-mismatch` + ostrzeżenie |
+| `name` niezgodne z nazwą pliku (np. `tools/sqlfluff.yaml` + `name: fluff`) | `status: refused:name-mismatch` |
+| `name` koliduje z narzędziem spinowanym przez plugin | `status: refused:pinned-tool-collision` |
+| Nieparsowalne YAML lub brakujące wymagane pole | `status: refused:invalid` + komunikat błędu na stderr |
+
+**Ochrona zapisu**
+
+Pliki `.slopguard/**` są chronione przez `pre-write` jako bezwarunkowe `ask` — tak jak `.slopguard.json` (§7.2C). Uzasadnienie: plik `.slopguard/tools/foo.yaml` deklaruje binarke, którą plugin będzie uruchamiał — zmiana przez agenta bez potwierdzenia użytkownika byłaby eskalacją uprawnień. Deskryptory i nadpisania mapowania są traktowane jak każda inna brama jakości: wymagają jawnego zatwierdzenia przed zapisem.
+
 ---
 
 ## 8. Katalog antywzorców — zestaw startowy (seed dla `rules/catalog.yaml`)
@@ -2009,6 +2088,7 @@ Warunkiem wejścia do Etapu 3 dla każdego języka jest przejście sondy Opengre
    - `.venv/bin/*`, `uv run --frozen <name>`.
 2. Binarka pluginu: `${CLAUDE_PLUGIN_DATA}/tools/<name>/<version>/`.
 3. Binarka z `PATH` — **tylko** gdy wersja zgadza się z `tools.lock.json` (sprawdzenie `--version`). W przeciwnym razie ignoruj i loguj w `doctor`.
+4. Narzędzie z deskryptora projektu (`.slopguard/tools/<name>.yaml`, §7.8): sprawdzane po narzędziach spinowanych przez plugin. Deskryptor nie może nadpisać wywołania narzędzia wbudowanego — kolizja nazwy skutkuje `status: refused:pinned-tool-collision` przy ładowaniu deskryptora.
 
 ### 9.2 `tools/tools.lock.json`
 

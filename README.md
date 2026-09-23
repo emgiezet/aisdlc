@@ -306,6 +306,64 @@ run whatever the table says and treat a second failure of the same command as a 
 - **A policy overlay, not a fork** — organisation rules install as a second plugin beside this one.
   [`docs/overlay-contract.md`](docs/overlay-contract.md) states what an overlay may rely on.
 
+
+## 🛡️ Slop Guard — project configuration
+
+Slop Guard ships with sensible defaults but three files let you tune it without forking.
+
+**`.slopguard.json`** (already shipped) declares which technology stacks the guard covers and,
+in a monorepo, which paths belong to which stack. If the file is absent, the guard detects
+stacks automatically. See [`plugins/slop-guard/docs/recommended-project-settings.json`](plugins/slop-guard/docs/recommended-project-settings.json)
+for the full snippet to add to `.claude/settings.json`.
+
+**`.slopguard/mapping/<tool>.yaml`** — retune or extend rules for tools Slop Guard already runs.
+The format is identical to the plugin's own `rules/mapping/<tool>.yaml`; a project entry patches
+the plugin entry field by field. Lowering a severity is allowed: silencing a noisy rule is a
+legitimate project decision, and the plugin counts and reports every downgrade so it is never
+silent. Example — promote one SQLFluff rule and demote another:
+
+```yaml
+rules:
+  AM04:
+    ap_id: AP-SQL-MAINT-002
+    severity: warn
+    category: maintainability
+    cwe: ""
+  S608:
+    severity: error
+```
+
+**`.slopguard/tools/<name>.yaml`** — bring a linter the plugin does not pin. Complete working
+example for SQLFluff:
+
+```yaml
+name: sqlfluff
+tier: fast
+match:
+  globs: ["**/*.sql"]
+  stacks: [sql]
+resolve:
+  project: [".venv/bin/sqlfluff", "vendor/bin/sqlfluff"]
+  path_sha256: "9f2c…"          # sha256 of the PATH binary, if used
+run:
+  args: ["lint", "--format", "json", "{file}"]
+  timeout: 8
+parse:
+  format: json
+  jq: '.[] | .violations[]? | {rule: .code, line: .line_no, message: .description}'
+```
+
+**Trust model.** The plugin runs only a binary your project already installs (via
+`resolve.project`, a path relative to the repo root) or one whose sha256 you declared in
+`resolve.path_sha256`. It never installs a descriptor's tool itself — a missing binary is
+skipped with a note, exactly like any built-in tool that is not on the machine. Every file
+under `.slopguard/` requires human approval to change (the `pre-write` hook asks, same as
+`.slopguard.json`).
+
+**When to fork instead.** If you want a tool tested and maintained in the plugin itself — with
+pinned fixture tests and a sha256 in `tools/tools.lock.json` — open a PR to the plugin rather
+than adding a project descriptor. Descriptors are for tools upstream will never pin permanently.
+
 ## 🏷️ Labels and the merge gate
 
 Every PR carries the profile label (`ai-sdlc`) plus exactly one pipeline label: `review` after
