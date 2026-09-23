@@ -21,7 +21,9 @@ namespace Illuminate\Database\Schema {
         public function foreign(string $column): static { return $this; }
         public function references(string $column): static { return $this; }
         public function on(string $table): static { return $this; }
+        /** @param string|list<string> $columns */
         public function index(string|array $columns): static { return $this; }
+        /** @param string|list<string> $index */
         public function dropForeign(string|array $index): void {}
         public function dropColumn(string $column): void {}
     }
@@ -42,6 +44,7 @@ namespace {
 
     return new class extends Migration
     {
+        #[\Override]
         public function up(): void
         {
             // ok: slopguard.laravel.migration-fk-without-index
@@ -51,6 +54,7 @@ namespace {
             });
         }
 
+        #[\Override]
         public function down(): void
         {
             Schema::table('orders', function (Blueprint $table): void {

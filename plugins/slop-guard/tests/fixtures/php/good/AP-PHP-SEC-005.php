@@ -21,7 +21,7 @@ final class Request
 
 final class JsonResponse
 {
-    public function __construct(mixed $data) {}
+    public function __construct(private mixed $data) {}
 }
 
 final class ResponseFactory
@@ -31,7 +31,7 @@ final class ResponseFactory
 
 function response(): ResponseFactory { return new ResponseFactory(); }
 
-class User
+final class User
 {
     /** @var list<string> */
     protected array $fillable = ['name', 'email', 'role'];

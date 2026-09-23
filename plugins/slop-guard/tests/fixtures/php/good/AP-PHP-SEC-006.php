@@ -7,9 +7,10 @@ namespace SlopGuard\Fixture\PhpSec006;
 
 final class Str
 {
+    /** @param positive-int $length */
     public static function random(int $length = 16): string
     {
-        return bin2hex(random_bytes(intdiv($length, 2) + 1));
+        return bin2hex(random_bytes($length));
     }
 }
 

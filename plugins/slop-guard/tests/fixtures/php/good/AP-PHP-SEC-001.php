@@ -18,7 +18,10 @@ final class Builder
 
 final class DB
 {
-    /** @param list<mixed> $bindings */
+    /**
+     * @param list<mixed> $bindings
+     * @return list<array<string, mixed>>
+     */
     public static function select(string $query, array $bindings = []): array { return []; }
 
     public static function raw(string $value): string { return $value; }
