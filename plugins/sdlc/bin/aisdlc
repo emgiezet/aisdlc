@@ -25,8 +25,8 @@ manifest_field() {
 VERSION="$(manifest_field version)"; [ -n "$VERSION" ] || VERSION="unknown"
 PLUGIN_NAME="$(manifest_field name)";  [ -n "$PLUGIN_NAME" ] || PLUGIN_NAME="sdlc"
 
-ALL_PHASES="implement qa ship review"
-ISSUE_PHASES="triage root-cause implement qa ship review"
+ALL_PHASES="implement qa scope-check ship review"
+ISSUE_PHASES="triage root-cause implement qa scope-check ship review"
 
 # Built-in defaults. Precedence: CLI flag > .aisdlc/config.json > environment > these.
 BUILTIN_MODEL="sonnet"
@@ -756,6 +756,255 @@ run_phase() {
     return 0
 }
 
+# --------------------------------------------------------------------------- #
+# scope-check — classify changed files against the spec's declared scope
+# --------------------------------------------------------------------------- #
+
+# Extract bullet lines from a named sub-section within ## Scope in a markdown file.
+# $1 = file, $2 = label (e.g. "In" or "Out") — matched as "${label}:" at line start.
+_scope_bullets() {
+    local file="$1" label="${2}:"
+    awk -v lbl="$label" '
+        BEGIN { in_scope=0; in_label=0 }
+        /^## Scope[[:space:]]*$/ { in_scope=1; next }
+        in_scope && /^## /       { in_scope=0; in_label=0; next }
+        in_scope && $0 ~ ("^" lbl "[[:space:]]*$") { in_label=1; next }
+        in_scope && in_label && /^[A-Z][a-z]*:[[:space:]]*$/ { in_label=0; next }
+        in_scope && in_label && /^[-*] / { print }
+    ' "$file"
+}
+
+# Extract all lines from the ## Context section.
+_context_lines() {
+    local file="$1"
+    awk '
+        BEGIN { in_ctx=0 }
+        /^## Context/ { in_ctx=1; next }
+        in_ctx && /^## / { in_ctx=0; next }
+        in_ctx { print }
+    ' "$file"
+}
+
+# Extract bullet lines from ## Repo-wide out of bounds in sdlc.md (HTML comments skipped).
+_oob_bullets() {
+    local file="$1"
+    awk '
+        BEGIN { in_oob=0 }
+        /^## Repo-wide out of bounds/ { in_oob=1; next }
+        in_oob && /^## /              { in_oob=0; next }
+        in_oob && /^[-*] / && !/<!--/ { print }
+    ' "$file"
+}
+
+# From text, extract backtick-quoted path-like tokens (one per line).
+# Conservative: only tokens containing / . or glob chars; tokens containing : (command
+# references like /sdlc:ship) and plain identifiers are filtered. Line-number suffixes
+# like :28 or :643-740 are stripped before the colon test.
+_path_tokens() {
+    local text="$1"
+    [ -z "$text" ] && return 0
+    printf '%s\n' "$text" | grep -oE '`[^`]+`' | tr -d '`' | while IFS= read -r tok; do
+        tok="$(printf '%s' "$tok" | sed 's/:[0-9][0-9-]*$//')"
+        case "$tok" in *:*) continue ;; esac
+        tok="$(printf '%s' "$tok" | sed 's/<[^>]*>/*/g')"
+        case "$tok" in
+            */*|*.*|\**|*\*) printf '%s\n' "$tok" ;;
+        esac
+    done
+}
+
+# Returns 0 if file $1 matches path-glob pattern $2.
+# Handles: exact, directory prefix (trailing /), single-level *, multi-level **.
+_glob_match() {
+    local file="$1" pat="$2"
+    file="${file#./}"; pat="${pat#./}"
+    [ "$file" = "$pat" ] && return 0
+    # Directory prefix: pattern ends with /
+    if [ "${pat%/}" != "$pat" ]; then
+        case "$file" in "${pat%/}"|"${pat%/}"/*)  return 0 ;; esac
+        return 1
+    fi
+    # ** pattern: require the prefix before ** to match
+    if printf '%s' "$pat" | grep -qF '**'; then
+        local pre="${pat%%\*\**}"
+        if [ -n "$pre" ]; then
+            case "$file" in "${pre}"*) return 0 ;; esac
+        else
+            return 0  # bare ** matches everything
+        fi
+        return 1
+    fi
+    # Standard single-level glob (unquoted intentional for glob expansion)
+    # shellcheck disable=SC2254
+    case "$file" in $pat) return 0 ;; esac
+    return 1
+}
+
+# Write scope-report.md.
+# oob lines are pipe-delimited "reason|filepath" pairs.
+_write_scope_report() {
+    local out="$1" ticket="$2" base="$3" in_files="$4" undeclared="$5" oob="$6" verdict="$7"
+    {
+        printf '# Scope report — %s\n\n' "$ticket"
+        [ "$verdict" = "GAPS" ] && \
+            printf '> **GAPS** — Some changed files were not declared in the spec scope.\n\n'
+        [ "$verdict" = "BLOCKED" ] && \
+            printf '> **BLOCKED** — Changed files violate out-of-bounds rules.\n\n'
+        printf 'Base: `%s`  \nChecked: %s\n\n' "$base" "$(ts)"
+        printf '## File classification\n\n'
+        printf '| File | Classification |\n|------|----------------|\n'
+        if [ -n "$in_files" ]; then
+            while IFS= read -r f; do
+                [ -n "$f" ] && printf '| `%s` | in scope |\n' "$f"
+            done <<< "$in_files"
+        fi
+        if [ -n "$undeclared" ]; then
+            while IFS= read -r f; do
+                [ -n "$f" ] && printf '| `%s` | **undeclared** |\n' "$f"
+            done <<< "$undeclared"
+        fi
+        if [ -n "$oob" ]; then
+            while IFS= read -r line; do
+                [ -n "$line" ] || continue
+                local reason="${line%%|*}" f="${line#*|}"
+                printf '| `%s` | **out of bounds** (%s) |\n' "$f" "$reason"
+            done <<< "$oob"
+        fi
+        local ni=0 nu=0 nb=0
+        [ -n "$in_files" ]   && ni="$(printf '%s\n' "$in_files"   | grep -c .)" || true
+        [ -n "$undeclared" ] && nu="$(printf '%s\n' "$undeclared" | grep -c .)" || true
+        [ -n "$oob" ]        && nb="$(printf '%s\n' "$oob"        | grep -c .)" || true
+        printf '\n## Verdict\n\nVerdict: %s\n\n%d in scope · %d undeclared · %d out of bounds\n' \
+            "$verdict" "$ni" "$nu" "$nb"
+    } > "$out"
+}
+
+# Native scope-check phase: classify the branch's changed files against the spec's
+# declared scope (In:/Out:/Context) and the project's repo-wide out-of-bounds list.
+# Writes specs/<TICKET>/scope-report.md and commits it. Records scope_verdict in
+# task.json. Returns 1 on BLOCKED (stops the pipeline); 0 on PASS or GAPS.
+run_scope_check() {
+    local repo="$1" id="$2" wt="$3" ticket="$4" specs_dir="$5" base="$6"
+    local dir; dir="$(task_dir "$repo" "$id")"
+    local log="$dir/scope-check.log"
+    local spec_file="$wt/$specs_dir/$ticket/spec.md"
+    local profile="$wt/.claude/sdlc.md"
+    local report_wt="$wt/$specs_dir/$ticket/scope-report.md"
+
+    printf '[%s] scope-check begin (base %s)\n' "$(ts)" "$base" >> "$log"
+
+    local changed
+    changed="$(git -C "$wt" diff --name-only "${base}...HEAD" 2>/dev/null || true)"
+
+    if [ -z "$changed" ]; then
+        printf '[%s] scope-check: no changed files — PASS\n' "$(ts)" >> "$log"
+        mkdir -p "$wt/$specs_dir/$ticket"
+        _write_scope_report "$report_wt" "$ticket" "$base" "" "" "" "PASS"
+        git -C "$wt" add "$specs_dir/$ticket/scope-report.md" >> "$log" 2>&1
+        git -C "$wt" -c user.name=aisdlc -c user.email=aisdlc@localhost \
+            commit -q -m "docs(scope): scope report for $ticket [PASS]" >> "$log" 2>&1
+        cp "$report_wt" "$dir/scope-report.md"
+        task_set "$repo" "$id" --arg v "PASS" '.scope_verdict = $v'
+        return 0
+    fi
+
+    local in_pats="" out_pats="" prohibited_pats=""
+    if [ -f "$spec_file" ]; then
+        local in_bullets out_bullets ctx
+        in_bullets="$(_scope_bullets "$spec_file" "In")"
+        out_bullets="$(_scope_bullets "$spec_file" "Out")"
+        ctx="$(_context_lines "$spec_file")"
+        in_pats="$(_path_tokens "${in_bullets}"$'\n'"${ctx}")"
+        out_pats="$(_path_tokens "$out_bullets")"
+    fi
+    if [ -f "$profile" ]; then
+        local oob_b
+        oob_b="$(_oob_bullets "$profile")"
+        prohibited_pats="$(_path_tokens "$oob_b")"
+    fi
+
+    printf '[%s] in-pats: %s\n'          "$(ts)" "${in_pats//$'\n'/ | }"          >> "$log"
+    printf '[%s] out-pats: %s\n'         "$(ts)" "${out_pats//$'\n'/ | }"         >> "$log"
+    printf '[%s] prohibited-pats: %s\n'  "$(ts)" "${prohibited_pats//$'\n'/ | }"  >> "$log"
+
+    local in_files="" undeclared="" oob=""
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        local classified=0
+        # 1. Spec Out: — explicit out-of-bounds
+        if [ -n "$out_pats" ]; then
+            while IFS= read -r pat; do
+                [ -n "$pat" ] || continue
+                _glob_match "$f" "$pat" && {
+                    oob="${oob:+$oob$'\n'}spec-out|$f"; classified=1; break
+                }
+            done <<< "$out_pats"
+        fi
+        [ "$classified" -eq 1 ] && continue
+        # 2. Repo-wide prohibitions from .claude/sdlc.md
+        if [ -n "$prohibited_pats" ]; then
+            while IFS= read -r pat; do
+                [ -n "$pat" ] || continue
+                _glob_match "$f" "$pat" && {
+                    oob="${oob:+$oob$'\n'}prohibited|$f"; classified=1; break
+                }
+            done <<< "$prohibited_pats"
+        fi
+        [ "$classified" -eq 1 ] && continue
+        # 3. In scope (spec In: + Context)
+        if [ -n "$in_pats" ]; then
+            while IFS= read -r pat; do
+                [ -n "$pat" ] || continue
+                _glob_match "$f" "$pat" && {
+                    in_files="${in_files:+$in_files$'\n'}$f"; classified=1; break
+                }
+            done <<< "$in_pats"
+        fi
+        [ "$classified" -eq 1 ] && continue
+        # 4. Undeclared — conservative default
+        undeclared="${undeclared:+$undeclared$'\n'}$f"
+    done <<< "$changed"
+
+    local verdict="PASS"
+    [ -n "$oob" ] && verdict="BLOCKED"
+    [ -n "$undeclared" ] && [ "$verdict" = "PASS" ] && verdict="GAPS"
+
+    mkdir -p "$wt/$specs_dir/$ticket"
+    _write_scope_report "$report_wt" "$ticket" "$base" "$in_files" "$undeclared" "$oob" "$verdict"
+    git -C "$wt" add "$specs_dir/$ticket/scope-report.md" >> "$log" 2>&1
+    git -C "$wt" -c user.name=aisdlc -c user.email=aisdlc@localhost \
+        commit -q -m "docs(scope): scope report for $ticket [$verdict]" >> "$log" 2>&1
+    cp "$report_wt" "$dir/scope-report.md"
+    task_set "$repo" "$id" --arg v "$verdict" '.scope_verdict = $v'
+    printf '[%s] scope-check: %s\n' "$(ts)" "$verdict" >> "$log"
+
+    [ "$verdict" = "BLOCKED" ] && return 1
+    return 0
+}
+
+# Manual re-run for an existing worktree: aisdlc scope-check <id> [--repo .]
+cmd_scope_check() {
+    local repo="." id=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --repo) repo="$2"; shift 2 ;;
+            -*)     die "unknown flag for scope-check: $1" ;;
+            *)      id="$1"; shift ;;
+        esac
+    done
+    [ -n "$id" ] || die "usage: aisdlc scope-check <id> [--repo .]"
+    repo="$(resolve_repo "$repo")"
+    local wt ticket specs_dir base
+    wt="$(task_get "$repo" .worktree "$id")"
+    ticket="$(task_get "$repo" .ticket "$id")"
+    specs_dir="$(task_get "$repo" .specs_dir "$id")"
+    base="$(task_get "$repo" .base "$id")"
+    [ -n "$specs_dir" ] || specs_dir="$BUILTIN_SPECS_DIR"
+    [ -d "$wt" ] || die "no worktree for task $id — run it first"
+    run_scope_check "$repo" "$id" "$wt" "$ticket" "$specs_dir" "$base"
+}
+
+
 execute_task() {
     local repo="$1" id="$2"
     local ticket base wt branch dir specs_dir is_issue
@@ -839,7 +1088,10 @@ execute_task() {
         fi
 
         say "  → $id: $phase"
-        if ! run_phase "$repo" "$id" "$phase" "$wt" "$ticket"; then
+        if [ "$phase" = "scope-check" ]; then
+            run_scope_check "$repo" "$id" "$wt" "$ticket" "$specs_dir" "$base" \
+                || { failed="$phase"; break; }
+        elif ! run_phase "$repo" "$id" "$phase" "$wt" "$ticket"; then
             failed="$phase"; break
         fi
 
@@ -880,6 +1132,7 @@ execute_task() {
     if [ -n "$failed" ]; then
         local err hint=""
         [ -f "$wt/$specs_dir/$ticket/BLOCKED.md" ] && hint=" (BLOCKED.md written)"
+        [ "$failed" = "scope-check" ]              && hint=" (see scope-report.md)"
         if [ "$failed" = "review" ]; then
             err="review blockers remain"
         else
@@ -905,8 +1158,9 @@ execute_task() {
     fi
 
     # Collect the artifacts a human will want, then release the worktree.
-    [ -f "$wt/$specs_dir/$ticket/qa-report.md" ] && cp "$wt/$specs_dir/$ticket/qa-report.md" "$dir/"
-    [ -f "$wt/$specs_dir/$ticket/pr-body.md" ]   && cp "$wt/$specs_dir/$ticket/pr-body.md" "$dir/"
+    [ -f "$wt/$specs_dir/$ticket/qa-report.md" ]    && cp "$wt/$specs_dir/$ticket/qa-report.md"    "$dir/"
+    [ -f "$wt/$specs_dir/$ticket/scope-report.md" ] && cp "$wt/$specs_dir/$ticket/scope-report.md" "$dir/"
+    [ -f "$wt/$specs_dir/$ticket/pr-body.md" ]      && cp "$wt/$specs_dir/$ticket/pr-body.md"      "$dir/"
     git -C "$wt" diff "$base"...HEAD > "$dir/changes.diff" 2>/dev/null || true
 
     # Fallback pr_url extraction for github provider (https URL in git log or ship.log).
@@ -1118,12 +1372,14 @@ cmd_logs() {
 
     jq . "$dir/task.json"
     local f
-    for f in "$dir"/run.log "$dir"/triage.log "$dir"/root-cause.log "$dir"/implement.log "$dir"/qa.log "$dir"/ship.log "$dir"/review.log; do
+    for f in "$dir"/run.log "$dir"/triage.log "$dir"/root-cause.log "$dir"/implement.log \
+              "$dir"/qa.log "$dir"/scope-check.log "$dir"/ship.log "$dir"/review.log; do
         [ -f "$f" ] || continue
         printf '\n===== %s =====\n' "$(basename "$f")"
         cat "$f"
     done
-    [ -f "$dir/qa-report.md" ] && { printf '\n===== qa-report.md =====\n'; cat "$dir/qa-report.md"; }
+    [ -f "$dir/qa-report.md" ]    && { printf '\n===== qa-report.md =====\n';    cat "$dir/qa-report.md"; }
+    [ -f "$dir/scope-report.md" ] && { printf '\n===== scope-report.md =====\n'; cat "$dir/scope-report.md"; }
     return 0
 }
 
@@ -1238,13 +1494,14 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
 
   aisdlc status                 one line per task, with spend
   aisdlc inbox                  open PRs with #, title, Verdict, pipeline label, url
-  aisdlc logs <id>              task state, phase logs, QA report
+  aisdlc logs <id>              task state, phase logs, QA and scope reports
+  aisdlc scope-check <id>       re-run the scope check for a task with an existing worktree
   aisdlc retry <id>             discard the worktree and re-queue
   aisdlc cancel <id>            drop a queued task
   aisdlc clean [--all]          remove finished task records and stale worktrees
 
 Phases: $ALL_PHASES (spec tickets); $ISSUE_PHASES (--issue tickets).
---no-pr removes ship and review from either list.
+--no-pr removes ship and review from either list. scope-check always runs when present.
 
 How it works: one git worktree per task, branched off <base>, then headless
 \`claude -p\` calls (/$PLUGIN_NAME:implement → :qa → :ship → :review) with a fresh context each.
@@ -1285,6 +1542,7 @@ case "${1:-help}" in
     status|ls)      shift; cmd_status "$@" ;;
     inbox)          shift; cmd_inbox "$@" ;;
     logs|log)       shift; cmd_logs "$@" ;;
+    scope-check)    shift; cmd_scope_check "$@" ;;
     retry)          shift; cmd_retry "$@" ;;
     cancel)         shift; cmd_cancel "$@" ;;
     clean)          shift; cmd_clean "$@" ;;

@@ -441,6 +441,116 @@ grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/42.md" \
 grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/42.md" \
     && ok "retry re-claimed the issue" \
     || bad "retry claim" "no in-progress after retry"
+
+# --------------------------------------------------------------------------- #
+# scope-check tests — use the existing stub (ok mode) so implement and qa run
+# normally; scope verdict depends solely on the spec's In:/Out: and .claude/sdlc.md
+# --------------------------------------------------------------------------- #
+
+fresh_repo_scope() {
+    local dir="$1" in_section="$2" out_section="$3" oob="${4:-}"
+    fresh_repo "$dir"
+    # Overwrite the minimal spec with one that has In:/Out: sections.
+    cat > "$dir/specs/SBX-1/spec.md" <<SCOPE_SPEC
+---
+ticket: SBX-1
+title: Selftest scope spec
+status: approved
+---
+
+## Scope
+
+In:
+${in_section}
+
+Out:
+${out_section}
+
+| id | actor | action | expected observable result | test |
+|----|-------|--------|----------------------------|------|
+| UC-1 | caller | calls Stub() | returns a non-empty string | unit |
+SCOPE_SPEC
+    mkdir -p "$dir/.claude"
+    printf '## Repo-wide out of bounds\n%s\n' "$oob" > "$dir/.claude/sdlc.md"
+    git -C "$dir" add -A
+    git -C "$dir" commit -q -m "chore: scope selftest spec"
+    git -C "$dir" update-ref refs/remotes/origin/master HEAD
+}
+
+# The stub (ok mode) commits: pkg/stub.go, pkg/stub_test.go, specs/SBX-1/qa-report.md
+
+# --------------------------------------------------------------------------- #
+printf '\nscope-check: all changed files in scope → PASS\n'
+R="$WORK/scope-pass"
+# In: covers both pkg/ and specs/SBX-1/ — every file the stub commits is in scope.
+fresh_repo_scope "$R" \
+    $'- `pkg/`\n- `specs/SBX-1/`' \
+    "" \
+    ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "scope PASS: task done" \
+    || bad "scope PASS status" "$(task_field "$R" .status)"
+[ -f "${D}scope-report.md" ] \
+    && ok "scope PASS: scope-report.md collected" \
+    || bad "scope PASS artifacts" "scope-report.md missing from task dir"
+grep -q 'Verdict: PASS' "${D}scope-report.md" 2>/dev/null \
+    && ok "scope PASS: verdict is PASS" \
+    || bad "scope PASS verdict" "$(grep 'Verdict:' "${D}scope-report.md" 2>/dev/null || echo 'no Verdict line')"
+[ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
+    && ok "scope PASS: scope_verdict in task.json" \
+    || bad "scope_verdict" "$(task_field "$R" .scope_verdict)"
+
+# --------------------------------------------------------------------------- #
+printf '\nscope-check: undeclared changed file → GAPS, chain continues\n'
+R="$WORK/scope-gaps"
+# In: covers only pkg/ — specs/SBX-1/qa-report.md (committed by stub qa) is undeclared.
+fresh_repo_scope "$R" \
+    $'- `pkg/`' \
+    "" \
+    ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "scope GAPS: task still done (GAPS does not stop the chain)" \
+    || bad "scope GAPS status" "$(task_field "$R" .status)"
+grep -q 'Verdict: GAPS' "${D}scope-report.md" 2>/dev/null \
+    && ok "scope GAPS: verdict is GAPS" \
+    || bad "scope GAPS verdict" "$(grep 'Verdict:' "${D}scope-report.md" 2>/dev/null || echo 'no Verdict line')"
+grep -q '**undeclared**' "${D}scope-report.md" 2>/dev/null \
+    && ok "scope GAPS: undeclared files listed in report" \
+    || bad "scope GAPS report" "no **undeclared** entry found"
+[ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
+    && ok "scope GAPS: scope_verdict in task.json" \
+    || bad "scope_verdict GAPS" "$(task_field "$R" .scope_verdict)"
+
+# --------------------------------------------------------------------------- #
+printf '\nscope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship\n'
+R="$WORK/scope-blocked"
+# In: covers only pkg/. Repo-wide prohibition lists specs/SBX-1/qa-report.md (committed
+# by stub qa). ship must NOT run; task must be failed.
+fresh_repo_scope "$R" \
+    $'- `pkg/`' \
+    "" \
+    $'- `specs/SBX-1/qa-report.md`'
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1   # full pipeline (includes ship+review)
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .status)" = "failed" ] \
+    && ok "scope BLOCKED: task failed" \
+    || bad "scope BLOCKED status" "$(task_field "$R" .status)"
+grep -q 'Verdict: BLOCKED' "${D}scope-report.md" 2>/dev/null \
+    && ok "scope BLOCKED: verdict is BLOCKED" \
+    || bad "scope BLOCKED verdict" "$(grep 'Verdict:' "${D}scope-report.md" 2>/dev/null || echo 'no Verdict line')"
+[ ! -f "${D}ship.log" ] \
+    && ok "scope BLOCKED: ship phase never ran" \
+    || bad "scope BLOCKED chain" "ship.log exists — pipeline was not stopped"
+grep -q '**out of bounds**' "${D}scope-report.md" 2>/dev/null \
+    && ok "scope BLOCKED: out-of-bounds file listed in report" \
+    || bad "scope BLOCKED report" "no **out of bounds** entry found"
 # --------------------------------------------------------------------------- #
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

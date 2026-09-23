@@ -34,6 +34,7 @@ Three consequences shape everything below:
 | `/sdlc:triage`, `/sdlc:root-cause` (issue route) | agent, read-only | `specs/GH-<n>/spec.md` with `kind: bugfix`, root cause in Context |
 | `/sdlc:implement` | agent, unattended | commits per UC, or `BLOCKED.md` |
 | `/sdlc:qa` | agent, unattended | `specs/<TICKET>/qa-report.md`, PASS/GAPS, screenshots for UI UCs |
+| `aisdlc scope-check` | queue, native bash | `specs/<TICKET>/scope-report.md`, PASS/GAPS/BLOCKED — BLOCKED stops before ship |
 | `/sdlc:ship` | agent, unattended | draft PR labelled `ai-sdlc` + `review` |
 | `/sdlc:review` | agent, unattended | `APPROVED` → `merge-ready`, or `CHANGES_REQUESTED` and an autofix loop |
 | `/sdlc:continue`, `/sdlc:fix-pr`, `/sdlc:autopilot` | agent, on demand | a stalled PR driven to `merge-ready` |
@@ -120,14 +121,15 @@ have. Both of those were wandering, and wandering is what agent work actually co
 
 ## Definition of done for a queued task
 
-A task is done when **all** of these hold — this is what `/sdlc:qa`, `/sdlc:ship` and
-`/sdlc:review` check:
+A task is done when **all** of these hold — this is what `/sdlc:qa`, `aisdlc scope-check`,
+`/sdlc:ship` and `/sdlc:review` check:
 
 - Every `UC-<n>` in the spec has a passing test carrying its id.
 - The full CI matrix for every touched stack is green, and skip count is zero.
 - No file in the spec's `Out:` scope was modified.
 - The contract directory, if this project has one, changed in the same commit as any handler whose contract moved.
 - `qa-report.md` says `PASS`, with an explicit "not verified" section, and a screenshot per UI UC when a browser is configured.
+- `scope-report.md` says `PASS` or `GAPS` (no `BLOCKED`); any `GAPS` entries reviewed and accepted by a human.
 - The PR is a draft, labelled, with the riskiest changes called out by `file:line`.
 - `/sdlc:review` returned `APPROVED`: no blocker, no unwaived major.
 

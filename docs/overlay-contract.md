@@ -65,22 +65,23 @@ rather than implying a policy tier exists.
 Measured against the private fork, these are improvements with no organisation-specific content,
 and they belong in this repository:
 
-1. A file-scope check after the verification phase, diffing the branch against the scope the task
-   declared.
-2. A separate security pass as its own queue phase, reading a report rather than an exit code
+1. A separate security pass as its own queue phase, reading a report rather than an exit code
    (the review pass landed with SDLC-005/006; security is still folded into it).
-3. Portable mechanical guards, each driven by a project configuration file rather than by
+2. Portable mechanical guards, each driven by a project configuration file rather than by
    hardcoded paths.
-4. ~~An installer that registers this checkout with every agent runtime on `PATH`.~~ Superseded:
+3. ~~An installer that registers this checkout with every agent runtime on `PATH`.~~ Superseded:
    installation goes through `npx skills add emgiezet/aisdlc`, so a bespoke installer would be a
    second, drifting path to the same result.
-5. The artefact chain ahead of the spec as *committed, human-approved* documents: the discovery
+4. The artefact chain ahead of the spec as *committed, human-approved* documents: the discovery
    commands (SDLC-008) write briefs; an approved implementation plan between spec and implement
    does not exist yet.
 
 Landed: the `review` queue phase and `num_turns == 0` as failure (SDLC-005); `invoke_claude`
 reading from `/dev/null`; the issue queue with an atomic claim (`aisdlc add --issue`, SDLC-005);
 tracker and browser descriptors as the parameterisation this document asked for — a second
-organisation installs the plugin unmodified and points `.claude/sdlc.md` at its own descriptor.
+organisation installs the plugin unmodified and points `.claude/sdlc.md` at its own descriptor;
+the `scope-check` queue phase (`aisdlc scope-check`), which diffs the branch against the scope
+the spec declared and writes `specs/<TICKET>/scope-report.md` with a `PASS`/`GAPS`/`BLOCKED`
+verdict — `BLOCKED` stops the pipeline before ship.
 
 Each is a separate change with its own tests. None requires the overlay to exist first.
