@@ -372,6 +372,79 @@ under `.slopguard/` requires human approval to change (the `pre-write` hook asks
 pinned fixture tests and a sha256 in `tools/tools.lock.json` — open a PR to the plugin rather
 than adding a project descriptor. Descriptors are for tools upstream will never pin permanently.
 
+### What runs and when
+
+Slop Guard wraps every edit in three layers, each at a different cost point:
+
+**Fast tier — on every write, in the foreground (p95 < 2 s)**
+
+Synchronous `PostToolUse` hook. Runs immediately after each file write or edit. Returns findings
+to the agent before it continues. Wired tools: Ruff (Python), ESLint without type-info (JS/TS),
+hadolint (Dockerfile), kube-linter (Kubernetes YAML), zizmor (GitHub Actions). Findings are
+filtered to the changed lines only — existing problems in unchanged code are not re-reported every
+turn. A missing tool is skipped silently with a one-time session note; it never blocks the write.
+
+**Medium tier — after the edit batch, in the background (< 60 s)**
+
+Async `PostToolUse` hook with `asyncRewake`. Starts after the fast hook; the agent continues
+working while it runs. Only wakes the agent back if it finds new problems at `error` severity or
+above — warnings and info go to the next session summary, not a mid-task interruption. Wired tools:
+PHPStan (PHP), golangci-lint with `--new-from-rev` (Go), ESLint with type-info (JS/TS), tflint
+(Terraform), Checkov per-file (IaC), and Opengrep with the plugin's own rules (all stacks). Each
+tool runs only for the stack detected in the session. A three-second debounce collapses a batch of
+rapid edits into one run.
+
+**Slow tier — at turn end, in the Stop gate (< 5 min)**
+
+`Stop` hook. Runs before the agent declares the turn complete. Covers analysis that is too expensive
+for per-file runs: Psalm taint-analysis (PHP dataflow), Checkov on the whole changed directory
+(IaC), and a Betterleaks scan of the full session diff. It also re-runs `slopguard deps-check` if
+any dependency manifest changed, and reports (never blocks) if framework files were edited without
+a Context7 documentation lookup in the session.
+
+### Stop gate and enforcement modes
+
+The Stop gate holds the agent on the current turn until every blocker in changed code is resolved.
+It has three modes, set via the `enforcement_mode` plugin option or `.slopguard.json`:
+
+| Mode | Blockers | Errors | Warnings |
+|---|---|---|---|
+| `advisory` | `additionalContext` only, never blocks | `additionalContext` only | `additionalContext` |
+| `balanced` (default) | blocks turn end | `additionalContext` in Stop | `additionalContext` |
+| `strict` | blocks turn end | blocks turn end | `additionalContext` |
+
+Loop protection: the same blocker in the same file can hold the agent at most twice in a row.
+After that it is downgraded to a warning and a message is shown to the user — so a genuinely
+unresolvable issue never spins the agent indefinitely.
+
+To turn the Stop gate off for a project, set `stop_gate: false` in `.slopguard.json` or in the
+plugin options dialog.
+
+### Prevention skills
+
+Alongside the runtime checks, Slop Guard loads language-specific prevention skills that put the
+rules in the agent's context before it writes any code. Each skill covers the highest-impact
+anti-patterns for one stack: blockers first, then performance, then maintainability — one line
+each, with the safe alternative.
+
+| Skill | Loads when editing |
+|---|---|
+| `php-antipatterns` | `*.php`, `*.blade.php` |
+| `go-antipatterns` | `*.go` |
+| `python-antipatterns` | `*.py` |
+| `ts-react-antipatterns` | `*.ts`, `*.tsx` |
+| `node-antipatterns` | `*.js`, `*.mjs`, `*.cjs` |
+| `sql-antipatterns` | `*.sql` |
+| `iac-antipatterns` | `*.tf`, `*.yaml`, `*.yml`, `Dockerfile` (IaC context) |
+| `agent-discipline` | always — AP-AGENT-001 through AP-AGENT-010 |
+
+Tier-2 stacks (JVM, C#, Ruby, Rust) load their own skills with Opengrep-backed detection but no
+type-analysis tools. `SessionStart` says which tier each detected stack runs at, so silence from
+the detector is never mistaken for a clean codebase.
+
+The `/slop-guard:secure-review` command runs a read-only security-reviewer subagent over the
+current session's changed files. It cannot write or edit — it only reports.
+
 ## 🏷️ Labels and the merge gate
 
 Every PR carries the profile label (`ai-sdlc`) plus exactly one pipeline label: `review` after
