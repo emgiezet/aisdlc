@@ -1681,7 +1681,13 @@ Co najwyżej jedno takie zdanie na sesję per tag. Wstrzyknięcie jest pomijane,
 
 **Pamięć między sesjami**
 
-Odnotowane wyszukiwania są persystowane w `${CLAUDE_PLUGIN_DATA}/docs-seen/<library>@<major.minor>`. Przy kolejnej sesji `docs_recall` sprawdza, czy lookup dla tej kombinacji biblioteki i wersji już się odbył — jeśli tak, wstrzyknięcie przy pierwszej edycji jest pomijane. Uzasadnienie: plugin, który denerwuje przy każdej sesji, zostaje wyłączony. Zapis minor bumpu inwaliduje pamięć (`laravel@11.0` ≠ `laravel@11.1`), bo minor bump może oznaczać zmianę API.
+Gdy `slopguard note-docs` odnotowuje wyszukanie biblioteki, oprócz zapisu do `docs-lookups.json` sesji (wywołanie `docs_note`) próbuje zapisać pamięć między sesjami. W tym celu wczytuje `profile.json` bieżącej sesji; jeśli pole `framework_versions` zawiera wersje wykrytych stosów, przeszukuje `rules/stacks.json` pod kątem pola `context7` każdego takiego tagu; porównuje ciąg biblioteki przekazany przez agenta z polem `context7` (rozróżnianie wielkości liter wyłączone, trafienie gdy jeden ciąg zawiera drugi). Przy trafieniu wywołuje `docs_remember <context7-query> <version>`. Kluczem jest wartość pola `context7` (np. `laravel`), nie surowy identyfikator — agent może przekazać `/laravel/laravel` lub `laravel`, obydwa trafią pod ten sam klucz. Plik znacznika ląduje w `${CLAUDE_PLUGIN_DATA}/docs-seen/<key>@<major>.<minor>`.
+
+`pre-write` pomija zdanie o frameworku gdy KTÓREKOLWIEK z poniższych zwraca trafienie:
+- `docs_seen <session_id> <agent_id> <context7-query>` — agent skonsultował Context7 w bieżącej sesji;
+- `docs_recall <context7-query> <version>` — wyszukanie odbyło się w poprzedniej sesji dla tego samego `major.minor`.
+
+Zdanie o blokerach bezpieczeństwa emitowane jest zawsze niezależnie od powyższych sprawdzeń. Zmiana minor bumpu inwaliduje pamięć (`laravel@12.4` ≠ `laravel@12.5`): minor bump może oznaczać zmianę API i wymaga powtórnej konsultacji. Uzasadnienie: plugin, który nęka przy każdej sesji, zostaje wyłączony.
 
 ### 7.7 Świeżość zależności
 

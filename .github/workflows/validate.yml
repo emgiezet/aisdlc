@@ -75,6 +75,8 @@ jobs:
           plugins/slop-guard/bin/slopguard doctor --install
 
       # Owns the required-file lists and the instruction budgets.
+      # GitHub Actions sets CI=true automatically; the Makefile passes --strict
+      # to validate-configs via CONFIG_STRICT, demanding full linter coverage.
       - name: make validate
         env:
           CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools

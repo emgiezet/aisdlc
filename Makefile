@@ -5,6 +5,8 @@ PLUGIN_JSON := plugins/sdlc/.claude-plugin/plugin.json
 SLOPGUARD_PLUGIN_JSON := plugins/slop-guard/.claude-plugin/plugin.json
 MARKETPLACE_JSON := .claude-plugin/marketplace.json
 SANDBOX_DIR := $(or $(TMPDIR),/tmp)/aisdlc-sandbox
+# Pass --strict to validate-configs in CI (GitHub Actions sets CI=true automatically).
+CONFIG_STRICT := $(if $(CI),--strict,)
 SCRIPTS := plugins/sdlc/hooks/run-hook.cmd plugins/sdlc/hooks/session-start \
            plugins/sdlc/hooks/guard plugins/sdlc/bin/aisdlc \
            evals/harness/run.sh evals/harness/selftest.sh evals/harness/stub-claude
@@ -176,7 +178,7 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 		echo "  – shellcheck not installed, skipped"; \
 	fi; \
 	plugins/slop-guard/tests/run-tests; \
-	plugins/slop-guard/scripts/validate-configs; \
+	plugins/slop-guard/scripts/validate-configs $(CONFIG_STRICT); \
 	if command -v claude > /dev/null 2>&1; then \
 		claude plugin validate plugins/slop-guard --strict; \
 	else \
