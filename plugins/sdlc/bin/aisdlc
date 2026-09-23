@@ -34,6 +34,7 @@ BUILTIN_BUDGET="5"
 BUILTIN_WORKERS="3"
 BUILTIN_LABEL="ai-sdlc"
 BUILTIN_SPECS_DIR="specs"
+BUILTIN_BILLING="api"
 
 # --------------------------------------------------------------------------- #
 # plumbing
@@ -514,7 +515,7 @@ tracker_release() {
 cmd_add() {
     # Empty means "not given on the command line" — resolve_default fills these in once the
     # repo is known, since the config file lives inside it.
-    local ticket="" repo="." model="" budget="" base="" phases=""
+    local ticket="" repo="." model="" budget="" base="" phases="" billing=""
     local no_pr=0 plugin_dir=0 force=0 issue_n=""
 
     while [ $# -gt 0 ]; do
@@ -528,6 +529,7 @@ cmd_add() {
             --plugin-dir) plugin_dir=1; shift ;;
             --force)      force=1; shift ;;
             --issue)      issue_n="$2"; shift 2 ;;
+            --billing)    billing="$2"; shift 2 ;;
             -*)           die "unknown flag for add: $1" ;;
             *)            ticket="$1"; shift ;;
         esac
@@ -546,6 +548,9 @@ cmd_add() {
 
     model="$(resolve_default "$repo" model "$model" "${AISDLC_MODEL:-}" "$BUILTIN_MODEL")"
     budget="$(resolve_default "$repo" budget "$budget" "${AISDLC_BUDGET:-}" "$BUILTIN_BUDGET")"
+    billing="$(resolve_default "$repo" billing "$billing" "${AISDLC_BILLING:-}" "$BUILTIN_BILLING")"
+    [ "$billing" = "api" ] || [ "$billing" = "subscription" ] \
+        || die "billing must be 'api' or 'subscription' (got '$billing')"
     base="$(resolve_default "$repo" base "$base" "${AISDLC_BASE:-}" "")"
     [ -n "$base" ] || base="$(detect_base "$repo")"
     [ -n "$phases" ] || phases="$ALL_PHASES"
@@ -593,14 +598,17 @@ cmd_add() {
 
     local dir; dir="$(task_dir "$repo" "$id")"
     mkdir -p "$dir"
+    local cost_init; cost_init="$( [ "$billing" = "subscription" ] && printf 'null' || printf '0' )"
     jq -n --arg id "$id" --arg ticket "$ticket" --arg repo "$repo" --arg model "$model" \
           --arg base "$base" --arg phases "$phases" --arg t "$(ts)" --arg sd "$specs_dir" \
+          --arg billing "$billing" \
           --argjson budget "$budget" --argjson no_pr "$no_pr" --argjson plugin_dir "$plugin_dir" \
-          --argjson is_issue "$is_issue_flag" \
+          --argjson is_issue "$is_issue_flag" --argjson cost_init "$cost_init" \
           '{id:$id, ticket:$ticket, repo:$repo, model:$model, base:$base, specs_dir:$sd,
+            billing:$billing,
             phases:($phases|split(" ")|map(select(length>0))), budget:$budget,
             no_pr:($no_pr==1), plugin_dir:($plugin_dir==1), is_issue:($is_issue==1),
-            status:"queued", attempts:0, cost_usd:0, created:$t, updated:$t,
+            status:"queued", attempts:0, cost_usd:$cost_init, created:$t, updated:$t,
             branch:null, worktree:null, pr_url:null, error:null}' > "$dir/task.json"
 
     flock "$(state_dir "$repo")/queue.lock" \
@@ -641,7 +649,7 @@ seed_spec() {
 
 # One headless invocation. Prints nothing; writes $out and appends to $log.
 invoke_claude() {
-    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8"
+    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}"
 
     local -a args=(
         -p "$prompt"
@@ -649,12 +657,19 @@ invoke_claude() {
         --fallback-model sonnet
         --permission-mode bypassPermissions
         --settings "$settings"
-        --max-budget-usd "$budget"
         --output-format json
     )
+    # Subscription billing: omit --max-budget-usd — a spend cap that cannot be enforced
+    # reads as a guarantee and is worse than silence.
+    [ "$billing" != "subscription" ] && args+=(--max-budget-usd "$budget")
     [ "$use_plugin_dir" = "true" ] && args+=(--plugin-dir "$PLUGIN_ROOT")
 
-    printf '[%s] === claude -p "%s" (model %s, budget $%s)\n' "$(ts)" "$prompt" "$model" "$budget" >> "$log"
+    if [ "$billing" = "subscription" ]; then
+        printf '[%s] === claude -p "%s" (model %s, billing subscription — no cost data)\n' \
+            "$(ts)" "$prompt" "$model" >> "$log"
+    else
+        printf '[%s] === claude -p "%s" (model %s, budget $%s)\n' "$(ts)" "$prompt" "$model" "$budget" >> "$log"
+    fi
     local rc=0
     # stdin from /dev/null is load-bearing: the phase loop feeds itself from a process
     # substitution, and claude reads stdin, so without this it swallows the remaining
@@ -667,10 +682,12 @@ run_phase() {
     local repo="$1" id="$2" phase="$3" wt="$4" ticket="$5"
     local dir; dir="$(task_dir "$repo" "$id")"
     local log="$dir/${phase}.log" out="$dir/${phase}.json"
-    local model budget plugin_dir settings
+    local model budget plugin_dir settings billing
     model="$(task_get "$repo" .model "$id")"
     budget="$(task_get "$repo" .budget "$id")"
     plugin_dir="$(task_get "$repo" .plugin_dir "$id")"
+    billing="$(task_get "$repo" .billing "$id")"
+    billing="${billing:-api}"
     settings="$(state_dir "$repo")/settings.json"
 
     # Commands loaded from --plugin-dir are namespaced (/sdlc:qa); an installed plugin also
@@ -707,20 +724,25 @@ run_phase() {
     fi
 
     local rc=0
-    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" || rc=$?
+    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
     if grep -q '"result":"Unknown command' "$out" 2>/dev/null; then
         printf '[%s] %s not registered — retrying as "%s"\n' "$(ts)" "${primary%% *}" "${alternate%% *}" >> "$log"
         rc=0
-        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" || rc=$?
+        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
     fi
 
     # Fold this phase's cost into the task total, whatever the outcome.
-    local cost
-    cost="$(jq -r '(.total_cost_usd // .cost_usd // 0) | tostring' "$out" 2>/dev/null || echo 0)"
-    case "$cost" in ''|*[!0-9.]*) cost=0 ;; esac
-    # Round on every accumulation: three phases of float addition otherwise reports $0.19119999999999998.
-    task_set "$repo" "$id" --argjson c "${cost:-0}" \
-        '.cost_usd = (((((.cost_usd // 0) + $c) * 10000) | round) / 10000)'
+    if [ "$billing" = "subscription" ]; then
+        # Subscription billing carries no per-token cost data; cost_usd stays null throughout.
+        : # task.json was initialised with cost_usd:null; nothing to accumulate
+    else
+        local cost
+        cost="$(jq -r '(.total_cost_usd // .cost_usd // 0) | tostring' "$out" 2>/dev/null || echo 0)"
+        case "$cost" in ''|*[!0-9.]*) cost=0 ;; esac
+        # Round on every accumulation: three phases of float addition otherwise reports $0.19119999999999998.
+        task_set "$repo" "$id" --argjson c "${cost:-0}" \
+            '.cost_usd = (((((.cost_usd // 0) + $c) * 10000) | round) / 10000)'
+    fi
 
     # The transcript is the useful part of the log; keep it readable.
     jq -r '.result // empty' "$out" >> "$log" 2>/dev/null || true

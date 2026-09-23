@@ -145,7 +145,11 @@ Router near the top, and leave the rest alone.
   same for `.claude/browsers/<provider>.md` when a provider was chosen. Then run the descriptor's
   **auth-check**; a failure goes in the report, not under the rug.
 - `.aisdlc/config.json` — runner defaults: `{"model", "budget", "base", "workers", "label",
-  "specs_dir"}`. Pick `base` from the actual default branch.
+  "specs_dir", "billing"}`. Pick `base` from the actual default branch. Set `"billing":
+  "subscription"` when the queue runs under a Claude Pro/Max subscription plan (the CLI
+  reports no per-token cost on a subscription, so the queue omits the spend cap and records
+  `cost_usd: null` instead of a zero that would look like a free run). Omit the key or set
+  `"billing": "api"` for pay-as-you-go API access.
 - `specs/.gitkeep` and `specs/briefs/.gitkeep` — so both directories exist before the first artefact.
 - `.gitignore` — append `.aisdlc/` if absent (the runner's state and, under `local`, the tracker's
   files live there and are never committed).
