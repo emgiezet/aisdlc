@@ -1,0 +1,19 @@
+# Optional — copy this by hand to <repo>/.omp/config.yml to enable @role alias routing for
+# the sdlc plugin's agents.  No aisdlc command writes this file.  The plugin works without it:
+# the shipped agent frontmatter carries concrete model names and nothing breaks when this file
+# is absent.
+
+task:
+  agentModelOverrides:
+    auto-qa: "@default"
+    code-reviewer: "@slow"
+    sdlc-scribe: "@smol"
+
+# Uncomment the modelRoles block below and fill in the concrete model names available in your
+# omp installation.  The plugin never reads these values; omp expands the @role aliases above
+# at dispatch time.
+#
+# modelRoles:
+#   smol: haiku        # sdlc-scribe: close-fixed, merge-buddy and changelog collection
+#   default: sonnet    # implementation, QA, triage
+#   slow: opus         # review and root-cause analysis

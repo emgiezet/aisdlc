@@ -307,6 +307,12 @@ run whatever the table says and treat a second failure of the same command as a 
   never name a provider.
 - **A policy overlay, not a fork** — organisation rules install as a second plugin beside this one.
   [`docs/overlay-contract.md`](docs/overlay-contract.md) states what an overlay may rely on.
+- **Per-phase model roles** — the optional `model_roles` key in `.aisdlc/config.json` routes queue
+  phases to different models without editing any agent file: `smol` for `scope-check` and `ship`,
+  `default` for `implement` and `qa`, `slow` for `review` and `root-cause`. Resolution is
+  snapshotted at `aisdlc add`, so a config edit never changes a queued task. The same key makes
+  `/sdlc:close-fixed`, `/sdlc:merge-buddy` and `/sdlc:changelog` hand their bulk tracker reads to
+  the cheap `sdlc-scribe` agent. Absent key, nothing changes.
 
 
 ## 🛡️ Slop Guard — project configuration

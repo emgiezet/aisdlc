@@ -1,6 +1,6 @@
 ---
 description: Post-merge sweep — closes every issue referenced by Fixes/Closes in merged labelled PRs since the last run, adds a comment on issues whose PR closed without merging, and writes a watermark so re-runs are idempotent. Use after /sdlc:merge or periodically to keep the issue tracker in sync.
-allowed-tools: Bash, Read, Grep, Glob
+allowed-tools: Bash, Read, Grep, Glob, Agent
 ---
 
 # /sdlc:close-fixed
@@ -26,6 +26,12 @@ Read `.aisdlc/close-fixed.json`. If the file does not exist, treat it as:
 ---
 
 ## Phase 2: Collect merged PRs since watermark
+
+Read `.aisdlc/config.json`. If it contains a `model_roles` key, dispatch `sdlc-scribe` to run
+this phase and Phase 3: pass it `last_pr`, the profile label, and the parsing rule below. It
+returns the tuples `(issue_n, pr_n, pr_title, pr_url)` in ascending PR order plus the highest PR
+number it saw — the PR bodies stay in its context, not yours. It mutates nothing; Phases 4 to 6
+are yours either way. Without the key, run this phase and Phase 3 yourself:
 
 **list-prs** `merged` with the profile label. Filter to PRs with number greater than `last_pr`.
 Sort ascending by number so processing is deterministic and the watermark advances correctly.

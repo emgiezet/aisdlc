@@ -604,6 +604,129 @@ grep -q -- '--max-budget-usd' "${D}implement.log" \
     || bad "billing=api args" "--max-budget-usd absent from implement.log"
 unset _cost_raw
 
+# --------------------------------------------------------------------------- #
+printf '\nmodel_roles absent: no models key, log headers unchanged (UC-1)\n'
+R="$WORK/mr-uc1"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --model sonnet --no-pr >/dev/null 2>&1
+TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+[ "$(jq -r '.model' "$TF")" = "sonnet" ] \
+    && ok "UC-1: model=sonnet in task.json" \
+    || bad "UC-1 model" "$(jq -r '.model' "$TF")"
+[ "$(jq 'has("models")' "$TF")" = "false" ] \
+    && ok "UC-1: no models key when model_roles absent" \
+    || bad "UC-1 models key" "unexpected models: $(jq '.models' "$TF")"
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -q '(model sonnet' "${D}implement.log" 2>/dev/null \
+    && ok "UC-1: implement.log header shows sonnet" \
+    || bad "UC-1 log header" "$(grep '(model' "${D}implement.log" 2>/dev/null | head -1)"
+
+# --------------------------------------------------------------------------- #
+printf '\nmodel_roles full: models key maps every phase (UC-2)\n'
+R="$WORK/mr-uc2"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc"
+printf '{"model_roles":{"smol":"haiku","slow":"opus"}}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --model sonnet >/dev/null 2>&1
+TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+[ "$(jq 'has("models")' "$TF")" = "true" ] \
+    && ok "UC-2: models key present" \
+    || bad "UC-2 models key" "no models key in task.json"
+[ "$(jq -r '.models["scope-check"]' "$TF")" = "haiku" ] \
+    && ok "UC-2: scope-check → haiku (smol role)" \
+    || bad "UC-2 scope-check" "$(jq -r '.models["scope-check"]' "$TF")"
+[ "$(jq -r '.models.ship' "$TF")" = "haiku" ] \
+    && ok "UC-2: ship → haiku (smol role)" \
+    || bad "UC-2 ship" "$(jq -r '.models.ship' "$TF")"
+[ "$(jq -r '.models.review' "$TF")" = "opus" ] \
+    && ok "UC-2: review → opus (slow role)" \
+    || bad "UC-2 review" "$(jq -r '.models.review' "$TF")"
+[ "$(jq -r '.models.implement' "$TF")" = "sonnet" ] \
+    && ok "UC-2: implement → sonnet (default role falls back)" \
+    || bad "UC-2 implement" "$(jq -r '.models.implement' "$TF")"
+[ "$(jq -r '.models.qa' "$TF")" = "sonnet" ] \
+    && ok "UC-2: qa → sonnet (default role falls back)" \
+    || bad "UC-2 qa" "$(jq -r '.models.qa' "$TF")"
+
+# --------------------------------------------------------------------------- #
+printf '\nmodel_roles: run_phase routes each phase to its model (UC-3)\n'
+R="$WORK/mr-uc3"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc"
+printf '{"model_roles":{"smol":"haiku","slow":"opus"}}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --model sonnet >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -q '(model haiku' "${D}ship.log" 2>/dev/null \
+    && ok "UC-3: ship.log header shows haiku" \
+    || bad "UC-3 ship model" "$(grep '(model' "${D}ship.log" 2>/dev/null | head -1)"
+grep -q '(model opus' "${D}review.log" 2>/dev/null \
+    && ok "UC-3: review.log header shows opus" \
+    || bad "UC-3 review model" "$(grep '(model' "${D}review.log" 2>/dev/null | head -1)"
+grep -q '(model sonnet' "${D}implement.log" 2>/dev/null \
+    && ok "UC-3: implement.log header shows sonnet" \
+    || bad "UC-3 implement model" "$(grep '(model' "${D}implement.log" 2>/dev/null | head -1)"
+
+# --------------------------------------------------------------------------- #
+printf '\nmodel_roles partial: missing roles fall back to task model (UC-4)\n'
+R="$WORK/mr-uc4"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc"
+printf '{"model_roles":{"smol":"haiku"}}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --model sonnet --no-pr >/dev/null 2>&1
+TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+[ "$(jq 'has("models")' "$TF")" = "true" ] \
+    && ok "UC-4: models key present with partial config" \
+    || bad "UC-4 models key" "no models key"
+[ "$(jq -r '.models["scope-check"]' "$TF")" = "haiku" ] \
+    && ok "UC-4: scope-check → haiku (smol configured)" \
+    || bad "UC-4 scope-check" "$(jq -r '.models["scope-check"]' "$TF")"
+[ "$(jq -r '.models.implement' "$TF")" = "sonnet" ] \
+    && ok "UC-4: implement → sonnet (default role not in config, falls back)" \
+    || bad "UC-4 implement" "$(jq -r '.models.implement' "$TF")"
+[ "$(jq -r '.models.qa' "$TF")" = "sonnet" ] \
+    && ok "UC-4: qa → sonnet (default role not in config, falls back)" \
+    || bad "UC-4 qa" "$(jq -r '.models.qa' "$TF")"
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "UC-4: task completes without error on partial config" \
+    || bad "UC-4 status" "$(task_field "$R" .status)"
+
+# --------------------------------------------------------------------------- #
+printf '\nmodel_roles snapshot: config edit after add does not affect queued task (UC-5)\n'
+R="$WORK/mr-uc5"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc"
+printf '{"model_roles":{"smol":"haiku","slow":"opus"}}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --model sonnet >/dev/null 2>&1
+# Edit config after add — snapshot in task.json must be used, not the new config
+printf '{"model_roles":{"smol":"changed-model","slow":"another-model"}}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -q '(model haiku' "${D}ship.log" 2>/dev/null \
+    && ok "UC-5: ship uses snapshotted haiku, not changed-model" \
+    || bad "UC-5 snapshot ship" "$(grep '(model' "${D}ship.log" 2>/dev/null | head -1)"
+grep -q '(model opus' "${D}review.log" 2>/dev/null \
+    && ok "UC-5: review uses snapshotted opus, not another-model" \
+    || bad "UC-5 snapshot review" "$(grep '(model' "${D}review.log" 2>/dev/null | head -1)"
+
+# --------------------------------------------------------------------------- #
+printf '\naisdlc help documents model_roles (UC-6)\n'
+HELP_OUT="$("$AISDLC" help 2>&1)"
+printf '%s' "$HELP_OUT" | grep -q 'model_roles' \
+    && ok "UC-6: help mentions model_roles" \
+    || bad "UC-6 model_roles" "model_roles not found in help output"
+printf '%s' "$HELP_OUT" | grep -q 'smol' \
+    && ok "UC-6: help mentions smol role" \
+    || bad "UC-6 smol" "smol not found in help output"
+printf '%s' "$HELP_OUT" | grep -q 'slow' \
+    && ok "UC-6: help mentions slow role" \
+    || bad "UC-6 slow" "slow not found in help output"
+printf '%s' "$HELP_OUT" | grep -qE 'scope-check.*ship|ship.*scope-check' \
+    && ok "UC-6: help shows smol phases (scope-check, ship)" \
+    || bad "UC-6 smol phases" "scope-check/ship not found together in help output"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
 rm -rf "$WORK"

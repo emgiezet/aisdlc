@@ -167,6 +167,7 @@ Precedence for every setting: CLI flag > `.aisdlc/config.json` > environment var
 | label | `label` | `AISDLC_LABEL` | `ai-sdlc` | PR label applied by ship |
 | specs dir | `specs_dir` | `AISDLC_SPECS_DIR` | `specs` | Root for spec files |
 | billing | `billing` | `AISDLC_BILLING` | `api` | `api` or `subscription` — see below |
+| model roles | `model_roles` | — | *(absent)* | Maps `smol`/`default`/`slow` roles to model names; see below. Absent = today's behaviour |
 
 ### billing = subscription
 
@@ -186,6 +187,36 @@ Setting `billing: subscription` makes the difference explicit:
 The zero-turn failure check is **unaffected**: a phase that completes with `num_turns == 0` is
 still a hard failure regardless of billing mode. That guard is what prevents a silent no-op from
 being reported as a successful PR; billing mode has no bearing on whether Claude ran.
+
+### model_roles
+
+The optional `model_roles` key maps three role names to concrete model names, routing different
+queue phases to different models without touching any agent file.
+
+| Role | Queue phases | Commands delegating to `sdlc-scribe` |
+|---|---|---|
+| `smol` | `scope-check`, `ship` | `close-fixed`, `merge-buddy`, `changelog` |
+| `default` | `implement`, `qa`, `triage` | — |
+| `slow` | `review`, `root-cause` | — |
+
+Resolution is snapshotted into `task.json` at `aisdlc add` time as a `models` map covering every
+phase of that task. `run_phase` uses `.models[<phase>]` when present, falling back to `.model`.
+When `model_roles` is absent, no `models` key is written and every phase uses the task's single
+model — behaviour identical to today.
+
+Role values are opaque strings passed to `claude --model`; the harness never interprets them.
+Omitting a role resolves to the task's `model`.
+
+The command column is a different mechanism from the phase column: those three commands dispatch
+the `sdlc-scribe` agent for their read-heavy collection step — the `list-prs` / `get-pr` sweep and
+the parsing — and keep every mutation and every gate in the calling session. The agent's own model
+comes from its frontmatter, so what `model_roles` controls there is only whether the dispatch
+happens at all. `followup` deliberately does not delegate: its single comment read is smaller than
+the dispatch that would carry it.
+
+```json
+{"model": "sonnet", "model_roles": {"smol": "haiku", "slow": "opus"}}
+```
 
 ## Failure modes
 
@@ -226,8 +257,11 @@ The harness runs on Claude Code, Codex, Grok, and omp. The queue runner is Claud
 | Unattended queue (`aisdlc run`) | ✓ | — | — | — |
 | `Stop` hook (test-deletion guard) | blocking | blocking | advisory (exit 0, stderr) | — |
 | `PreToolUse` hooks (force-push guard, secrets) | blocking | blocking | blocking | extension adapter |
+| Model roles (`model_roles`) | queue phases + `sdlc-scribe` delegation | — | — | `sdlc-scribe` delegation; optional `@role` aliases |
 
 On omp, hook enforcement arrives through an extension module (`plugins/<name>/extensions/omp.mjs`, declared via `package.json` → `omp.extensions`) that translates omp's `tool_call` events into calls to the same bash policies Claude and Grok use. Without that adapter the plugin installs as documentation with zero enforcement — omp has no `hooks/hooks.json` surface.
+
+Where `model_roles` is configured, `close-fixed`, `merge-buddy` and `changelog` hand their collection step to the `sdlc-scribe` agent — which needs a host that runs subagents, so Claude Code and omp only. Claude Code resolves that agent's model from its frontmatter; omp additionally resolves `@role` aliases through the optional `modelRoles` mapping in `.omp/config.yml` (see `plugins/sdlc/templates/omp/config.yml` for a copy-and-edit example). Codex and Grok expose no subagent model surface, so the delegation never fires there and the collection runs inline; the phase mapping reaches only the queue, which is Claude-only regardless.
 
 `/sdlc:init` writes both `CLAUDE.md` and `AGENTS.md` into the target repository. `AGENTS.md`
 is the Codex entry point: it points Codex agents at the same three-tier instruction hierarchy
