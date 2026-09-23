@@ -71,8 +71,9 @@ and they belong in this repository:
    (the review pass landed with SDLC-005/006; security is still folded into it).
 3. Portable mechanical guards, each driven by a project configuration file rather than by
    hardcoded paths.
-4. An installer that registers this checkout with every agent runtime on `PATH`, with `--check`
-   and `--dry-run` modes.
+4. ~~An installer that registers this checkout with every agent runtime on `PATH`.~~ Superseded:
+   installation goes through `npx skills add emgiezet/aisdlc`, so a bespoke installer would be a
+   second, drifting path to the same result.
 5. The artefact chain ahead of the spec as *committed, human-approved* documents: the discovery
    commands (SDLC-008) write briefs; an approved implementation plan between spec and implement
    does not exist yet.

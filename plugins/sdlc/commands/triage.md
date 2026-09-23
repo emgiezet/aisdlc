@@ -1,6 +1,6 @@
 ---
 description: Determine whether a reported issue is already fixed, a new bug needing a spec, or a feature request — read-only in the repo except for specs/GH-<n>/spec.md. Writes a bug spec with auto-approved C6 frontmatter so the fix chain can start immediately. Use before /sdlc:root-cause or /sdlc:fix-issue on any reported issue.
-allowed-tools: Bash, Read, Write, Grep, Glob
+allowed-tools: Bash, Read, Write, Grep, Glob, SlashCommand
 ---
 
 # /sdlc:triage
