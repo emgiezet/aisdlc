@@ -372,6 +372,21 @@ under `.slopguard/` requires human approval to change (the `pre-write` hook asks
 pinned fixture tests and a sha256 in `tools/tools.lock.json` — open a PR to the plugin rather
 than adding a project descriptor. Descriptors are for tools upstream will never pin permanently.
 
+**Linter configuration and what the guard reports.** When your project has its own linter
+configuration (a `ruff.toml`, `.golangci.yml`, `eslint.config.*`, and so on), Slop Guard runs
+that tool with your config and reports everything it finds — style, performance, maintainability,
+and security. When no project config exists, the guard runs the tool with the plugin's baseline
+example but reports **only security findings** and stays out of your style decisions; that is the
+security overlay. Adopt a baseline config to opt in to full reporting for that tool:
+
+```bash
+slopguard adopt-config ruff        # copies configs/baseline/ruff.toml into your repo
+```
+
+The `config_source` plugin option changes the fallback behaviour globally: `overlay` (default) —
+security only; `full` — all findings; `project-only` — skip the tool entirely when no project
+config exists.
+
 ### What runs and when
 
 Slop Guard wraps every edit in three layers, each at a different cost point:
