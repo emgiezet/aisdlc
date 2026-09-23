@@ -1,6 +1,6 @@
 ---
 description: Read-only snapshot of the merge queue — two tables showing which labelled PRs can merge now and which are close but blocked, with the first blocking gate as the reason. Use when deciding what to merge next or when triaging the review inbox before running /sdlc:merge.
-allowed-tools: Bash, Read, Grep, Glob
+allowed-tools: Bash, Read, Grep, Glob, Agent
 ---
 
 # /sdlc:merge-buddy
@@ -13,6 +13,12 @@ Read `.claude/sdlc.md` for the **Tracker descriptor** and the profile PR label (
 ---
 
 ## Phase 1: Collect PRs
+
+Read `.aisdlc/config.json`. If it contains a `model_roles` key, dispatch `sdlc-scribe` to run
+this phase: pass it the profile label and the fields below. It returns one row per PR — number,
+title, pipeline label, required-check states, `mergeable`, and the newest `Verdict:` token or
+`null` — and nothing else; comment threads and check payloads stay in its context. Classification
+in Phase 2 is yours either way. Without the key, collect the same fields yourself:
 
 1. **list-prs** `open` with the profile label — retrieve number, title, labels, url for each.
 2. For each PR:

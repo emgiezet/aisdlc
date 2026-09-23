@@ -36,6 +36,16 @@ BUILTIN_LABEL="ai-sdlc"
 BUILTIN_SPECS_DIR="specs"
 BUILTIN_BILLING="api"
 
+# Map a phase name to its cost role.  Unknown phases → default.
+phase_role() {
+    case "$1" in
+        scope-check|ship)     printf 'smol'    ;;
+        implement|qa|triage)  printf 'default' ;;
+        review|root-cause)    printf 'slow'    ;;
+        *)                    printf 'default' ;;
+    esac
+}
+
 # --------------------------------------------------------------------------- #
 # plumbing
 # --------------------------------------------------------------------------- #
@@ -599,17 +609,34 @@ cmd_add() {
     local dir; dir="$(task_dir "$repo" "$id")"
     mkdir -p "$dir"
     local cost_init; cost_init="$( [ "$billing" = "subscription" ] && printf 'null' || printf '0' )"
+
+    # Snapshot per-phase models when model_roles is configured. Absent key → no models entry.
+    local models_arg="null"
+    local _mr_cfg; _mr_cfg="$(state_dir "$repo")/config.json"
+    if [ -f "$_mr_cfg" ] && jq -e 'has("model_roles")' "$_mr_cfg" >/dev/null 2>&1; then
+        local _mr_json _mr_ph _mr_role _mr_model
+        _mr_json="$(jq -c '.model_roles' "$_mr_cfg")"
+        models_arg="{}"
+        for _mr_ph in $phases; do
+            _mr_role="$(phase_role "$_mr_ph")"
+            _mr_model="$(printf '%s' "$_mr_json" | jq -r --arg r "$_mr_role" --arg fb "$model" '.[$r] // $fb')"
+            models_arg="$(printf '%s' "$models_arg" | jq --arg ph "$_mr_ph" --arg m "$_mr_model" '. + {($ph): $m}')"
+        done
+    fi
+
     jq -n --arg id "$id" --arg ticket "$ticket" --arg repo "$repo" --arg model "$model" \
           --arg base "$base" --arg phases "$phases" --arg t "$(ts)" --arg sd "$specs_dir" \
           --arg billing "$billing" \
           --argjson budget "$budget" --argjson no_pr "$no_pr" --argjson plugin_dir "$plugin_dir" \
           --argjson is_issue "$is_issue_flag" --argjson cost_init "$cost_init" \
-          '{id:$id, ticket:$ticket, repo:$repo, model:$model, base:$base, specs_dir:$sd,
+          --argjson models_obj "$models_arg" \
+          '({id:$id, ticket:$ticket, repo:$repo, model:$model, base:$base, specs_dir:$sd,
             billing:$billing,
             phases:($phases|split(" ")|map(select(length>0))), budget:$budget,
             no_pr:($no_pr==1), plugin_dir:($plugin_dir==1), is_issue:($is_issue==1),
             status:"queued", attempts:0, cost_usd:$cost_init, created:$t, updated:$t,
-            branch:null, worktree:null, pr_url:null, error:null}' > "$dir/task.json"
+            branch:null, worktree:null, pr_url:null, error:null}
+           | if $models_obj != null then . + {models: $models_obj} else . end)' > "$dir/task.json"
 
     flock "$(state_dir "$repo")/queue.lock" \
         bash -c "printf '%s\n' \"$id\" >> \"$(state_dir "$repo")/queue.jsonl\""
@@ -683,7 +710,7 @@ run_phase() {
     local dir; dir="$(task_dir "$repo" "$id")"
     local log="$dir/${phase}.log" out="$dir/${phase}.json"
     local model budget plugin_dir settings billing
-    model="$(task_get "$repo" .model "$id")"
+    model="$(jq -r --arg ph "$phase" '.models[$ph] // .model // empty' "$(task_file "$repo" "$id")" 2>/dev/null)"
     budget="$(task_get "$repo" .budget "$id")"
     plugin_dir="$(task_get "$repo" .plugin_dir "$id")"
     billing="$(task_get "$repo" .billing "$id")"
@@ -1542,6 +1569,19 @@ config with /$PLUGIN_NAME:init, or by hand:
 
   .aisdlc/config.json   {"model":"haiku","budget":3,"base":"origin/main",
                          "workers":4,"label":"$BUILTIN_LABEL","specs_dir":"$BUILTIN_SPECS_DIR"}
+
+Optional: add model_roles to route cheap phases to a smaller model:
+
+  "model_roles": {"smol":"haiku","default":"sonnet","slow":"opus"}
+
+  Role        Phases
+  smol        scope-check, ship
+  default     implement, qa, triage
+  slow        review, root-cause
+
+  Resolved once at add time and snapshotted into task.json (.models). Absent model_roles →
+  today's single-model behaviour, byte for byte. Values are opaque strings passed directly
+  to claude --model; any name the host understands is valid.
 
 Environment overrides: AISDLC_MODEL, AISDLC_BUDGET, AISDLC_BASE, AISDLC_WORKERS,
 AISDLC_LABEL, AISDLC_SPECS_DIR.

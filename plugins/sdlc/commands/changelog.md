@@ -1,6 +1,6 @@
 ---
 description: Generate a CHANGELOG entry from merged labelled PRs since a tag — groups by conventional-commit type, credits git-log authors (never the merger), prepends the entry to CHANGELOG.md, and ships it as a docs PR. Use at the end of a release cycle before tagging.
-allowed-tools: Bash, Read, Grep, Glob, SlashCommand
+allowed-tools: Bash, Read, Grep, Glob, SlashCommand, Agent
 ---
 
 # /sdlc:changelog
@@ -29,6 +29,12 @@ Record the resolved base as `<since>`.
 ---
 
 ## Phase 2: Collect merged PRs since the base
+
+Read `.aisdlc/config.json`. If it contains a `model_roles` key, dispatch `sdlc-scribe` to run
+this phase and Phase 3: pass it `<since>`, the profile label, and the extraction rules stated
+there. It returns the type → `[(#n, title, authors)]` map and nothing else — PR bodies and raw
+`git log` output stay in its context. Version choice (Phase 4) and the entry (Phase 5) are yours
+either way. Without the key, run both phases yourself:
 
 1. **list-prs** `merged` with the profile label — retrieve number, title, and url for each.
 2. For each listed PR, **get-pr** `{n}` and record the `mergeCommit` field.
