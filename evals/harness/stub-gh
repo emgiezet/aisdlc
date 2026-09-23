@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# stub-gh — a fake `gh` for exercising the aisdlc PR claim lock without touching GitHub.
+#
+# It reproduces the one behaviour that broke the lock in the field: `gh pr edit` fails, because
+# that subcommand resolves the PR through a GraphQL query selecting the retired `projectCards`
+# connection. Everything the runner may use instead — the REST label and assignee endpoints,
+# `gh pr comment`, `gh pr view`, and `gh issue edit`, which is unaffected — succeeds.
+#
+# State lives in $STUB_GH_STATE (labels and assignees as JSON); every call is appended to
+# $STUB_GH_LOG so a test can assert which wire the runner chose.
+set -uo pipefail
+
+STATE="${STUB_GH_STATE:?stub-gh needs STUB_GH_STATE}"
+[ -f "$STATE" ] || printf '{"labels":[],"assignees":[]}\n' > "$STATE"
+printf 'gh %s\n' "$*" >> "${STUB_GH_LOG:-/dev/null}"
+
+state_add() { jq -c --arg k "$1" --arg v "$2" '.[$k] = ((.[$k] + [$v]) | unique)' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"; }
+state_del() { jq -c --arg k "$1" --arg v "$2" '.[$k] = (.[$k] - [$v])' "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"; }
+
+# The field value the runner passed for `-f labels[]=x` / `-f assignees[]=x`.
+field_value() {
+    local want="$1" arg; shift
+    for arg in "$@"; do
+        case "$arg" in "$want"*) printf '%s' "${arg#"$want"}"; return 0 ;; esac
+    done
+    return 1
+}
+
+sub="${1:-} ${2:-}"
+case "$sub" in
+    "pr edit")
+        printf 'GraphQL: Projects (classic) is being deprecated ... (repository.pullRequest.projectCards)\n' >&2
+        exit 1
+        ;;
+    "issue edit")
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --add-label)    state_add labels    "$2"; shift 2 ;;
+                --add-assignee) state_add assignees "$2"; shift 2 ;;
+                --remove-label) state_del labels    "$2"; shift 2 ;;
+                *) shift ;;
+            esac
+        done
+        printf 'https://github.com/acme/widget/issues/7\n'
+        exit 0
+        ;;
+    "pr comment"|"issue comment")
+        printf 'https://github.com/acme/widget/pull/7#issuecomment-1\n'
+        exit 0
+        ;;
+    "pr view"|"issue view")
+        jq -c '{labels: (.labels | map({name: .})), assignees: (.assignees | map({login: .}))}' "$STATE"
+        exit 0
+        ;;
+esac
+
+# Everything else is `gh api`.
+case "$*" in
+    "api user --jq .login") printf '%s\n' "${STUB_GH_USER:-selftest-user}" ;;
+    *"-X POST"*"/labels"*)    state_add labels    "$(field_value 'labels[]=' "$@")";    printf '[]\n' ;;
+    *"-X POST"*"/assignees"*) state_add assignees "$(field_value 'assignees[]=' "$@")"; printf '{}\n' ;;
+    *"-X DELETE"*"/labels/"*)
+        for a in "$@"; do case "$a" in */labels/*) state_del labels "${a##*/labels/}" ;; esac; done
+        printf '[]\n'
+        ;;
+    *) printf 'stub-gh: unhandled call: %s\n' "$*" >&2; exit 1 ;;
+esac

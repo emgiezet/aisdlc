@@ -53,7 +53,9 @@ Returns: JSON; `mergeable` is `MERGEABLE|CONFLICTING|UNKNOWN`.
 `gh pr create --title '{title}' --body-file {body-file} --base {base} {draft:+--draft}`
 Returns: PR URL; number is its last path segment.
 ### update-pr
-`gh pr edit {n} --title '{title}' --body-file {body-file}`
+`gh api -X PATCH repos/{owner}/{repo}/pulls/{n} -f 'title={title}' -F body=@{body-file}`
+Not `gh pr edit`: it resolves the PR through a GraphQL query that still selects the retired
+`projectCards` connection, which fails on gh builds predating its removal.
 ### comment-pr
 `gh pr comment {n} --body-file {body-file}`
 ### label-pr

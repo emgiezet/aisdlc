@@ -438,7 +438,12 @@ tracker_github_pr_claim() {
     slug="$(gh_repo_slug "$repo")"
     identity="$(gh api user --jq '.login')" || return 1
     iso="$(ts)"
-    gh pr edit "$n" --repo "$slug" --add-label "in-progress" --add-assignee "$identity" >/dev/null || return 1
+    # REST, not `gh pr edit`: that subcommand resolves the PR through a GraphQL query which
+    # still selects the retired `projectCards` connection, so every call fails against current
+    # GitHub on gh builds that predate its removal. PRs are issues to the REST API, which is
+    # also what the shipped github tracker descriptor uses for label-pr.
+    gh api -X POST "repos/$slug/issues/$n/labels" -f 'labels[]=in-progress' >/dev/null || return 1
+    gh api -X POST "repos/$slug/issues/$n/assignees" -f "assignees[]=$identity" >/dev/null || return 1
     gh pr comment "$n" --repo "$slug" --body "$(printf '\360\237\244\226') /sdlc:aisdlc claimed $iso" >/dev/null || return 1
     gh pr view "$n" --repo "$slug" --json labels,assignees 2>/dev/null \
         | jq -e --arg me "$identity" '(.labels | map(.name) | index("in-progress")) and (.assignees | map(.login) | index($me))' >/dev/null
@@ -468,7 +473,7 @@ tracker_local_pr_release() {
 tracker_github_pr_release() {
     local repo="$1" n="$2" outcome="$3" slug
     slug="$(gh_repo_slug "$repo")"
-    gh pr edit "$n" --repo "$slug" --remove-label "in-progress" >/dev/null 2>&1 || true
+    gh api -X DELETE "repos/$slug/issues/$n/labels/in-progress" >/dev/null 2>&1 || true
     gh pr comment "$n" --repo "$slug" --body "$(printf '\360\237\244\226') /sdlc:aisdlc completed: $outcome. Lock released." >/dev/null 2>&1 || true
 }
 
