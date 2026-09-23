@@ -1,6 +1,19 @@
 <?php
+declare(strict_types=1);
 
-class AuthService
+namespace SlopGuard\Fixture\PhpSec006;
+
+// Minimal stubs — no framework required.
+
+final class Str
+{
+    public static function random(int $length = 16): string
+    {
+        return bin2hex(random_bytes(intdiv($length, 2) + 1));
+    }
+}
+
+final class AuthService
 {
     public function hashPassword(string $password): string
     {
@@ -17,7 +30,7 @@ class AuthService
     public function generateCode(): string
     {
         // ok: slopguard.php.insecure-random-token
-        return \Illuminate\Support\Str::random(64);
+        return Str::random(64);
     }
 
     public function verifyPassword(string $password, string $hash): bool

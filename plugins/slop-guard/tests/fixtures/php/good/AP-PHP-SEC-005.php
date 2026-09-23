@@ -1,8 +1,51 @@
 <?php
+declare(strict_types=1);
+
+namespace SlopGuard\Fixture\PhpSec005;
+
+// Minimal stubs — no framework required.
+
+class Controller {}
+
+final class Request
+{
+    /** @return array<string, mixed> */
+    public function validated(): array { return []; }
+
+    /**
+     * @param list<string> $keys
+     * @return array<string, mixed>
+     */
+    public function only(array $keys): array { return []; }
+}
+
+final class JsonResponse
+{
+    public function __construct(mixed $data) {}
+}
+
+final class ResponseFactory
+{
+    public function json(mixed $data): JsonResponse { return new JsonResponse($data); }
+}
+
+function response(): ResponseFactory { return new ResponseFactory(); }
+
+class User
+{
+    /** @var list<string> */
+    protected array $fillable = ['name', 'email', 'role'];
+
+    /** @param array<string, mixed> $attributes */
+    public static function create(array $attributes = []): static { return new static(); }
+
+    /** @param array<string, mixed> $attributes */
+    public function fill(array $attributes): static { return $this; }
+}
 
 class UserController extends Controller
 {
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
         // ok: slopguard.php.laravel.mass-assignment-request-all
         $validated = $request->validated();
@@ -13,9 +56,4 @@ class UserController extends Controller
 
         return response()->json($user);
     }
-}
-
-class User extends Model
-{
-    protected $fillable = ['name', 'email', 'role'];
 }

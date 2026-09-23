@@ -1,24 +1,61 @@
 <?php
+declare(strict_types=1);
 
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+// Minimal stubs in Illuminate namespaces — no framework required.
 
-return new class extends Migration
-{
-    public function up(): void
+namespace Illuminate\Database\Migrations {
+    abstract class Migration
     {
-        // ok: slopguard.laravel.migration-fk-without-index
-        Schema::table('orders', function (Blueprint $table) {
-            // foreignId() creates the column + index + foreign key constraint together
-            $table->foreignId('user_id')->constrained('users');
-        });
+        abstract public function up(): void;
+        abstract public function down(): void;
     }
+}
 
-    public function down(): void
+namespace Illuminate\Database\Schema {
+    class Blueprint
     {
-        Schema::table('orders', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('user_id');
-        });
+        public function foreignId(string $column): static { return $this; }
+        public function constrained(string $table = '', string $column = ''): static { return $this; }
+        public function dropConstrainedForeignId(string $column): void {}
+        public function unsignedBigInteger(string $column): static { return $this; }
+        public function foreign(string $column): static { return $this; }
+        public function references(string $column): static { return $this; }
+        public function on(string $table): static { return $this; }
+        public function index(string|array $columns): static { return $this; }
+        public function dropForeign(string|array $index): void {}
+        public function dropColumn(string $column): void {}
     }
-};
+}
+
+namespace Illuminate\Support\Facades {
+    class Schema
+    {
+        public static function table(string $table, \Closure $callback): void {}
+        public static function create(string $table, \Closure $callback): void {}
+    }
+}
+
+namespace {
+    use Illuminate\Database\Migrations\Migration;
+    use Illuminate\Database\Schema\Blueprint;
+    use Illuminate\Support\Facades\Schema;
+
+    return new class extends Migration
+    {
+        public function up(): void
+        {
+            // ok: slopguard.laravel.migration-fk-without-index
+            Schema::table('orders', function (Blueprint $table): void {
+                // foreignId() + constrained() creates the column, index, and FK constraint together.
+                $table->foreignId('user_id')->constrained('users');
+            });
+        }
+
+        public function down(): void
+        {
+            Schema::table('orders', function (Blueprint $table): void {
+                $table->dropConstrainedForeignId('user_id');
+            });
+        }
+    };
+}
