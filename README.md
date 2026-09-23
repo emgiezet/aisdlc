@@ -36,13 +36,14 @@ That installs the eight knowledge skills — the spec format, the test-density r
 architecture-review tier table, the pipeline contracts — so any agent you already use writes
 specs and tests the way this harness expects. Drop `--skill '*'` to cherry-pick.
 
-**The full pipeline — Claude Code, Codex, Grok:**
+**The full pipeline — Claude Code, Codex, Grok, omp:**
 
 | Host | Register marketplace | First command |
 |------|----------------------|---------------|
 | Claude Code | `/plugin marketplace add emgiezet/aisdlc` then `/plugin install sdlc@aisdlc` | `/sdlc:init` |
 | Codex | `codex plugin marketplace add <path>` then install sdlc in the Plugins Directory | `$init` |
 | Grok | add `path` to `~/.grok/config.toml` under `[[marketplace.sources]]`, then install from `/plugins` | `/init` |
+| omp | `omp plugin marketplace add <path>` then `omp plugin install sdlc@aisdlc` | `/sdlc:init` |
 
 See `install.sh` (or run it) for the exact per-host steps.
 
@@ -88,8 +89,9 @@ Then, once per repository, in an interactive session:
 | Claude Code | `/sdlc:init` | `CLAUDE.md`, `AGENTS.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md` |
 | Codex | `$init` | same |
 | Grok | `/init` | same |
+| omp | `/sdlc:init` | same |
 
-Then ship something (Claude Code syntax shown; substitute `$spec`/`$implement` on Codex, `/spec`/`/implement` on Grok):
+Then ship something (Claude Code syntax shown; substitute `$spec`/`$implement` on Codex, `/spec`/`/implement` on Grok; omp uses the same `/sdlc:<command>` syntax as Claude):
 
 ```
 /sdlc:spec ABC-123            → specs/ABC-123/spec.md, status: draft

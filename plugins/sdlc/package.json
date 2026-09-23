@@ -1,0 +1,7 @@
+{
+  "name": "@aisdlc/sdlc",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "omp": { "extensions": ["./extensions/omp.mjs"] }
+}

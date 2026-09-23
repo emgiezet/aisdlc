@@ -7,6 +7,7 @@ MARKETPLACE_JSON := .claude-plugin/marketplace.json
 CODEX_MARKETPLACE    := .agents/plugins/marketplace.json
 GROK_MARKETPLACE     := .grok-plugin/marketplace.json
 PORTABLE_SDLC_JSON   := plugins/sdlc/plugin.json
+OMP_MARKETPLACE      := .omp-plugin/marketplace.json
 PORTABLE_SLOPGUARD_JSON := plugins/slop-guard/plugin.json
 SANDBOX_DIR := $(or $(TMPDIR),/tmp)/aisdlc-sandbox
 # Pass --strict to validate-configs in CI (GitHub Actions sets CI=true automatically).
@@ -36,6 +37,7 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	@jq . plugins/sdlc/hooks/hooks.json > /dev/null && echo "  ✓ hooks.json"
 	@jq . $(CODEX_MARKETPLACE) > /dev/null && echo "  ✓ .agents/plugins/marketplace.json"
 	@jq . $(GROK_MARKETPLACE) > /dev/null && echo "  ✓ .grok-plugin/marketplace.json"
+	@jq . $(OMP_MARKETPLACE) > /dev/null && echo "  ✓ .omp-plugin/marketplace.json"
 	@jq . $(PORTABLE_SDLC_JSON) > /dev/null && echo "  ✓ plugins/sdlc/plugin.json"
 	@jq . $(PORTABLE_SLOPGUARD_JSON) > /dev/null && echo "  ✓ plugins/slop-guard/plugin.json"
 	@for f in evals/harness/scenarios/*/scenario.json; do \
@@ -67,13 +69,53 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 		test -d "$$grok_dir" \
 			&& echo "  ✓ $$plugin: Grok source.path $$grok_path resolves" \
 			|| (echo "  ✗ $$plugin: Grok source.path $$grok_path not found" && exit 1); \
+		omp_src=$$(jq -r ".plugins[] | select(.name==\"$$plugin\") | .source" $(OMP_MARKETPLACE)); \
+		test -n "$$omp_src" && test "$$omp_src" != "null" \
+			&& echo "  ✓ $$plugin: found in omp marketplace" \
+			|| (echo "  ✗ $$plugin: not found in omp marketplace" && exit 1); \
+		omp_dir="$${omp_src#./}"; \
+		test -d "$$omp_dir" \
+			&& echo "  ✓ $$plugin: omp source $$omp_src resolves" \
+			|| (echo "  ✗ $$plugin: omp source $$omp_src not found" && exit 1); \
 		claude_v=$$(jq -r ".plugins[] | select(.name==\"$$plugin\") | .version" $(MARKETPLACE_JSON)); \
 		portable_v=$$(jq -r '.version' "$$codex_dir/plugin.json"); \
 		grok_v=$$(jq -r ".plugins[] | select(.name==\"$$plugin\") | .version" $(GROK_MARKETPLACE)); \
-		test "$$claude_v" = "$$portable_v" && test "$$claude_v" = "$$grok_v" \
+		omp_v=$$(jq -r ".plugins[] | select(.name==\"$$plugin\") | .version" $(OMP_MARKETPLACE)); \
+		test "$$claude_v" = "$$portable_v" && test "$$claude_v" = "$$grok_v" && test "$$claude_v" = "$$omp_v" \
 			&& echo "  ✓ $$plugin: version consistent across hosts ($$claude_v)" \
-			|| (echo "  ✗ $$plugin: version mismatch — claude=$$claude_v portable=$$portable_v grok=$$grok_v" && exit 1); \
+			|| (echo "  ✗ $$plugin: version mismatch — claude=$$claude_v portable=$$portable_v grok=$$grok_v omp=$$omp_v" && exit 1); \
 	done
+	@echo "Checking omp adapters..."
+	@for plugin in sdlc slop-guard; do \
+		pkg="plugins/$$plugin/package.json"; \
+		if test -f "$$pkg"; then \
+			jq . "$$pkg" > /dev/null && echo "  ✓ $$plugin/package.json"; \
+			plugin_v=$$(jq -r '.version' "plugins/$$plugin/.claude-plugin/plugin.json"); \
+			pkg_v=$$(jq -r '.version' "$$pkg"); \
+			test "$$plugin_v" = "$$pkg_v" \
+				&& echo "  ✓ $$plugin: package.json version matches plugin.json ($$pkg_v)" \
+				|| (echo "  ✗ $$plugin: package.json version $$pkg_v != plugin.json $$plugin_v" && exit 1); \
+			ext_path=$$(jq -r '.omp.extensions[0]' "$$pkg"); \
+			ext_file="plugins/$$plugin/$${ext_path#./}"; \
+			test -f "$$ext_file" \
+				&& echo "  ✓ $$plugin: omp.extensions[0] $$ext_path exists" \
+				|| (echo "  ✗ $$plugin: omp.extensions[0] $$ext_path not found" && exit 1); \
+		else \
+			echo "  – $$plugin/package.json absent, skipped"; \
+		fi; \
+	done
+	@if command -v node > /dev/null 2>&1; then \
+		for plugin in sdlc slop-guard; do \
+			ext="plugins/$$plugin/extensions/omp.mjs"; \
+			if test -f "$$ext"; then \
+				node --check "$$ext" && echo "  ✓ $$ext syntax ok"; \
+			else \
+				echo "  – $$ext absent, skipped"; \
+			fi; \
+		done; \
+	else \
+		echo "  – node not installed, omp.mjs syntax checks skipped"; \
+	fi
 	@echo "Checking required files..."
 	@for c in $(COMMANDS); do \
 		test -f plugins/sdlc/commands/$$c.md && echo "  ✓ commands/$$c.md" || \
@@ -303,6 +345,9 @@ endif
 	@jq '.version = "$(VERSION)"' $(PORTABLE_SDLC_JSON) > /tmp/portable-sdlc.json && mv /tmp/portable-sdlc.json $(PORTABLE_SDLC_JSON)
 	@jq '(.plugins[] | select(.name == "sdlc") | .version) = "$(VERSION)"' \
 		$(GROK_MARKETPLACE) > /tmp/grok-marketplace.json && mv /tmp/grok-marketplace.json $(GROK_MARKETPLACE)
+	@jq '(.plugins[] | select(.name == "sdlc") | .version) = "$(VERSION)" | .metadata.version = "$(VERSION)"' \
+		$(OMP_MARKETPLACE) > /tmp/omp-marketplace.json && mv /tmp/omp-marketplace.json $(OMP_MARKETPLACE)
+	@jq '.version = "$(VERSION)"' plugins/sdlc/package.json > /tmp/sdlc-pkg.json && mv /tmp/sdlc-pkg.json plugins/sdlc/package.json
 	@echo "Version bumped to $(VERSION)"
 
 bump-slopguard: ## Bump the slop-guard plugin patch version
@@ -318,4 +363,7 @@ endif
 	@jq '.version = "$(VERSION)"' $(PORTABLE_SLOPGUARD_JSON) > /tmp/portable-sg.json && mv /tmp/portable-sg.json $(PORTABLE_SLOPGUARD_JSON)
 	@jq '(.plugins[] | select(.name == "slop-guard") | .version) = "$(VERSION)"' \
 		$(GROK_MARKETPLACE) > /tmp/grok-sg.json && mv /tmp/grok-sg.json $(GROK_MARKETPLACE)
+	@jq '(.plugins[] | select(.name == "slop-guard") | .version) = "$(VERSION)"' \
+		$(OMP_MARKETPLACE) > /tmp/omp-marketplace-sg.json && mv /tmp/omp-marketplace-sg.json $(OMP_MARKETPLACE)
+	@jq '.version = "$(VERSION)"' plugins/slop-guard/package.json > /tmp/slopguard-pkg.json && mv /tmp/slopguard-pkg.json plugins/slop-guard/package.json
 	@echo "slop-guard version bumped to $(VERSION)"
