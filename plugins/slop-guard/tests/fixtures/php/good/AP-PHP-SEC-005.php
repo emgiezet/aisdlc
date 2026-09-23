@@ -22,6 +22,8 @@ final class Request
 final class JsonResponse
 {
     public function __construct(private mixed $data) {}
+
+    public function payload(): mixed { return $this->data; }
 }
 
 final class ResponseFactory
@@ -52,7 +54,7 @@ class UserController extends Controller
         $user = User::create($validated);
 
         // ok: slopguard.php.laravel.mass-assignment-request-all
-        $user->fill($request->only(['name', 'email']));
+        $user = $user->fill($request->only(['name', 'email']));
 
         return response()->json($user);
     }
