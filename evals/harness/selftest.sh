@@ -727,6 +727,38 @@ printf '%s' "$HELP_OUT" | grep -qE 'scope-check.*ship|ship.*scope-check' \
     && ok "UC-6: help shows smol phases (scope-check, ship)" \
     || bad "UC-6 smol phases" "scope-check/ship not found together in help output"
 
+# --------------------------------------------------------------------------- #
+printf '\nPR claim lock survives a gh build where `gh pr edit` fails (SDLC-012)\n'
+R="$WORK/pr-claim"
+fresh_repo "$R"
+git -C "$R" remote add origin git@github.com:acme/widget.git
+ln -sf "$HARNESS_DIR/stub-gh" "$STUB_DIR/gh"
+export STUB_GH_STATE="$WORK/gh-state.json" STUB_GH_LOG="$WORK/gh-calls.log" STUB_GH_USER="selftest-user"
+rm -f "$STUB_GH_STATE" "$STUB_GH_LOG"
+
+# The tracker helpers are internal, so drive them directly. `help` is the one argument that
+# defines every function and exits zero without touching the queue.
+# shellcheck source=/dev/null
+( source "$AISDLC" help >/dev/null 2>&1; tracker_github_pr_claim "$R" 7 ) \
+    && ok "claim succeeds while gh pr edit fails" \
+    || bad "pr claim" "tracker_github_pr_claim returned non-zero"
+jq -e '(.labels | index("in-progress")) and (.assignees | index("selftest-user"))' "$STUB_GH_STATE" >/dev/null \
+    && ok "claim applied label and assignee" \
+    || bad "pr claim state" "$(cat "$STUB_GH_STATE")"
+grep -q 'gh pr edit' "$STUB_GH_LOG" \
+    && bad "pr claim wire" "runner still calls gh pr edit" \
+    || ok "claim never calls gh pr edit"
+
+# Seed the label explicitly: an assertion that passes on an empty tracker proves nothing.
+printf '{"labels":["ai-sdlc","in-progress"],"assignees":["selftest-user"]}\n' > "$STUB_GH_STATE"
+# shellcheck source=/dev/null
+( source "$AISDLC" help >/dev/null 2>&1; tracker_github_pr_release "$R" 7 APPROVED ) >/dev/null 2>&1
+jq -e '(.labels | index("in-progress")) | not' "$STUB_GH_STATE" >/dev/null \
+    && ok "release removed the in-progress label" \
+    || bad "pr release" "label still set: $(cat "$STUB_GH_STATE")"
+unset STUB_GH_STATE STUB_GH_LOG STUB_GH_USER
+rm -f "$STUB_DIR/gh"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
 rm -rf "$WORK"
