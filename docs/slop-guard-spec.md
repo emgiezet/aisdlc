@@ -1752,6 +1752,23 @@ Zalecenie aktualnej wersji opublikowanej kilka godzin wcześniej wprowadza agent
 
 Jeden wpis per ekosystem (npm, packagist, pypi, crates, rubygems, nuget, go, maven). Każdy wpis deklaruje manifesty projektu (`manifests`), opcjonalne pliki blokujące wersje (`lockfiles`), URL rejestru z placeholderem `{package}`, wyrażenie `jq` do najnowszej stabilnej wersji (`latest_jq`) i wyrażenie `jq` do znacznika czasu publikacji konkretnej wersji (`published_jq`, zmienna `$v`). Ekosystem, którego endpoint nie mógł zostać zweryfikowany na żywo, jest pomijany w pliku — nie wpisywany „na zgadywanie". Plik jest jedynym źródłem prawdy dla endpointów rejestrów; nie duplikujemy ich zawartości w innych plikach.
 
+**Pokrycie ekosystemów i parsery manifestów**
+
+| Ekosystem | Manifest | Parser | Celowe pominięcia |
+|---|---|---|---|
+| `npm` | `package.json` | `jq` (`dependencies` + `devDependencies`) | — |
+| `packagist` | `composer.json` | `jq` (`require` + `require-dev`; pomija `php` i `ext-*`) | Platforma PHP i rozszerzenia |
+| `pypi` | `pyproject.toml`, `requirements*.txt` | `awk` (PEP 621 `[project] dependencies`, `[tool.poetry.dependencies]`) + `sed` (requirements) | `setup.py`, `setup.cfg` (wymagają interpretera Python); zależności z `path =`, `git =` lub bez wersji w Poetry; wiersze ze złożonym TOML (wieloliniowe tablice z komentarzami) |
+| `crates` | `Cargo.toml` | `sed` + bash (`[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, `[workspace.dependencies]`) | Zależności workspace (`{ workspace = true }`), path, git i wieloliniowe tablice |
+| `rubygems` | `Gemfile` | `grep` + `sed` (`gem 'name', '~> 1.0'`) | Gemy bez ograniczenia wersji → werdykt `unknown` |
+| `nuget` | `*.csproj`, `*.fsproj` | `grep` + `sed` (atrybuty `PackageReference`) | — |
+| `go` | `go.mod` | `grep` (wiersze require z `\t`) | — |
+| `maven` | `pom.xml` | `awk` (maszyna stanów nad blokami `<dependency>`) | Wersje-referencje właściwości (`${...}`); zależności zarządzane przez BOM (brak `<version>`) |
+
+Żądania do crates.io wymagają nagłówka `User-Agent` (HTTP 403 bez niego). `deps_fetch` wysyła `slopguard/<version> (+https://github.com/emgiezet/aisdlc)` przy każdym żądaniu (nieszkodliwe dla pozostałych rejestrów).
+Nazwy pakietów PyPI są normalizowane wg PEP 503 (małe litery, ciągi `[-_.]` → `-`) przed zapytaniem do rejestru.
+Klucz wyszukiwania Maven ma postać `g:<groupId>+AND+a:<artifactId>` (składnia Solr dla Maven Central).
+
 **`slopguard deps-check [--json] [<root>]`**
 
 Przeszukuje manifesty z `rules/registries.json`, zbiera zależności i dla każdej z nich — tylko przy `allow_network=true` — pobiera metadane przez `deps_fetch`. Werdykty per zależność:
