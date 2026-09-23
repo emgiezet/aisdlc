@@ -2267,6 +2267,19 @@ Przypadki w `evals/`, uruchamiane z `--ablation with-without`. Każdy przypadek 
 
 Próg CI: `--threshold 0.8` dla przypadków security. Raport z/bez pluginu dołączany do release notes.
 
+**Stan realizacji (2026-09-23):** Przypadki w `evals/` istnieją jako specyfikacje — prompty,
+gradery i opisy scaffold repo są zdefiniowane. Próg `--threshold 0.8` dla przypadków security
+**nie jest zweryfikowany**: uruchomienie ewaluacji wymaga działającego klucza API i ponosi koszt
+wywołań modelu; nie można przeprowadzić go w środowisku offline ani bez budżetu API.
+
+Komenda dla maintainera weryfikującego próg:
+
+```bash
+claude plugin eval evals/ --ablation with-without --threshold 0.8
+```
+
+Raport z/bez pluginu dołączany do release notes wersji 1.0.
+
 ### 11.3 Etapy (milestones) z kryteriami akceptacji
 
 **Etap 0 — Fundament (bez hooków w działaniu)**
@@ -2315,27 +2328,104 @@ Pinowanie każdego z powyższych narzędzi (URL + sha256 per platformę w `tools
 - Filtr nowego kodu (`git diff -U0`) ✅, mapowanie do AP-id ✅, format komunikatu §4.7 ✅.
 - Fixtures dla narzędzi ✅ (dla okablowanych); p95 < 2 s ✅ (na stub); brak regresji w politykach ✅.
 
-**Etap 3 — Detekcja tier medium (asyncRewake)**
-- PHPStan (w tym `max` dla nowych plików), golangci-lint (`--new-from-rev`), ESLint z type-info, Pyright, tflint, Checkov (plik), Opengrep z pierwszym zestawem własnych reguł (6.11), debounce paczek edycji, własny timeout dispatchera.
-- Reguły Opengrep tier 2 (AP-JVM-*, AP-CS-*, AP-RB-*, AP-RS-*) dla języków, które przeszły sondę w Etapie 0; wywołanie przez ten sam `opengrep scan --config rules/opengrep` co tier 1 (§6.11).
-- ✅ Findings medium docierają do agenta przez rewake tylko przy nowych problemach ≥ `error`; brak zapętleń (Z8) w testach; `opengrep --test rules/opengrep` zielony dla każdego nowego pliku reguł.
+**Etap 3 — Detekcja tier medium (asyncRewake)** *(częściowo zrealizowany 2026-09-23)*
 
-**Etap 4 — Bramka Stop**
-- Psalm taint, `tsc --noEmit`, Checkov na katalogach, skan sekretów diffu sesji, SCA (govulncheck, composer/npm audit, pip-audit/osv-scanner) przy `allow_network`.
-- Ochrona pętli, raport końcowy (findings nierozwiązane, dodane suppressions, liczba zmienionych linii poza hunkami findings).
-- Podłączenie `slopguard deps-check` do bramki Stop (§7.7); sprawdzenie sesyjne AP-AGENT-010 przy `require_docs_lookup=true` — pliki frameworku edytowane bez odnotowanego lookupów Context7 → `warn` w raporcie końcowym, **nigdy `deny`**.
-- ✅ Kontrakt `stop-gate`; p95 < 5 min; tryby `advisory`/`balanced`/`strict` zachowują się zgodnie z 4.6.
+**Dostarczone w tym etapie:**
+- `lib/dispatch.sh` — funkcja `dispatch_medium`: debounce 3 s na paczkę edycji, routing do narzędzi tier M, własny timeout dispatchera, `exit 2` tylko przy nowych findings ≥ threshold z `asyncRewake` (§3.2).
+- `hooks/hooks.json` — wpis `PostToolUse` z `asyncRewake: true`; timeout bez górnego limitu po stronie platformy — dispatcher sam pilnuje czasu (§3.2).
+- `bin/slopguard` — podkomenda `post-write --tier=medium` obsługiwana przez `dispatch_medium`.
+- Okablowane narzędzia (wg `tools/tools.lock.json`):
+  - **PHPStan** (`--error-format=json`; dla nowych plików dodatkowy przebieg z `--level=max`) — PHP.
+  - **golangci-lint** (`--new-from-rev` filtruje wyniki do zmienionych pakietów) — Go.
+  - **ESLint z type-info** (eslint-stack z przekazanym `tsconfig.json`, reguły `no-floating-promises` i inne type-aware) — TS/JS.
+  - **tflint** (z rulesetem AWS) — Terraform.
+  - **Checkov** (plik) — Terraform, K8s, Docker, GitHub Actions.
+  - **Opengrep** — pierwszy zestaw własnych reguł SAST MIT (`rules/opengrep/`) dla stosu tier 1; reguły tier 2 (AP-JVM-*, AP-CS-*, AP-RB-*, AP-RS-*) dla języków, które przeszły sondę parsera Opengrep w Etapie 0.
+- `rules/opengrep/` — reguły MIT per język; każda z fixtures `bad`/`good` i `opengrep --test` w CI.
+- `rules/mapping/{phpstan,golangci,opengrep}.yaml` — mapowanie ID reguł tier M na AP-id, severity, category, CWE.
 
-**Etap 5 — Prewencja: katalog + skille + subagent**
-- `rules/catalog.yaml` z pełnym seedem z sekcji 8 (tier 1 + tier 2).
-- Wpisy katalogu tier 2 (AP-JVM-*, AP-CS-*, AP-RB-*, AP-RS-*) dla języków, które przeszły sondę w Etapie 0 — każdy z fixture `bad`/`good` per reguła (§11.1.3).
-- Generator `scripts/gen-skills`, skille per język z `paths`, `reference/*.md`, w tym skille tier 2 (`jvm-antipatterns`, `csharp-antipatterns`, `ruby-antipatterns`, `rust-antipatterns`); `agent-discipline`; subagent `security-reviewer` + skill `/secure-review` (`context: fork`, `disallowedTools: Write, Edit` w agencie).
-- ✅ Limity linii/tokenów skilli (w tym tier 2); eval przypadków security ≥ 0.8 i wyraźnie lepszy niż bez pluginu.
+**Narzędzie nieokablowane (brak w `tools.lock.json` — wymagane Etap 0 pinowanie):**
+- **Pyright** — type-checker Python (D7: fallback `standard`, ale brak pinu w `tools.lock.json`). Wymagany Etap 0: URL + sha256 per platformę; następnie dispatcher uruchamia `pyright --outputjson $FILES` po wykryciu stosu Python bez `pyrightconfig.json` projektu.
 
-**Etap 6 — Utwardzenie i dystrybucja**
-- Windows (exec form z `.exe`), dokumentacja użytkownika, `docs/recommended-project-settings.json`, benchmark na repo referencyjnych.
-- Publikacja w prywatnym marketplace zespołu (obok istniejącego toolkitu Claude Code), wersjonowanie przez `claude plugin tag`.
-- ✅ Release 1.0 z raportem evali z/bez pluginu.
+**Kryteria akceptacji:**
+- Findings medium docierają do agenta przez rewake tylko przy nowych problemach ≥ `error` ✅
+- Brak zapętleń (Z8) w testach ✅
+- `opengrep --test rules/opengrep` zielony dla każdego nowego pliku reguł ✅
+- Pyright w tierze medium ⬜ (zablokowany — brak pinu w `tools.lock.json`)
+
+**Etap 4 — Bramka Stop** *(częściowo zrealizowany 2026-09-23)*
+
+**Dostarczone w tym etapie:**
+- `lib/stop.sh` — `stop_main`: narzędzia slow na plikach zmienionych w sesji, ochrona pętli (max 2 iteracje przez `stop-iterations` w stanie sesji), raport końcowy (findings nierozwiązane, dodane suppressions, liczba zmienionych linii poza hunkami findings).
+- `hooks/hooks.json` — wpis `Stop` → `slopguard stop-gate`, timeout 600 s.
+- `bin/slopguard` — podkomenda `stop-gate` źródłuje `lib/stop.sh` i wywołuje `stop_main`.
+- Okablowane narzędzia (wg `tools/tools.lock.json`):
+  - **Psalm taint** (`--taint-analysis --output-format=json`) — PHP, tier S.
+  - **Checkov** (katalogi zmienione w sesji) — IaC/Docker/CI, tier S.
+  - **Betterleaks** (skan sekretów diffu całej sesji, nie tylko pliku) — tier S.
+- Podłączenie `slopguard deps-check` do bramki Stop (§7.7): przy zmianie manifestów zależności (composer.lock, package-lock.json, go.sum, Pipfile.lock, Cargo.lock) bramka uruchamia `deps-check` i raportuje `too-fresh` oraz `major-behind` wg `dependency_freshness`.
+- AP-AGENT-010: przy `require_docs_lookup=true` — pliki frameworku edytowane bez odnotowanego lookupa Context7 → `warn` w raporcie końcowym, **nigdy `deny`**.
+- Tryby `advisory`/`balanced`/`strict` per §4.6; `stop_hook_active` sprawdzane przed każdym wywołaniem.
+
+**Narzędzia nieokablowane (brak w `tools.lock.json` — wymagają Etapu 0 pinowania):**
+- **`tsc --noEmit`** — type-check TypeScript całego projektu. `tsc` nie jest osobno pinem w `tools.lock.json`; `eslint-stack` dostarcza Node przez `node_lock`, ale `tsc` jako CLI wymaga osobnego wpisu lub wywołania przez `npx tsc` z pinowaną wersją.
+- **govulncheck** — podatne zależności Go z analizą osiągalności; wyzwalany przy `allow_network` i zmianie `go.sum`.
+- **`composer audit`** — podatne zależności PHP; wyzwalany przy `allow_network` i zmianie `composer.lock`.
+- **`npm audit` / `pnpm audit`** — podatne zależności Node; wyzwalany przy `allow_network` i zmianie `package-lock.json`.
+- **pip-audit** — podatne zależności Python; wyzwalany przy `allow_network` i zmianie `Pipfile.lock`/`requirements*.txt`.
+- **osv-scanner** — SCA multi-ecosystem (Cargo, Maven, NuGet, RubyGems — języki tier 2); deferred D16; wejdzie do `tools.lock.json` razem ze Stop handlerem w kolejnym milestone.
+
+Do momentu spinowania każdego z powyższych narzędzi bramka Stop przepuszcza z notatką `slopguard: <tool> unavailable — Etap 0 pinning required` (Z6 fail-open). Stan dostępności narzędzi widoczny w `slopguard doctor`.
+
+**Kryteria akceptacji:**
+- Kontrakt `stop-gate` (`stop_hook_active=true` + blockery po 2 iteracjach → `exit 0` + `systemMessage`) ✅
+- p95 < 5 min na zmianach sesji ≤ 30 plików ✅ (na dostępnych narzędziach)
+- Tryby `advisory`/`balanced`/`strict` per §4.6 ✅
+- SCA (govulncheck, composer/npm audit, pip-audit, osv-scanner) ⬜ (zablokowane — brak pinów)
+- `tsc --noEmit` ⬜ (zablokowane — brak osobnego pinu)
+
+**Etap 5 — Prewencja: katalog + skille + subagent** *(zrealizowany 2026-09-23)*
+
+**Dostarczone w tym etapie:**
+- `rules/catalog.yaml` — pełny seed z §8: tier 1 (AP-PHP-*, AP-GO-*, AP-PY-*, AP-TS-*, AP-NODE-*, AP-SQL-*, AP-TF-*, AP-K8S-*, AP-DOCKER-*, AP-CI-*, AP-AGENT-*); tier 2 (AP-JVM-*, AP-CS-*, AP-RB-*, AP-RS-*) dla języków, które przeszły sondę parsera Opengrep w Etapie 0. Każdy wpis tier 1 z `detect` ma fixture `bad`/`good`.
+- `scripts/gen-skills` — generator: `rules/catalog.yaml` → `skills/*/SKILL.md`; twardy limit 150 linii/3000 tokenów; przerywa z błędem przy przekroczeniu. Generuje `reference/<ID>.md` per wpis z `prevent_in_skill: true`.
+- Skille tier 1: `php-antipatterns`, `go-antipatterns`, `python-antipatterns`, `ts-react-antipatterns`, `node-antipatterns`, `sql-antipatterns`, `iac-antipatterns`; każdy z `paths` i `reference/`.
+- Skille tier 2 (per języki z przeszłą sondą Etapu 0): `jvm-antipatterns`, `csharp-antipatterns`, `ruby-antipatterns`, `rust-antipatterns`.
+- Skill `agent-discipline` (bez `paths`, zawsze dostępny; blok AP-AGENT-001–AP-AGENT-010 wstrzykiwany przez `session-start` w granicach 15 linii / 1500 znaków).
+- Subagent `agents/security-reviewer.md` + skill `secure-review` (`context: fork`, `disallowedTools: Write, Edit`).
+
+**Kryteria akceptacji:**
+- Limity linii/tokenów skilli (w tym tier 2) spełnione ✅
+- Generator przerywa z błędem przy przekroczeniu limitu ✅
+- Eval przypadków security ≥ 0.8 ⬜ (niezweryfikowany — patrz §11.2; wymaga klucza API)
+- Wynik wyraźnie lepszy niż bez pluginu ⬜ (jw.)
+
+**Etap 6 — Utwardzenie i dystrybucja** *(częściowo zrealizowany 2026-09-23)*
+
+**Dostarczone w tym etapie:**
+- `docs/slop-guard-spec.md` — records §11.3 Etap 3–6, status §11.2 evals.
+- `plugins/slop-guard/CHANGELOG.md` — wpisy Etap 3–6.
+- `plugins/slop-guard/docs/decisions.md` — D25–D28.
+- `plugins/slop-guard/docs/ideas.md` — pozycje odroczone (Windows, SCA tools).
+- `README.md` — sekcja Slop Guard rozszerzona o tiers detekcji, bramkę Stop i skille prewencji.
+- `plugins/slop-guard/docs/recommended-project-settings.json` — dodany `$comment_stop_gate` wyjaśniający konfigurację bramki Stop (bez zmian merytorycznych w bloku `permissions`).
+
+**Windows — zablokowane (D28):**
+`hooks/hooks.json` wywołuje `${CLAUDE_PLUGIN_ROOT}/bin/slopguard` przez exec-form. `bin/slopguard` jest skryptem bash. Na Windows bez WSL lub Git Bash Claude Code nie może uruchomić skryptu bash przez exec-form — potrzebny jest natywny plik wykonywalny. Żeby dodać wsparcie Windows, wymagane są **zmiany w plikach własności MediumTier**:
+1. `bin/slopguard.cmd` — batch wrapper wywołujący bash.exe (przez WSL lub Git for Windows).
+2. ALBO zmiana pola `command` w `hooks/hooks.json` na ścieżkę do pliku `.cmd`.
+`plugins/sdlc/hooks/run-hook.cmd` nie jest wzorcem do zastosowania: to skrypt bash (shebang `#!/usr/bin/env bash`) używany jako wewnętrzny dispatcher sdlc — nie jest wywoływany przez exec-form Claude Code i nie rozwiązuje problemu. Windows odnotowany jako nieobsługiwany w wersji 0.1.0 i w `docs/ideas.md`; deferred do MediumTier.
+
+**Nieukończone:**
+- Benchmark na repo referencyjnych (Laravel, Go, TS/React, §11.1.5) — wymaga zainstalowanych narzędzi i dostępu do repozytoriów; nie może być przeprowadzony offline.
+- Publikacja w prywatnym marketplace (`claude plugin tag`) — wymaga interakcji człowieka; nie jest automatyzowana.
+- Release 1.0 — zablokowany przez brak weryfikacji progów eval (§11.2) i brak benchmarku.
+
+**Kryteria akceptacji pierwotne:**
+- Release 1.0 z raportem evali z/bez pluginu ⬜ (zablokowany — eval niezweryfikowany, benchmark nie przeprowadzony)
+- Windows (exec form z `.exe`) ⬜ (zablokowany — D28; patrz wyżej)
+- `docs/recommended-project-settings.json` ✅
+- Dokumentacja użytkownika (README + spec) ✅
 
 ---
 
