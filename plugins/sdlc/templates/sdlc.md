@@ -44,6 +44,19 @@ value, because the pipeline has nowhere to put its output otherwise.
   <!-- .claude/browsers/playwright.md | .claude/browsers/agent-browser.md | none.
        none → UI use cases are verified by tests only; QA says so in one line and moves on -->
 
+## Deployment
+
+- **Deployer descriptor:** `none`
+  <!-- .claude/deployers/github-actions.md | none. Copied from the plugin's templates/deployers/
+       by /sdlc:init. Commands name operations (**current-release**); this file runs them.
+       none → /sdlc:release-check works from git history and says what it could not check. -->
+- **Environments:** `none`
+  <!-- ordered, lowest first, e.g. staging, production. The last one is the promotion target. -->
+- **Merge deploys to:** `none`
+  <!-- the environment a merge to the default base ref reaches automatically, e.g. staging -->
+- **Promotion:** `manual`
+  <!-- manual | none. manual → /sdlc:release-check gates it and a human runs promote. -->
+
 ## Contracts and decisions
 
 - **API contract directory:** `none`

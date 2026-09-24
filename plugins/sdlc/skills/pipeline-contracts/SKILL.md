@@ -21,6 +21,7 @@ paraphrasing it breaks the chain.
 |---|---|---|
 | **Tracker descriptor** | `.claude/trackers/<kind>.md` | `templates/trackers/{github,local,TEMPLATE}.md` |
 | **Browser descriptor** | `.claude/browsers/<provider>.md` | `templates/browsers/{playwright,agent-browser,TEMPLATE}.md` |
+| **Deployer descriptor** | `.claude/deployers/<provider>.md` | `templates/deployers/{github-actions,TEMPLATE}.md` |
 
 Resolve: read the profile line, open the file, find `### <operation>`, run its body with the
 `{param}` placeholders filled. `none` → skip every step that needs it, say so in one line.
@@ -37,8 +38,10 @@ Read back every mutation before reporting it done. `local` is a real provider (f
 | Labels | **ensure-labels** (only `/sdlc:init` calls it) |
 | Lock | **claim** **check-claim** **release** |
 | Browser | **boot-check** **open** **goto** **click** **fill** **assert-text** **screenshot** **close** |
+| Deploy | **deploy-status** **current-release** **env-diff** **pending-migrations** **promote** **rollback** |
 
-Parameters and returns: `templates/trackers/TEMPLATE.md`, `templates/browsers/TEMPLATE.md`.
+Parameters and returns: `templates/trackers/TEMPLATE.md`, `templates/browsers/TEMPLATE.md`,
+`templates/deployers/TEMPLATE.md`.
 
 ## Chain markers
 

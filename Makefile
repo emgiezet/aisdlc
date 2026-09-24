@@ -26,6 +26,7 @@ AGENTS := auto-qa code-reviewer
 PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing graphql-api
 TRACKERS := TEMPLATE github local
 BROWSERS := TEMPLATE playwright agent-browser
+DEPLOYERS := TEMPLATE github-actions
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -140,6 +141,10 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 		test -f plugins/sdlc/templates/browsers/$$b.md && echo "  ✓ templates/browsers/$$b.md" || \
 		(echo "  ✗ templates/browsers/$$b.md MISSING" && exit 1); \
 	done
+	@for d in $(DEPLOYERS); do \
+		test -f plugins/sdlc/templates/deployers/$$d.md && echo "  ✓ templates/deployers/$$d.md" || \
+		(echo "  ✗ templates/deployers/$$d.md MISSING" && exit 1); \
+	done
 	@for p in $(PLAYBOOKS); do \
 		test -f plugins/sdlc/templates/playbooks/$$p.md && echo "  ✓ templates/playbooks/$$p.md" || \
 		(echo "  ✗ templates/playbooks/$$p.md MISSING" && exit 1); \
@@ -160,7 +165,7 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 			plugins/sdlc/commands/$$c.md || exit 1; \
 	done
 	@echo "  ✓ every command within 220 lines"
-	@for d in $(addprefix trackers/,$(TRACKERS)) $(addprefix browsers/,$(BROWSERS)); do \
+	@for d in $(addprefix trackers/,$(TRACKERS)) $(addprefix browsers/,$(BROWSERS)) $(addprefix deployers/,$(DEPLOYERS)); do \
 		awk -v f="$$d" 'END { if (NR > 120) { print "  ✗ templates/" f ".md is " NR " lines, budget 120"; exit 1 } }' \
 			plugins/sdlc/templates/$$d.md || exit 1; \
 	done

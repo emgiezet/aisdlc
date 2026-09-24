@@ -38,10 +38,11 @@ playbooks and rules to be refused; Phase 4 will tell you so rather than claiming
 must respect, and the rules for writing a router row that a weak model matches correctly.
 
 The templates to start from live in this plugin's `templates/` directory: `CLAUDE.md`,
-`AGENTS.md`, `playbooks/*.md`, `sdlc.md`, `trackers/*.md` and `browsers/*.md`. Read them, then
-**rewrite** the first three for this repo — copying them with the placeholders still in is a
-failure, not a partial success. The tracker and browser descriptors are copied **verbatim**: they
-are executable integration files, and a local edit belongs in the copy, later.
+`AGENTS.md`, `playbooks/*.md`, `sdlc.md`, `trackers/*.md`, `browsers/*.md` and `deployers/*.md`.
+Read them, then **rewrite** the first three for this repo — copying them with the placeholders
+still in is a failure, not a partial success. The tracker, browser and deployer descriptors are
+copied **verbatim**: they are executable integration files, and a local edit belongs in the copy,
+later.
 
 ---
 
