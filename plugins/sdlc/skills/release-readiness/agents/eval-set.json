@@ -1,0 +1,10 @@
+[
+  {"query": "Is this safe to promote to production?", "should_trigger": true, "note": "the promotion gate is the core"},
+  {"query": "What should I prepare before tomorrow's release?", "should_trigger": true, "note": "the prepare-to-release question, in the user's words"},
+  {"query": "Can I ship this migration in the same release as the code that stops using the column?", "should_trigger": true, "note": "expand/contract ordering and rollback safety"},
+  {"query": "Write the release notes for everything on staging", "should_trigger": true, "note": "the brief is the deliverable"},
+  {"query": "How do we roll this back if it goes wrong?", "should_trigger": true, "note": "rollback table"},
+  {"query": "How do I break this 2000-line PR into smaller ones?", "should_trigger": false, "note": "pr-stacking owns slicing and the size budget"},
+  {"query": "What status code should this endpoint return?", "should_trigger": false, "note": "rest-api-design owns status codes"},
+  {"query": "Set up a GitHub Actions workflow for this repo", "should_trigger": false, "note": "CI authoring, not release judgement"}
+]

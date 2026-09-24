@@ -23,6 +23,7 @@
         "./skills/harness-eval",
         "./skills/pipeline-contracts",
         "./skills/pr-stacking",
+        "./skills/release-readiness",
         "./skills/rest-api-design",
         "./skills/spec-authoring",
         "./skills/task-router"

@@ -63,6 +63,7 @@ Skills (load with the Skill tool):
 - rest-api-design     — resource naming, status codes, one error envelope, bounded pagination, breaking changes
 - graphql-api-design  — nullability, mutation input/payload shape, connections, N+1, breaking schema changes
 - pr-stacking         — small PRs in a chain: base chain, size budget, bottom-up merge, restack
+- release-readiness   — staging→prod gate: the set, migrations, config, flags, rollback, the brief
 
 Agents: auto-qa — verifies an implementation against its spec; code-reviewer — reviews a PR spec-first.
 

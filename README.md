@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 31 commands, 11 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 31 commands, 12 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ The full numbers are in [`docs/ai-sdlc.md`](docs/ai-sdlc.md).
 npx skills add emgiezet/aisdlc --skill '*'
 ```
 
-That installs the eleven knowledge skills — the spec format, the test-density rules, the
+That installs the twelve knowledge skills — the spec format, the test-density rules, the
 architecture-review tier table, the pipeline contracts — so any agent you already use writes
 specs and tests the way this harness expects. Drop `--skill '*'` to cherry-pick.
 
@@ -213,6 +213,7 @@ Installable on their own with `npx skills add emgiezet/aisdlc --skill <name>`.
 | `rest-api-design` | Resource naming, status-code selection, one error envelope per API, bounded pagination, idempotency, and the breaking-change table for an HTTP surface. |
 | `graphql-api-design` | Nullability as a contract, mutation input/payload shape, Relay connections, the N+1 rule, where a domain error belongs, and the breaking-change table for a schema. |
 | `pr-stacking` | Slicing a large change into a reviewable chain, the base chain, the per-PR size budget, bottom-up merge order, and the restack every squash-merge forces. |
+| `release-readiness` | The staging→production gate: enumerate the set, migration and config ordering, flag defaults, the rollback path, and the one-page brief a human signs. |
 
 Plus the `auto-qa` and `code-reviewer` agents, the `guard` hook, `bin/aisdlc`, and the shipped
 descriptors: trackers `github` and `local`, browsers `playwright` and `agent-browser`.
