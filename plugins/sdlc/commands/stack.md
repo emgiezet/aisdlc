@@ -75,17 +75,19 @@ blocks the stack.
 
 Proceed only when `--merge` is passed and all Phase 2 gates have passed.
 
-**Setup — fetch and confirm all branches.** Members are pushed from per-task worktrees; the
-local clone may have missing or stale refs. `git fetch origin` first, then for every member
-branch:
+**Setup — fetch and confirm all branches.** Run from the default branch or a detached HEAD —
+`git fetch origin <branch>:<branch>` refuses if that branch is currently checked out.
+For every member branch:
 
-- **Absent locally** → `git checkout --track origin/<branch>`.
-- **Present and fast-forwardable** to `origin/<branch>` → `git merge --ff-only origin/<branch>`.
-- **Present and divergent** from `origin/<branch>` → stop the whole command, name the branch,
-  and say the operator's local branch has commits the remote does not. A failed precondition
-  is a human's problem by design, like `/sdlc:merge` having no `--force` flag.
+```bash
+git fetch origin <branch>:<branch>   # one per member, bottom to top
+```
 
-Every sha step A records comes from a ref confirmed identical to its remote head.
+A refspec fetch updates the local ref directly and refuses when the update is not a
+fast-forward. Absent branches are created. Any failure — ahead-of-remote, divergent, or
+currently checked out — stops the command: name the branch and exit. After every member
+succeeds, each local ref is identical to its remote head at this moment; no fetch in
+step B.3 will advance those member remote-tracking refs.
 
 **Repeating loop** — for each member from bottom to top. Call the current bottom P and its
 direct child C.
@@ -107,7 +109,8 @@ P_old=$(git rev-parse <P-branch>)
    Approving for squash-merge.
    ```
 2. **merge-pr** P (squash). P's branch is deleted; its commits no longer exist as such.
-3. `git fetch` — the local default base ref must include P's squash commit before restacking C.
+3. `git fetch origin <default-base-ref>` — advances only the base ref so P's squash commit
+   is visible; a bare fetch would also advance member remote-tracking refs and defeat the lease.
 4. Rebase C onto the default base ref, using P's sha from step A as the replay boundary:
    ```bash
    git rebase --onto origin/main "$P_old" <C-branch>
