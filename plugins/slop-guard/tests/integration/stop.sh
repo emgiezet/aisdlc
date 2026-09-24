@@ -63,7 +63,7 @@ _it_stop_run() {
         CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=balanced \
         CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK="false" \
         CLAUDE_PLUGIN_OPTION_REQUIRE_DOCS_LOOKUP="false" \
-        CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="${CLAUDE_PLUGIN_OPTION_TOOL_SOURCE:-project-first}" \
+        CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="$([ "${SLOPGUARD_IT_DEBUG:-0}" = "1" ] && printf 'project-first' || printf '%s' "${CLAUDE_PLUGIN_OPTION_TOOL_SOURCE:-project-first}")" \
         "${PLUGIN_ROOT}/hooks/stop" 2>&1 || true
 
     rm -rf "${_IT_STOP_PDATA}/sessions/${_sess}" 2>/dev/null || true

@@ -351,9 +351,13 @@ _dispatch_run_eslint_stack() {
     # separate tree that Node.js ESM resolution never walks into.  NODE_PATH is
     # not honoured for ESM (Node.js docs say "use symlinks"); the flag
     # --resolve-plugins-relative-to was removed in ESLint 9 flat config.
-    # Fix: copy the baseline config into the data-dir adjacent to the installed
-    # node_modules so the ESM import walk finds the packages.  Project configs
-    # sit at the project root with their own node_modules and need no redirect.
+    # Fix 1 (imports): copy the baseline config into the data-dir adjacent to
+    # the installed node_modules so the ESM import walk finds the packages.
+    # Project configs sit at the project root with their own node_modules.
+    # Fix 2 (base path): ESLint 9 (≥9.24) uses the current working directory
+    # as the base path when --config is passed explicitly; files outside CWD are
+    # ignored silently (--no-warn-ignored hides the notice).  Run ESLint with
+    # CWD=project_dir so the base path matches where the file lives.
     if [ "$config_mode" != "project" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
         local _eslint_nm_dir="${CLAUDE_PLUGIN_DATA}/tools/node"
         if [ -d "${_eslint_nm_dir}/node_modules" ]; then
@@ -362,7 +366,7 @@ _dispatch_run_eslint_stack() {
         fi
     fi
     local raw exit_code=0
-    raw="$(timeout "$(_dispatch_timeout)" \
+    raw="$(cd -- "$project_dir" && timeout "$(_dispatch_timeout)" \
         "$tool_bin" --config "$config" --format json --no-warn-ignored \
         "$file" 2>/dev/null)" || exit_code=$?
     # 0 = ok/warnings only, 1 = errors, 2 = fatal; 124 = timeout.
@@ -522,8 +526,11 @@ _dispatch_run_zizmor() {
         "$tool_bin" --config "$config" --format json --offline \
         "$file" 2>/dev/null)" || exit_code=$?
     [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 1 ] || return 0
-    # Strip any log preamble before the JSON array (zizmor writes INFO lines to
-    # stdout in some invocations; find first '[' and take from there).
+    # Strip any log preamble before the JSON array.  In production, zizmor
+    # writes INFO lines to stderr and the 2>/dev/null above drops them; raw_raw
+    # is pure JSON.  When SLOPGUARD_IT_DEBUG=1 the tee wrapper merges streams
+    # (via 2>&1), so raw_raw may start with INFO lines — the awk finds the first
+    # '[' and prints from there, which is harmless on pure JSON too.
     local raw
     raw="$(printf '%s\n' "$raw_raw" | awk '/^\[/{p=1} p')"
     [ -n "$raw" ] || return 0
@@ -554,8 +561,8 @@ _dispatch_run_zizmor() {
     done <<< "$(printf '%s\n' "$raw" \
         | jq -r '.[]? |
             .ident as $id |
-            .finding.message as $msg |
-            ((.finding.locations[0].line_range.start.line // 0) | tostring) as $ln |
+            (.desc // "") as $msg |
+            (((.locations[0].concrete.location.start_point.row // 0) + 1) | tostring) as $ln |
             [$id, $msg, $ln] | @tsv' 2>/dev/null || true)"
 }
 
@@ -1020,7 +1027,7 @@ _dispatch_run_eslint_typed() {
     local config; config="$(tool_config_path eslint-stack "$project_dir")"
     local config_mode; config_mode="$(tool_config_mode eslint-stack "$project_dir")"
     [ "$config_mode" = "skip" ] && return 0
-    # Same ESM resolution redirect as eslint-stack (see comment there).
+    # Same ESM resolution + CWD base-path fix as eslint-stack (see comment there).
     if [ "$config_mode" != "project" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
         local _eslint_nm_dir="${CLAUDE_PLUGIN_DATA}/tools/node"
         if [ -d "${_eslint_nm_dir}/node_modules" ]; then
@@ -1029,7 +1036,7 @@ _dispatch_run_eslint_typed() {
         fi
     fi
     local raw exit_code=0
-    raw="$(timeout "$(_dispatch_medium_timeout)" \
+    raw="$(cd -- "$project_dir" && timeout "$(_dispatch_medium_timeout)" \
         env SLOPGUARD_TYPED_LINT=1 \
         "$tool_bin" --config "$config" --format json --no-warn-ignored \
         "$file" 2>/dev/null)" || exit_code=$?
@@ -1093,7 +1100,7 @@ _dispatch_run_tflint() {
         env TFLINT_PLUGIN_DIR="${SLOPGUARD_CACHE_DIR:-${CLAUDE_PLUGIN_DATA}/cache}/tflint" \
         "$tool_bin" --config "$config" --format json --chdir "$file_dir" \
         2>/dev/null)" || exit_code=$?
-    [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 1 ] || return 0
+    [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 1 ] || [ -n "$raw" ] || return 0
     [ -n "$raw" ] || return 0
 
     local mapping="${CLAUDE_PLUGIN_ROOT}/rules/mapping/tflint.yaml"
