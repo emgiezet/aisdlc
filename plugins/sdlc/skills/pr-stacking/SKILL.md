@@ -76,17 +76,24 @@ Bottom-up, one at a time, never in parallel. The full sequence:
 1. The bottom PR passes its own gates and merges (squash).
 2. Its branch is deleted; **its commits no longer exist** — the squash produced one new commit on
    main.
-3. Only the direct child (next in line) is based on the deleted branch. Rebase it onto the
-   default base ref:
+3. **Before executing step 1**, record each stack member's current tip sha — branch names will
+   move after the rebase and cannot serve as replay boundaries:
    ```bash
-   git rebase --onto origin/main <old-parent-branch> <direct-child-branch>
+   a_old=$(git rev-parse ai/<TICKET>-a)
+   b_old=$(git rev-parse ai/<TICKET>-b)
+   # one per member
    ```
-   Every deeper child rebases onto its freshly-restacked parent, keeping its own parent as base:
+   The direct child replays off the merged parent's recorded tip onto the default base ref:
    ```bash
-   git rebase --onto <new-parent-branch> <old-parent-branch> <child-branch>
+   git rebase --onto origin/main "$a_old" ai/<TICKET>-b
    ```
-   Only one PR at a time is ever based on the default base ref; grandchildren and deeper stay
-   targeted at their immediate parent.
+   Each deeper child replays off its own parent's recorded tip onto that parent's freshly-restacked
+   branch:
+   ```bash
+   git rebase --onto ai/<TICKET>-b "$b_old" ai/<TICKET>-c
+   ```
+   Destination is always a branch name; the replay boundary is always a saved sha. Only one PR
+   at a time is ever based on the default base ref; grandchildren stay targeted at their parent.
 4. **retarget-pr** the direct child to the default base ref, then push with
    `git push --force-with-lease`. The guard hook explicitly permits `--force-with-lease`;
    `--force` and `-f` are blocked.
