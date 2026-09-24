@@ -75,8 +75,10 @@ blocks the stack.
 
 Proceed only when `--merge` is passed and all Phase 2 gates have passed.
 
-**Setup — fetch and confirm all branches.** Run from the default branch or a detached HEAD —
-`git fetch origin <branch>:<branch>` refuses if that branch is currently checked out.
+**Setup — fetch and confirm all branches.** Run from the default branch or a detached HEAD, and
+with no worktree of this clone holding a member branch — `git fetch origin <branch>:<branch>`
+refuses if that branch is checked out anywhere, naming the worktree path. That refusal is
+correct: remove the worktree, never work around it with a checkout.
 For every member branch:
 
 ```bash
@@ -109,8 +111,10 @@ P_old=$(git rev-parse <P-branch>)
    Approving for squash-merge.
    ```
 2. **merge-pr** P (squash). P's branch is deleted; its commits no longer exist as such.
-3. `git fetch origin <default-base-ref>` — advances only the base ref so P's squash commit
-   is visible; a bare fetch would also advance member remote-tracking refs and defeat the lease.
+3. `git fetch origin <default-base-branch>` — the branch name behind the default base ref
+   (`main` when the descriptor says `origin/main`); `git fetch origin origin/main` is not a
+   valid remote ref. It advances only that base ref so P's squash commit is visible; a bare
+   fetch would also advance member remote-tracking refs and defeat the lease.
 4. Rebase C onto the default base ref, using P's sha from step A as the replay boundary:
    ```bash
    git rebase --onto origin/main "$P_old" <C-branch>
