@@ -26,10 +26,6 @@ Execute those rules; do not restate them here.
 
 ## Phase 1: Resolve the set [HARD STOP]
 
-If `--since <ref>` is passed and the **Deployer descriptor** names a deployer: the release
-set is defined by the deployer's view of what is live, not a git ref, so `--since` does not
-apply. Print that line and stop.
-
 **`Environments: none`** — there is no promotion target. Enumerate the git history set:
 
 ```bash
@@ -38,13 +34,17 @@ git log <base-ref>..<default-base-ref> --oneline
 
 where `<base-ref>` is `--since <ref>` if given, else
 `git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`; and
-`<default-base-ref>` is **Default base ref** (e.g. `origin/main`). Print the set, then:
+`<default-base-ref>` is **Default base ref**, or `origin/main` when that key is absent or `none`. Print the set, then:
 
 ```
 Environments: none — no promotion target configured; every environment check skipped.
 ```
 
 Stop here. Do not continue to Phase 2 or beyond.
+
+If `--since <ref>` is passed and the **Deployer descriptor** names a deployer: the release
+set is defined by the deployer's view of what is live, not a git ref, so `--since` does not
+apply. Print that line and stop.
 
 ---
 
@@ -54,7 +54,7 @@ as the entry directly before `<target>` in **Environments**.
 **`Deployer descriptor: none`** — fall back to git history. Resolve `<base-ref>` as
 `--since <ref>` if given, else the output of
 `git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`;
-`<default-base-ref>` is **Default base ref** (default `origin/main`). Run:
+`<default-base-ref>` is **Default base ref**, or `origin/main` when that key is absent or `none`. Run:
 
 ```bash
 git log <base-ref>..<default-base-ref> --oneline
@@ -113,14 +113,13 @@ Defer two rows to after Phase 4 (both require brief fields that do not exist yet
 
 ## Phase 4: Write the brief [REQUIRED]
 
-If `specs/releases/<YYYY-MM-DD>.md` already exists (this is a re-run after the human filled
-in `Signer:` or `Owner:`): update it in place. Never rewrite it from the blank template and
-never overwrite a `Signer:` or `Owner:` value the human has filled in; only update the
-gate-derived sections (Contents, Migrations, Config, Flags, Not verified). If the file is
-absent, fill `../skills/release-readiness/references/release-brief.md` into it. Every section
-of the template must appear. Where a value is unknown: write `Not verified — <reason>`; never
-leave a section empty. If the set does not compress to one page: write
-`Set too large — recommend promoting through <sha> first` and name the sha.
+If `specs/releases/<YYYY-MM-DD>.md` already exists (re-run after the human filled in
+`Signer:` or `Owner:`): update it in place, refreshing every section from the current gate
+data. A `Signer:` or `Owner:` value the human has filled in is never overwritten. If the
+file is absent, fill `../skills/release-readiness/references/release-brief.md` into it.
+Every section of the template must appear. Where a value is unknown: write
+`Not verified — <reason>`; never leave a section empty. If the set does not compress to one
+page: write `Set too large — recommend promoting through <sha> first` and name the sha.
 
 The **Rollback** section states: `rollback <target> <target-ref>` where `<target-ref>` is the
 ref Phase 1 recorded as live in the target before this promotion — not the ref being promoted.
@@ -135,11 +134,11 @@ Evaluate the two deferred gate rows now that the brief exists:
 
 Append any new `HOLD:` lines to the Phase 3 list.
 
-Commit the brief:
+Commit the brief if it changed (an identical second pass is not an error):
 
 ```bash
 git add specs/releases/<YYYY-MM-DD>.md
-git commit -m "docs(release): brief <YYYY-MM-DD> — <n> changes"
+git diff --cached --quiet || git commit -m "docs(release): brief <YYYY-MM-DD> — <n> changes"
 ```
 
 ---
