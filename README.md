@@ -9,7 +9,7 @@
   <a href="https://skills.sh/emgiezet/aisdlc"><img src="https://img.shields.io/badge/install%20via-npx%20skills-blue.svg" alt="Install via npx skills" /></a>
   <a href=".claude-plugin/marketplace.json"><img src="https://img.shields.io/badge/claude%20code%20plugin-0.2.0-8A2BE2.svg" alt="Claude Code plugin 0.2.0" /></a>
   <a href=".github/workflows/validate.yml"><img src="https://github.com/emgiezet/aisdlc/actions/workflows/validate.yml/badge.svg" alt="Validate" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-proprietary-lightgrey.svg" alt="License: proprietary" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
 Agents write the code; people own the specification. That is spec-driven development with the
@@ -525,5 +525,5 @@ are under [`specs/`](specs/), written in its own format.
 
 ## Licence
 
-Proprietary — copyright © 2026 Maksymilian Małecki, all rights reserved. Using, copying,
-modifying or redistributing any part of this requires written consent. See [`LICENSE`](LICENSE).
+MIT — copyright © 2026 [Max Małecki](https://mmx3.pl). Use it, fork it, ship it; keep the
+copyright notice. See [`LICENSE`](LICENSE).

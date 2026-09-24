@@ -4,12 +4,12 @@
   "version": "0.2.0",
   "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy and descriptors for your repo; spec → mockup → implement → qa → ship → review runs unattended; issues enter through triage, PRs leave through a gated human merge",
   "author": {
-    "name": "Maksymilian Małecki",
-    "url": "https://github.com/emgiezet"
+    "name": "Max Małecki",
+    "url": "https://mmx3.pl"
   },
   "homepage": "https://github.com/emgiezet/aisdlc",
   "repository": "https://github.com/emgiezet/aisdlc",
-  "license": "LicenseRef-proprietary",
+  "license": "MIT",
   "keywords": ["sdlc", "spec-driven", "agents", "harness", "task-router", "testing", "queue", "evals"],
   "extensions": {
     "com.openai": {
@@ -18,7 +18,7 @@
         "displayName": "AI SDLC",
         "shortDescription": "Spec-driven delivery for agents",
         "longDescription": "A task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests. Compose with Slop Guard for hook enforcement, Superpowers for disciplines, and Ponytail for implementation minimalism.",
-        "developerName": "Maksymilian Małecki",
+        "developerName": "Max Małecki",
         "category": "Productivity",
         "capabilities": ["Write", "Interactive"],
         "defaultPrompt": [
