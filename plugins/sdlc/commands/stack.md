@@ -20,7 +20,7 @@ them exactly as the descriptor defines; never substitute a CLI call of your own.
 
 ---
 
-## Phase 1: Discover the stack [HARD STOP]
+## Phase 1: Discover the stack [INSPECT]
 
 **First action:** Resolve the full chain from the argument.
 
@@ -49,7 +49,11 @@ Stack (bottom → top):
   #<n3>  <title>  (base: ai/<branch2>)
 ```
 
-**HARD STOP** — if `--merge` is absent from `$ARGUMENTS`, print the chain above, print the gate table from Phase 2, and halt. Do not read Phase 2 instructions beyond the table, and do not read Phase 3 at all. Reading past this line without `--merge` is a defect; the run would merge without human intent.
+**No-merge halt** — if `--merge` is absent from `$ARGUMENTS`: evaluate the four gates for
+every member using the definitions in Phase 2's table, print the per-PR gate table (one row
+per PR, one column per gate, pass/fail), then stop without entering Phase 3. The chain and
+gate table are the inspect deliverable; proceeding to Phase 3 without an explicit `--merge`
+is a defect.
 
 ---
 
@@ -111,26 +115,38 @@ P_old=$(git rev-parse <P-branch>)
    Approving for squash-merge.
    ```
 2. **merge-pr** P (squash). P's branch is deleted; its commits no longer exist as such.
-3. `git fetch origin <default-base-branch>` — the branch name behind the default base ref
-   (`main` when the descriptor says `origin/main`); `git fetch origin origin/main` is not a
-   valid remote ref. It advances only that base ref so P's squash commit is visible; a bare
-   fetch would also advance member remote-tracking refs and defeat the lease.
-4. Rebase C onto the default base ref, using P's sha from step A as the replay boundary:
+3. Advance the **Default base ref** so it points to P's squash commit:
+   - **`origin/main`** (GitHub tracker, merge happened on the remote): `git fetch origin <default-base-branch>` — the squash is already on origin; a bare fetch updates the tracking ref.
+   - **`main`** (local tracker, merge-pr commits locally): no fetch needed — local `main` was updated by merge-pr and **is** `<default-base-ref>` already.
+4. Rebase C onto **Default base ref** using P's sha from step A as the replay boundary:
    ```bash
-   git rebase --onto origin/main "$P_old" <C-branch>
+   git rebase --onto <default-base-ref> "$P_old" <C-branch>
    ```
-5. For each deeper member D (nearest to farthest), rebase D onto its freshly-restacked parent
-   using **that parent's sha from this round's step A** as the boundary:
+   `<default-base-ref>` is the value from `.claude/sdlc.md` (`origin/main` for GitHub, `main` for
+   local tracker). Using the wrong base here contaminates C's diff with P's changes; verify
+   `git rev-parse <default-base-ref>` equals the squash commit before proceeding.
+5. **Restack every queued member** — all members that follow C in the stack (nearest to C first).
+   Even when only one queued member exists, this step is mandatory; skipping it leaves the
+   queue out of sync and the next round's rebase will replay the merged parent's diff and conflict.
+   For each such member D:
    ```bash
    git rebase --onto <D-parent-branch> "$D_parent_old" <D-branch>
    ```
-   The boundary is always the sha recorded in step A of this round — never a tip produced by
-   a rebase within this same round. Do not update saved shas between deeper members within
-   the same round.
+   `<D-parent-branch>` is the branch name of D's parent after it was restacked in this round;
+   `$D_parent_old` is that parent's sha recorded in step A (never a post-rebase sha).
+   **Example (three-PR stack, round 1, P=#1, C=#2, queued=[#3]):** rebase #3 onto ai/SBX-9-b
+   (the freshly restacked C-branch) using the pre-round-1 sha of ai/SBX-9-b as the boundary —
+   the boundary excludes #2's commits so only #3's own commit is replayed.
+   The boundary is the sha recorded in step A — never a tip produced by a rebase within this
+   same round. `$D_parent_old` is step-A sha of D's parent, not the post-rebase tip (which is a
+   new commit). Do not re-read branch tips between B.4 and B.5.
 6. Return to the default base branch before any tracker operations: `git checkout <default-base-branch>`.
    The three-argument form of `git rebase` checks out the target branch, leaving HEAD there;
    every subsequent step in this round and the next round's **merge-pr** require HEAD to be on
-   the default base branch.
+   the default base branch. If this checkout fails (branch absent locally or checked out in a
+   sibling worktree): confirm the working tree is clean, then stop and report the current state —
+   P was squash-merged, all rebases for this round completed, and the operator must run
+   `git checkout <default-base-branch>` manually before continuing with steps 7–9 and the next round.
 7. **retarget-pr** C to the default base ref.
 8. `git push --force-with-lease origin <C-branch>` — the guard hook permits `--force-with-lease`;
    `--force` and `-f` are blocked.
@@ -138,7 +154,9 @@ P_old=$(git rev-parse <P-branch>)
 
 **Conflict during any rebase:** run `git rebase --abort` first, then report which member
 conflicted, set its pipeline label to `blocked`, leave everything already merged as merged,
-and say plainly that the remainder of the stack now needs a human.
+and say plainly that the remainder of the stack now needs a human. **Failed checkout (step 6):**
+report which round's checkout failed, name the branch, and leave the tracker records for already-merged
+members as merged; steps 7–9 and subsequent rounds require the operator to resolve the worktree conflict first.
 
 In the next round, C is the new P. Step A re-reads C's current sha — now the post-rebase tip —
 giving the correct replay boundary for C's children without carrying any variable forward.

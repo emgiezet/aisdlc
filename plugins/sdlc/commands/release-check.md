@@ -26,7 +26,9 @@ Execute those rules; do not restate them here.
 
 ## Phase 1: Resolve the set [HARD STOP]
 
-**`Environments: none`** — there is no promotion target. Enumerate the git history set:
+**`Environments: none`** — there is no promotion target. **Run the command below and print its
+output before the skip message. An empty-set output is valid; omitting the enumeration entirely
+is a defect.**
 
 ```bash
 git log <base-ref>..<default-base-ref> --oneline
@@ -34,7 +36,8 @@ git log <base-ref>..<default-base-ref> --oneline
 
 where `<base-ref>` is `--since <ref>` if given, else
 `git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`; and
-`<default-base-ref>` is **Default base ref**, or `origin/main` when that key is absent or `none`. Print the set, then:
+`<default-base-ref>` is **Default base ref**, or `origin/main` when that key is absent or `none`.
+Print the set, then print exactly:
 
 ```
 Environments: none — no promotion target configured; every environment check skipped.
