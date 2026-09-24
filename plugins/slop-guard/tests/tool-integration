@@ -56,8 +56,37 @@ trap '_it_cleanup' EXIT INT TERM
 # Helper API — used by tests/integration/*.sh
 # --------------------------------------------------------------------------- #
 
-it_ok()   { printf '  ok    %s\n' "$1"; PASS=$((PASS + 1)); }
-it_bad()  { printf '  FAIL  %s: %s\n' "$1" "$2"; FAIL=$((FAIL + 1)); }
+KNOWN=0
+_KNOWN_FILE="${INTEGRATION_DIR:-${TESTS_DIR}/integration}/KNOWN-FAILING"
+
+# _it_is_known <label>
+# True when the label is listed in KNOWN-FAILING (comments and blanks ignored).
+_it_is_known() {
+    [ -f "$_KNOWN_FILE" ] || return 1
+    grep -v '^[[:space:]]*#' "$_KNOWN_FILE" 2>/dev/null \
+        | grep -v '^[[:space:]]*$' \
+        | grep -qxF "$1"
+}
+
+# A listed case that fails is reported and does not break the build; a listed
+# case that PASSES does break it, because a quarantine nobody can leave is how
+# dead tests accumulate.
+it_ok()   {
+    if _it_is_known "$1"; then
+        printf '  FAIL  %s: listed in KNOWN-FAILING but passed — remove it from the list\n' "$1"
+        FAIL=$((FAIL + 1))
+        return
+    fi
+    printf '  ok    %s\n' "$1"; PASS=$((PASS + 1))
+}
+it_bad()  {
+    if _it_is_known "$1"; then
+        printf '  known %s: %s\n' "$1" "$2"
+        KNOWN=$((KNOWN + 1))
+        return
+    fi
+    printf '  FAIL  %s: %s\n' "$1" "$2"; FAIL=$((FAIL + 1))
+}
 it_skip() { printf '  skip  %s\n' "$1"; SKIP=$((SKIP + 1)); }
 
 # it_skip_unless_tool <slopguard-tool-name>
@@ -249,7 +278,7 @@ if [ "$_it_found" -eq 0 ]; then
     printf 'no *.sh files in %s/\n' "$INTEGRATION_DIR"
 fi
 
-printf '%d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
+printf '%d passed, %d failed, %d skipped, %d known\n' "$PASS" "$FAIL" "$SKIP" "$KNOWN"
 [ "$FAIL" -eq 0 ] || exit 1
 
 # SLOPGUARD_IT_REQUIRE=1 turns a skip into a failure. CI sets it: there the whole
