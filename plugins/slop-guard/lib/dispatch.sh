@@ -345,6 +345,22 @@ _dispatch_run_eslint_stack() {
     local config; config="$(tool_config_path eslint-stack "$project_dir")"
     local config_mode; config_mode="$(tool_config_mode eslint-stack "$project_dir")"
     [ "$config_mode" = "skip" ] && return 0
+    # ESLint 9 flat config resolves ESM imports from the config file's own
+    # directory.  The baseline config lives in configs/baseline/ but its plugin
+    # dependencies are in ${CLAUDE_PLUGIN_DATA}/tools/node/node_modules/ — a
+    # separate tree that Node.js ESM resolution never walks into.  NODE_PATH is
+    # not honoured for ESM (Node.js docs say "use symlinks"); the flag
+    # --resolve-plugins-relative-to was removed in ESLint 9 flat config.
+    # Fix: copy the baseline config into the data-dir adjacent to the installed
+    # node_modules so the ESM import walk finds the packages.  Project configs
+    # sit at the project root with their own node_modules and need no redirect.
+    if [ "$config_mode" != "project" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+        local _eslint_nm_dir="${CLAUDE_PLUGIN_DATA}/tools/node"
+        if [ -d "${_eslint_nm_dir}/node_modules" ]; then
+            local _eslint_data_cfg="${_eslint_nm_dir}/eslint.config.mjs"
+            cp "$config" "$_eslint_data_cfg" 2>/dev/null && config="$_eslint_data_cfg"
+        fi
+    fi
     local raw exit_code=0
     raw="$(timeout "$(_dispatch_timeout)" \
         "$tool_bin" --config "$config" --format json --no-warn-ignored \
@@ -501,11 +517,15 @@ _dispatch_run_zizmor() {
     local config; config="$(tool_config_path zizmor "$project_dir")"
     local config_mode; config_mode="$(tool_config_mode zizmor "$project_dir")"
     [ "$config_mode" = "skip" ] && return 0
-    local raw exit_code=0
-    raw="$(timeout "$(_dispatch_timeout)" \
+    local raw_raw exit_code=0
+    raw_raw="$(timeout "$(_dispatch_timeout)" \
         "$tool_bin" --config "$config" --format json --offline \
         "$file" 2>/dev/null)" || exit_code=$?
     [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 1 ] || return 0
+    # Strip any log preamble before the JSON array (zizmor writes INFO lines to
+    # stdout in some invocations; find first '[' and take from there).
+    local raw
+    raw="$(printf '%s\n' "$raw_raw" | awk '/^\[/{p=1} p')"
     [ -n "$raw" ] || return 0
 
     local mapping="${CLAUDE_PLUGIN_ROOT}/rules/mapping/zizmor.yaml"
@@ -532,7 +552,7 @@ _dispatch_run_zizmor() {
             "$file" "$line" "$line" "$msg" "$fix" "$snippet" \
             "$is_untracked" "$changed_ranges" "$findings_out"
     done <<< "$(printf '%s\n' "$raw" \
-        | jq -r '.diagnostics[]? |
+        | jq -r '.[]? |
             .ident as $id |
             .finding.message as $msg |
             ((.finding.locations[0].line_range.start.line // 0) | tostring) as $ln |
@@ -897,25 +917,37 @@ _dispatch_run_golangci_lint() {
     local config_mode; config_mode="$(tool_config_mode golangci-lint "$project_dir")"
     [ "$config_mode" = "skip" ] && return 0
 
-    # Compute the Go package path relative to project_dir.
+    # golangci-lint requires cwd == the Go module root (directory containing
+    # go.mod); running from an unrelated directory fails with:
+    #   "pattern ./...: directory prefix . does not contain main module"
+    # Walk up from the file's directory to find the nearest go.mod.
     local file_dir; file_dir="$(dirname "$file")"
+    local mod_root; mod_root="$file_dir"
+    while [ "$mod_root" != "/" ] && [ ! -f "${mod_root}/go.mod" ]; do
+        mod_root="$(dirname "$mod_root")"
+    done
+    if [ ! -f "${mod_root}/go.mod" ]; then
+        return 0  # no go.mod found; fail-open
+    fi
+
+    # Compute package path relative to the module root.
     local pkg_arg="./..."
-    local _suffix="${file_dir#${project_dir}}"
+    local _suffix="${file_dir#${mod_root}}"
     case "$_suffix" in
         /*)
-            # file_dir is under project_dir; strip leading slash.
             _suffix="${_suffix#/}"
             [ -n "$_suffix" ] && pkg_arg="./${_suffix}/..." || pkg_arg="./..."
             ;;
-        *) pkg_arg="./..." ;;  # not under project_dir or same
+        *) pkg_arg="./..." ;;
     esac
 
     # --new-from-rev=HEAD implements Z2 natively for tracked files (spec §6.2).
     local rev_arg=""
     [ "$is_untracked" -eq 0 ] && rev_arg="--new-from-rev=HEAD"
 
+    # shellcheck disable=SC2086  # $rev_arg: intentional word-split on empty/single-flag
     local raw exit_code=0
-    raw="$(timeout "$(_dispatch_medium_timeout)" \
+    raw="$(cd "$mod_root" && timeout "$(_dispatch_medium_timeout)" \
         "$tool_bin" run --config "$config" \
         --output.json.path=stdout --show-stats=false \
         $rev_arg "$pkg_arg" 2>/dev/null)" || exit_code=$?
@@ -937,7 +969,7 @@ _dispatch_run_golangci_lint() {
         local finding_file
         case "$fname" in
             /*) finding_file="$fname" ;;
-            *)  finding_file="${project_dir}/${fname}" ;;
+            *)  finding_file="${mod_root}/${fname}" ;;
         esac
         snippet="$(printf '%s' "$msg" | head -c 120)"
         lookup="$(_dispatch_map_lookup "$mapping" "$rule_id")"
@@ -988,6 +1020,14 @@ _dispatch_run_eslint_typed() {
     local config; config="$(tool_config_path eslint-stack "$project_dir")"
     local config_mode; config_mode="$(tool_config_mode eslint-stack "$project_dir")"
     [ "$config_mode" = "skip" ] && return 0
+    # Same ESM resolution redirect as eslint-stack (see comment there).
+    if [ "$config_mode" != "project" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+        local _eslint_nm_dir="${CLAUDE_PLUGIN_DATA}/tools/node"
+        if [ -d "${_eslint_nm_dir}/node_modules" ]; then
+            local _eslint_data_cfg="${_eslint_nm_dir}/eslint.config.mjs"
+            cp "$config" "$_eslint_data_cfg" 2>/dev/null && config="$_eslint_data_cfg"
+        fi
+    fi
     local raw exit_code=0
     raw="$(timeout "$(_dispatch_medium_timeout)" \
         env SLOPGUARD_TYPED_LINT=1 \
@@ -1058,8 +1098,8 @@ _dispatch_run_tflint() {
 
     local mapping="${CLAUDE_PLUGIN_ROOT}/rules/mapping/tflint.yaml"
 
-    local rule_id msg line ap_id severity category cwe_str cwe_json fix snippet lookup
-    while IFS=$'\t' read -r rule_id msg line; do
+    local rule_id msg line reported_file ap_id severity category cwe_str cwe_json fix snippet lookup
+    while IFS=$'\t' read -r rule_id msg line reported_file; do
         [ -n "$rule_id" ] || continue
         snippet="$(printf '%s' "$msg" | head -c 120)"
         lookup="$(_dispatch_map_lookup "$mapping" "$rule_id")"
@@ -1073,14 +1113,28 @@ _dispatch_run_tflint() {
             cwe_json='[]'
         fi
         fix=""
+        # Resolve the reported filename to an absolute path.  tflint with
+        # --chdir reports range.filename relative to the process's CWD (the
+        # directory from which slopguard was launched), not relative to
+        # --chdir itself.  readlink -f resolves against the current $PWD.
+        local emit_file="$file"
+        if [ -n "$reported_file" ] && [ "$reported_file" != "null" ]; then
+            local _resolved=""
+            case "$reported_file" in
+                /*)  _resolved="$reported_file" ;;
+                *)   _resolved="$(readlink -f "$reported_file" 2>/dev/null || true)" ;;
+            esac
+            [ -n "$_resolved" ] && emit_file="$_resolved"
+        fi
         _dispatch_config_filter_emit "$config_mode" \
             "$session_id" "$agent_id" "$ap_id" "tflint" "$rule_id" \
             "$category" "$severity" "$cwe_json" \
-            "$file" "$line" "$line" "$msg" "$fix" "$snippet" \
+            "$emit_file" "$line" "$line" "$msg" "$fix" "$snippet" \
             "$is_untracked" "$changed_ranges" "$findings_out"
     done <<< "$(printf '%s\n' "$raw" \
         | jq -r '.issues[]? |
-            [.rule.name, .message, (.range.start.line|tostring)] | @tsv' \
+            [.rule.name, (.message // ""), ((.range.start.line // 0)|tostring),
+             (.range.filename // "")] | @tsv' \
         2>/dev/null || true)"
 }
 

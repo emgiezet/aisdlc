@@ -119,10 +119,13 @@ if it_skip_unless_tool kube-linter; then
 fi
 
 # --------------------------------------------------------------------------- #
-# zizmor — GitHub Actions fast-tier (unpinned-uses → AP-CI-001, security,
-# blocker).
+# zizmor — GitHub Actions fast-tier (artipacked → AP-CI-005, security, error).
 # File must be under .github/workflows/ for the dispatch path routing.
 # The runner passes --offline so no network access is needed.
+# actions/checkout@v4 without persist-credentials: false triggers artipacked
+# (credential persistence through GitHub Actions artifacts) → AP-CI-005.
+# Note: unpinned-uses only fires in --pedantic mode; the baseline config omits
+# it, so the tag-pinned action fires artipacked, not AP-CI-001.
 # --------------------------------------------------------------------------- #
 
 it_project zizmor-bad; _fast_proj="$_IT_CUR_PROJ"
@@ -132,8 +135,8 @@ if it_skip_unless_tool zizmor; then
         "$(cat "${_IT_FIXTURES}/ci/bad/unpinned_action.yml")"
     _fast_out=$(it_run "$_fast_proj" \
         "${_fast_proj}/.github/workflows/ci.yml" fast)
-    it_expect_ap "$_fast_out" AP-CI-001 \
-        "zizmor: tag-pinned action (bad fixture -> AP-CI-001)"
+    it_expect_ap "$_fast_out" AP-CI-005 \
+        "zizmor: checkout without persist-credentials:false (bad fixture -> AP-CI-005)"
 
     it_project zizmor-good; _fast_proj="$_IT_CUR_PROJ"
     it_skip_unless_tool zizmor

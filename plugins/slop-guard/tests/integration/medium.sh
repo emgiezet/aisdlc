@@ -6,7 +6,7 @@
 #   phpstan       — missingType.return → AP-PHP-MAINT-003   (untracked; CONFIG_SOURCE=full)
 #   golangci-lint — gosec G201 (fmt.Sprintf SQL) → AP-GO-SEC-002  (tracked+modified)
 #   tflint        — terraform_required_version → AP-TF-MAINT-003  (untracked; CONFIG_SOURCE=full)
-#   checkov (M)   — CKV_AWS_57 (public S3 ACL) → AP-TF-SEC-010   (untracked)
+#   checkov (M)   — CKV2_AWS_62 (S3 event notifications) → AP-TF-SEC-018  (untracked)
 #
 # Design notes
 # ------------
@@ -21,8 +21,10 @@
 #                needed) fires when the terraform{} block is absent.  maintainability →
 #                CONFIG_SOURCE=full required.  A project-local .tflint.hcl that omits the
 #                AWS plugin avoids the plugin-download failure on offline machines.
-# checkov:       Untracked .tf file; CKV_AWS_57 is security → passes overlay.  Medium-tier
-#                checkov runs per-file (-f), not per-directory.
+# checkov:       Untracked .tf file; CKV_AWS_57 does not fire in checkov 3.3.16 (check
+#                was reorganised).  CKV2_AWS_62 (S3 event notifications) fires on any
+#                aws_s3_bucket resource → AP-TF-SEC-018.  Security → passes overlay.
+#                Medium-tier checkov runs per-file (-f), not per-directory.
 
 # Ensure phpstan can write its tmp cache even when SLOPGUARD_CACHE_DIR is absent.
 : "${SLOPGUARD_CACHE_DIR:=${_IT_WORK}/cache}"
@@ -161,10 +163,12 @@ ENDHCL
 fi
 
 # =========================================================================== #
-# 4. checkov (single-file, tier M) — CKV_AWS_57 (public S3 ACL) → AP-TF-SEC-010
+# 4. checkov (single-file, tier M) — CKV2_AWS_62 (S3 event notifications) → AP-TF-SEC-018
 # =========================================================================== #
 # Medium-tier checkov runs per-file (-f); the stop-gate runs per-dir (-d).
-# CKV_AWS_57 is security → passes overlay filter (no CONFIG_SOURCE=full needed).
+# CKV_AWS_57 does not fire in checkov 3.3.16 on the minimal aws_s3_bucket resource
+# (the check was reorganised in the v3 series).  CKV2_AWS_62 fires on any S3 bucket
+# without event notifications configured → AP-TF-SEC-018 (security, warn).
 
 it_project "checkov-m-bad"
 _it_med_ckv_bad="$_IT_CUR_PROJ"
@@ -172,8 +176,8 @@ if it_skip_unless_tool checkov; then
     cp "${_IT_FIXTURES}/terraform/bad/main.tf" "${_it_med_ckv_bad}/main.tf"
 
     _it_med_ckv_out="$(it_run "${_it_med_ckv_bad}" "${_it_med_ckv_bad}/main.tf" medium)"
-    it_expect_ap "$_it_med_ckv_out" "AP-TF-SEC-010" \
-        "checkov (M): public S3 ACL → AP-TF-SEC-010"
+    it_expect_ap "$_it_med_ckv_out" "AP-TF-SEC-018" \
+        "checkov (M): S3 without event notifications → AP-TF-SEC-018"
 
     it_project "checkov-m-good"
     _it_med_ckv_good="$_IT_CUR_PROJ"

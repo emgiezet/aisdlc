@@ -126,7 +126,7 @@ _stop_run_psalm() {
     local psalm_raw=""
     psalm_raw="$("$psalm_bin" \
         --taint-analysis --output-format=json --no-progress \
-        ${config:+-c "$config"} 2>/dev/null)" || true
+        ${config:+-c "$config"} 2>/dev/null | tr -d '\000')" || true
     [ -z "$psalm_raw" ] && return 0
 
     # Normalise output: accept plain array or wrapped {issues:[…]} / {errors:[…]}.
