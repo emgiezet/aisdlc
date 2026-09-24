@@ -45,8 +45,8 @@ Before the spec:  /${NAME}:brainstorm, /${NAME}:discover, /${NAME}:synthetic-use
 From an issue:    /${NAME}:issue (file/normalize) · /${NAME}:triage · /${NAME}:root-cause · /${NAME}:fix-issue <n>
                   (a human-labelled bug is the approval; aisdlc add --issue <n> queues the chain)
 After the PR:     /${NAME}:continue · /${NAME}:fix-pr · /${NAME}:autopilot · /${NAME}:review-prs ·
-                  /${NAME}:merge-buddy · /${NAME}:merge (interactive only) · /${NAME}:followup ·
-                  /${NAME}:close-fixed · /${NAME}:changelog
+                  /${NAME}:merge-buddy · /${NAME}:merge (interactive only) · /${NAME}:stack (merge a chain) ·
+                  /${NAME}:followup · /${NAME}:close-fixed · /${NAME}:changelog
 QA surface:       /${NAME}:test-env · /${NAME}:integration-tests · /${NAME}:ux-review
 Harness:          /${NAME}:retro — rank what the runs cost, by cause
 Architecture:     /${NAME}:arch-review <EPIC|path> — grade a planned architecture against its traffic profile, availability tier and RPO/RTO

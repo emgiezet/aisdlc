@@ -84,3 +84,6 @@ Omit the `Issue:` line when `--followup` was not used.
   to triage before deciding what to merge; it never calls `merge-pr`.
 - **`/sdlc:autopilot`** — orchestrates the post-PR pipeline. It appends `/sdlc:merge` only
   when `--allow-merge` is explicit; without that flag it stops at `merge-ready`.
+- **`/sdlc:stack`** — merges an ordered chain of PRs bottom-up with a restack between each
+  merge. A PR that is part of a stack should be merged with `/sdlc:stack`, not this command —
+  merging it alone with `/sdlc:merge` strands its children on a deleted branch.

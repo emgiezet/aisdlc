@@ -67,6 +67,7 @@ commands travel in a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`, v
 | `/sdlc:triage` | `NO_ACTION_NEEDED` `BUG` `FEATURE` | route decision |
 | `/sdlc:root-cause` | `LOW_CONFIDENCE` | trailing flag, copied into the PR body by ship |
 | `/sdlc:arch-review` | `SOUND` `GAPS` | architecture verdict; `GAPS` = a blocker or unwaived major |
+| `/sdlc:stack` | `MERGED` | the whole chain landed; a partial merge reports `⚠ NEEDS HUMAN` instead |
 | any autofix loop | `⚠ NEEDS HUMAN` | stop; a person decides |
 
 ## Claim lock

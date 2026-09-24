@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 31 commands, 12 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 32 commands, 12 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -193,6 +193,7 @@ They ask questions, act once, and hand control back.
 | `/sdlc:ux-shape` · `/sdlc:ux-setup` · `/sdlc:ux-review <pr#>` | A UX direction before the mockup; the repo's design contract as a path-scoped rule; a PR's UI reviewed against it in a real browser. |
 | `/sdlc:issue "<brief>" \| <n> [--normalize] [--all]` | File a deduped, structured issue, or bring existing ones up to the template. |
 | `/sdlc:merge <pr#>` · `/sdlc:merge-buddy` | The human's merge — refused unless `merge-ready`, green, conflict-free, no blocking `GAPS`; a read-only report of what can merge now. |
+| `/sdlc:stack <TICKET\|pr#>` | Merge a chain of stacked PRs bottom-up — gates every member first, then squash-merges and restacks between each merge; `Verdict: MERGED` or `⚠ NEEDS HUMAN`. |
 | `/sdlc:test-env` · `/sdlc:integration-tests <T>` | Boot the app portably and reuse it warm; write E2E tests against the running app with real locators. |
 | `/sdlc:retro [--since]` | Classify finished runs, rank causes by cost and wall-clock, map each to the harness file that owns it. |
 
