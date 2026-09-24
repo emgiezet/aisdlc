@@ -20,7 +20,7 @@ ordering rules, the rollback rules, and the one-page brief format this command a
 Execute those rules; do not restate them here.
 
 `--to <env>`: the target environment (default: the last entry in **Environments**).
-`--since <ref>`: base git ref for the no-deployer fallback only (default: most recent tag).
+`--since <ref>`: base git ref for the git-history path (applies when `Environments: none` or when no deployer is configured; default: most recent tag).
 
 ---
 
@@ -141,7 +141,7 @@ Commit the brief if it changed (an identical second pass is not an error):
 
 ```bash
 git add specs/releases/<YYYY-MM-DD>.md
-git diff --cached --quiet || git commit -m "docs(release): brief <YYYY-MM-DD> — <n> changes"
+git diff --cached --quiet -- specs/releases/<YYYY-MM-DD>.md || git commit -m "docs(release): brief <YYYY-MM-DD> — <n> changes"
 ```
 
 ---

@@ -79,7 +79,7 @@ blocks the stack.
 
 Proceed only when `--merge` is passed and all Phase 2 gates have passed.
 
-**Setup — fetch and confirm all branches.** Run from the **default base branch** — `git rev-parse --abbrev-ref HEAD` must equal `<default-base-branch>`; not a detached HEAD — and with no worktree of this clone holding a member branch.
+**Setup — fetch and confirm all branches.** Run from the **default base branch** — `git rev-parse --abbrev-ref HEAD` must equal `<default-base-branch>`; not a detached HEAD — and with no worktree of this clone holding a member branch (`aisdlc add` builds each member in its own worktree, making this the common case).
 For every member branch:
 
 ```bash
@@ -89,8 +89,8 @@ git fetch origin <branch>:<branch>   # one per member, bottom to top
 A refspec fetch updates the local ref directly and refuses when the update is not a
 fast-forward. Absent branches are created. Any failure — ahead-of-remote, divergent, or
 currently checked out — stops the command: name the branch and exit. After every member
-succeeds, each local ref is identical to its remote head at this moment; the assertion fetch
-in step B.2 is scoped to the base branch only and does not advance member remote-tracking refs.
+succeeds, each local ref is identical to its remote head at this moment; the fetch in step B.2
+is scoped to the base branch, confirming the squash landed and priming the ref Phase 4's ancestor check reads, without advancing member remote-tracking refs.
 
 **Repeating loop** — for each member from bottom to top. Call the current bottom P and its
 direct child C.

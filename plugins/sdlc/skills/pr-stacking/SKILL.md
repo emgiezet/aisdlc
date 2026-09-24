@@ -37,7 +37,7 @@ A stack of one is a PR.
 | Term | Meaning |
 |---|---|
 | *stack* | An ordered chain of PRs, each based on the one below |
-| *bottom PR* | Based on the default base ref — the only one that can merge first |
+| *bottom PR* | Based on the default base branch — the only one that can merge first |
 | *base chain* | `main ← a ← b ← c` — the sequence of branches, each depending on the one to its left |
 | *restack* | Rebasing the children after the parent's squash-merge rewrote its commits |
 | *stack root spec* | The `<TICKET>` whose `-a`/`-b` slices are the stack members |
@@ -73,9 +73,10 @@ Generated files and lock files are excluded from the line count but named in the
 
 Bottom-up, one at a time, never in parallel. The full sequence:
 
-1. Record each stack member's current tip sha — branch names move or vanish during the restack
-   and cannot serve as replay boundaries:
+1. Fetch every member to update local refs, then record each member's current tip sha — branch
+   names move or vanish during the restack and cannot serve as replay boundaries:
    ```bash
+   git fetch origin ai/<TICKET>-a:ai/<TICKET>-a ai/<TICKET>-b:ai/<TICKET>-b  # one per member
    git rev-parse ai/<TICKET>-a   # → note as <a-sha> (literal 40-char sha)
    git rev-parse ai/<TICKET>-b   # → note as <b-sha>
    # one per member; shell variables do not persist across Bash calls — copy each printed sha
@@ -91,8 +92,8 @@ Bottom-up, one at a time, never in parallel. The full sequence:
    git rebase --onto ai/<TICKET>-b <b-sha> ai/<TICKET>-c       # deeper child
    ```
    Destination is always a branch name; the replay boundary is always a saved sha. Only one PR
-   at a time is ever based on the default base ref; grandchildren stay targeted at their parent.
-5. **retarget-pr** the direct child to the default base ref, then push with
+   at a time is ever based on the default base branch; grandchildren stay targeted at their parent.
+5. **retarget-pr** the direct child to the default base branch, then push with
    `git push --force-with-lease`. The guard hook explicitly permits `--force-with-lease`;
    `--force` and `-f` are blocked.
 6. Re-run CI on the retargeted child before merging. A green check from before the rebase proves
