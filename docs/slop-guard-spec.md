@@ -1565,6 +1565,37 @@ Minimalny zestaw **własnych** reguł (MIT, pisane od zera; każda z fixture `ba
 | `sql-migrations.yaml` | `slopguard.laravel.migration-fk-without-index`, `slopguard.migration.not-null-without-default` | AP-SQL-003/004 |
 | `docker-ci.yaml` | `slopguard.docker.curl-pipe-shell`, `slopguard.gitlab.image-without-digest`, `slopguard.gitlab.include-remote` | AP-DOCKER-004, AP-CI-006 |
 
+### 6.12 Duplikacja — jscpd
+
+**Detekcja stosu**: `py`, `js`, `jsx`, `mjs`, `cjs`, `ts`, `tsx`, `mts`, `cts`, `go`, `php`, `java`, `kt`, `kts`, `cs`, `rb`, `rs`.
+
+`configs/baseline/.jscpd.json`:
+
+```json
+{
+  "minLines": 5,
+  "minTokens": 50,
+  "reporters": ["json"],
+  "gitignore": true,
+  "ignore": ["vendor/**", "node_modules/**", "*.lock", "*.min.*", "dist/**", "build/**", "generated/**"]
+}
+```
+
+Wywołanie (zakres katalogu, tier M):
+
+```bash
+jscpd "$SLOPGUARD_TARGET_DIR" --config "$CONFIG" --reporters=json \
+  --output="$SLOPGUARD_CACHE_DIR/jscpd" 2>/dev/null
+```
+
+Zasady:
+- Zakres: katalog pliku zmienionego, nie pojedynczy plik — duplikacja jest z definicji relacją między plikami; wywołanie per plik nie wykryłoby duplikacji między plikami.
+- Tier: **medium** (`asyncRewake`); koszt jednorazowego indeksowania katalogu jest za wysoki dla tiera fast.
+- Findings: reguła `duplicate-block` → `AP-SLOP-DUP-001`, severity `warn`, kategoria `maintainability`.
+- **Nakładka bezpieczeństwa (bypass)**: findings emitowane przez `_dispatch_filter_emit` (filtr diff zmienionych linii), z **pominięciem** nakładki bezpieczeństwa (`config_source=overlay`). Nakładka odrzuca każdy finding o kategorii innej niż `security`; `duplicate-block` ma kategorię `maintainability` — w domyślnej konfiguracji wszystkie findings byłyby pomijane, czyniąc narzędzie martwym. Granica: nakładka istnieje, żeby nie narzucać opinii stylistycznych z konfiguracji bazowej; próg duplikacji (`minLines: 5`, `minTokens: 50`) jest pomiarem (liczbą), a nie regułą stylu. `tool_config_mode = skip` jest nadal respektowany.
+- Identyfikator kubełkowy `AP-SLOP-DUP-001` nie ma strony referencyjnej w katalogu — analogicznie do `AP-CI-LINT-000`, `AP-DOCKER-LINT-000`.
+- `slopguard adopt-config jscpd` kopiuje `.jscpd.json` do repozytorium; po adopcji plik podlega ochronie `pre-write`.
+
 ---
 
 ## 7. Polityki (fail-closed)
@@ -2165,6 +2196,28 @@ Warunkiem wejścia do Etapu 3 dla każdego języka jest przejście sondy Opengre
 3. Binarka z `PATH` — **tylko** gdy wersja zgadza się z `tools.lock.json` (sprawdzenie `--version`). W przeciwnym razie ignoruj i loguj w `doctor`.
 4. Narzędzie z deskryptora projektu (`.slopguard/tools/<name>.yaml`, §7.8): sprawdzane po narzędziach spinowanych przez plugin. Deskryptor nie może nadpisać wywołania narzędzia wbudowanego — kolizja nazwy skutkuje `status: refused:pinned-tool-collision` przy ładowaniu deskryptora.
 
+#### Zakres narzędzi — tylko stacki wykryte w projekcie
+
+Kolejność źródeł powyżej odpowiada na pytanie *skąd wziąć binarkę*. Osobne pytanie brzmi *które narzędzia w ogóle dotyczą tego repozytorium*.
+
+Każdy wpis w `rules/stacks.json` deklaruje pole `tools` — listę narzędzi z `tools.lock.json`, których ten stack używa (`python` → `ruff`, `opengrep`; `github-actions` → `zizmor`, `checkov`). Stacki frameworkowe (`laravel`, `react`, `vite`) mają `tools: []` i dziedziczą narzędzia przez `requires`/`implies`.
+
+Zbiór istotnych narzędzi to `SLOPGUARD_CORE_TOOLS` (`betterleaks jq shellcheck` — `lib/detect.sh`) plus suma pól `tools` wykrytych stacków; liczy go `tools_for_stacks`. Narzędzia spoza tego zbioru:
+
+- nie są sondowane w `session-start` (brak wywołania `--version`) i trafiają do `profile.json` jako `source: "not-applicable"`, `relevant: false`,
+- nie pojawiają się w raporcie `missing tools for this project:`,
+- nie są raportowane ani instalowane przez `slopguard doctor` / `doctor --install`; `doctor --all` przywraca pełne zestawienie.
+
+Uzasadnienie: repozytorium bez kodu Go nie zyskuje nic na linterze Go, a żądanie instalacji czternastu narzędzi w projekcie, który używa czterech, uczy użytkownika ignorować komunikaty pluginu. Zbiór core jest niezależny od stacków, bo `jq` parsuje wejście każdego hooka, skan sekretów czyta surowy diff, a skrypty powłoki nie mają własnej kotwicy stacku.
+
+Gwarancja pokrycia: gate `make validate-slopguard` odrzuca `stacks.json`, w którym jakikolwiek wpis nie ma tablicy `tools`, `tools` wskazuje narzędzie spoza `tools.lock.json`, albo narzędzie z lockfile'a nie należy do żadnego stacku ani do zbioru core — takie narzędzie nigdy by się nie uruchomiło.
+
+#### Analizatory rozwiązywane wyłącznie z projektu (mypy, pylint)
+
+`mypy` i `pylint` rozwiązują importy przez interpreter projektu, więc kopia zainstalowana przez plugin zgłaszałaby nieistniejące błędy (`no-member`, `import-not-found`). Oba są dostarczane jako szablony deskryptorów (§7.8) w `configs/baseline/descriptors/`, adoptowane przez `slopguard adopt-config mypy|pylint` do `.slopguard/tools/`. `resolve.project` obejmuje `.venv/bin`, `venv/bin`, `.tox/py/bin`; plugin nie pinuje ich i niczego dla nich nie instaluje — brak binarki w projekcie oznacza `status: absent`, nie błąd.
+
+Mapowania `rules/mapping/{mypy,pylint}.yaml` są wczytywane przez `ext_load_mapping` tak samo jak dla narzędzi pinowanych. Każdy wpis musi mieć niepuste `ap_id`: `_dispatch_run_one_ext_tool` czyta wiersz mapowania przez `@tsv` do `IFS=$'\t' read -r ap_id severity category cwe`, a tabulator jest znakiem białym w IFS — puste pierwsze pole znika i `severity` ląduje w `ap_id`. Reguły bez odpowiednika w katalogu dostają identyfikator kubełkowy (`AP-PY-TYPE-000`, `AP-PY-LINT-000`), tak jak istniejące `AP-DOCKER-LINT-000` czy `AP-CI-LINT-000`. `hooks/post-write` emituje linię `Details:` tylko wtedy, gdy plik referencyjny dla danego `ap_id` istnieje.
+
 
 #### Kolejność źródeł konfiguracji (`config_source`)
 
@@ -2244,7 +2297,22 @@ Dla każdej konfiguracji bazowej na przypiętej wersji narzędzia:
 | zizmor | `zizmor --config configs/baseline/zizmor.yml tests/fixtures/ci/good` |
 | Opengrep | `opengrep --validate --config rules/opengrep` + `opengrep --test rules/opengrep` |
 
+| jscpd | `jscpd tests/fixtures/ --config configs/baseline/.jscpd.json --reporters=json --output=/tmp/jscpd-test && jq '.statistics.total.clones' /tmp/jscpd-test/jscpd-report.json` (poprawny JSON; brak duplikatów w `fixtures/good`) |
+
 Dodatkowo test spójności: każda reguła wymieniona w `rules/mapping/*.yaml` musi istnieć w narzędziu. Lista reguł pobierana komendami typu `ruff rule --all --output-format json`, `golangci-lint linters`, `kube-linter checks list`.
+
+### 9.4 Detekcja duplikacji — jscpd
+
+jscpd 5.3.2 jest przypięty w `tools/tools.lock.json` na czterech platformach (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64) z hashami sha256. Licencja: MIT (`https://github.com/kucherenko/jscpd`).
+
+**Tier i zakres**: medium (`asyncRewake`), zakres katalogu pliku zmienionego. Duplikacja jest relacją między plikami — wywołanie per plik nie mogłoby wykryć duplikacji między plikami, a re-indeksowanie całego katalogu przy każdym zapisie niszczyłoby sens debouncingu. Dispatcher uruchamia jscpd po 3-sekundowej przerwie w aktywności edycji.
+
+**Routing**: `_dispatch_medium_tools_for_file` kieruje do `_dispatch_run_jscpd` pliki z rozszerzeniami `py js jsx mjs cjs ts tsx mts cts go php java kt kts cs rb rs`. Narzędzie nie uruchamia się w tierze fast.
+
+**Nakładka bezpieczeństwa (bypass)**: findings jscpd trafiają do agenta przez `_dispatch_filter_emit` (filtr diff zmienionych linii), omijając kategoryczną filtrację nakładki bezpieczeństwa. Nakładka (`config_source=overlay`) przepuszcza wyłącznie findings z kategorii `security`; `duplicate-block` ma kategorię `maintainability` i byłby zawsze odrzucany w domyślnej konfiguracji. Jest to drugi wyjątek od nakładki — pierwszy dotyczy deskryptorów projektu (mypy, pylint), które są uruchamiane z konfiguracją projektu bezwarunkowo. Granica wyjątku: nakładka istnieje, żeby nie narzucać opinii stylistycznych; próg duplikacji (`minLines: 5`, `minTokens: 50`) jest pomiarem liczby bloków, a nie regułą stylu. `tool_config_mode = skip` jest nadal respektowany: jeśli projekt ustawi `skip` dla jscpd, narzędzie nie uruchamia się wcale.
+
+**Mapowanie**: `rules/mapping/jscpd.yaml`, reguła `duplicate-block` → `AP-SLOP-DUP-001`, severity `warn`, kategoria `maintainability`. Identyfikator kubełkowy bez strony referencyjnej w katalogu — analogicznie do `AP-CI-LINT-000`, `AP-DOCKER-LINT-000`.
+
 
 ---
 

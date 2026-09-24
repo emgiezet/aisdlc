@@ -9,7 +9,7 @@
   <a href="https://skills.sh/emgiezet/aisdlc"><img src="https://img.shields.io/badge/install%20via-npx%20skills-blue.svg" alt="Install via npx skills" /></a>
   <a href=".claude-plugin/marketplace.json"><img src="https://img.shields.io/badge/claude%20code%20plugin-0.2.0-8A2BE2.svg" alt="Claude Code plugin 0.2.0" /></a>
   <a href=".github/workflows/validate.yml"><img src="https://github.com/emgiezet/aisdlc/actions/workflows/validate.yml/badge.svg" alt="Validate" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-proprietary-lightgrey.svg" alt="License: proprietary" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
 Agents write the code; people own the specification. That is spec-driven development with the
@@ -374,6 +374,26 @@ under `.slopguard/` requires human approval to change (the `pre-write` hook asks
 pinned fixture tests and a sha256 in `tools/tools.lock.json` — open a PR to the plugin rather
 than adding a project descriptor. Descriptors are for tools upstream will never pin permanently.
 
+**Descriptors the plugin ships ready-made.** `mypy` and `pylint` resolve imports through the
+project's own interpreter, so a plugin-installed copy would report errors that do not exist.
+They are shipped as descriptor templates instead — adopt one and it runs from your virtualenv,
+or stays absent if you do not have it:
+
+```bash
+slopguard adopt-config mypy      # writes .slopguard/tools/mypy.yaml
+slopguard adopt-config pylint    # writes .slopguard/tools/pylint.yaml
+```
+
+Pylint symbols that name a catalog anti-pattern arrive with its id and severity
+(`bare-except` → AP-PY-MAINT-001, `eval-used` → AP-PY-SEC-007); the rest report as plain
+findings. `slopguard adopt-config` with no argument lists both the baseline configs and the
+descriptors your project has not adopted yet.
+
+**Which tools your project is asked for.** Slop Guard only reports and installs the tools your
+detected stacks can use, plus a small core set (`jq`, `betterleaks`, `shellcheck`). A Python
+repository is never told it is missing PHPStan. `slopguard doctor` shows the scope it applied;
+`slopguard doctor --all` reports every pinned tool regardless of stack.
+
 **Linter configuration and what the guard reports.** When your project has its own linter
 configuration (a `ruff.toml`, `.golangci.yml`, `eslint.config.*`, and so on), Slop Guard runs
 that tool with your config and reports everything it finds — style, performance, maintainability,
@@ -407,7 +427,8 @@ Async `PostToolUse` hook with `asyncRewake`. Starts after the fast hook; the age
 working while it runs. Only wakes the agent back if it finds new problems at `error` severity or
 above — warnings and info go to the next session summary, not a mid-task interruption. Wired tools:
 PHPStan (PHP), golangci-lint with `--new-from-rev` (Go), ESLint with type-info (JS/TS), tflint
-(Terraform), Checkov per-file (IaC), and Opengrep with the plugin's own rules (all stacks). Each
+(Terraform), Checkov per-file (IaC), Opengrep with the plugin's own rules (all stacks), and jscpd
+directory-scoped (duplication, all code stacks). Each
 tool runs only for the stack detected in the session. A three-second debounce collapses a batch of
 rapid edits into one run.
 
@@ -462,6 +483,12 @@ the detector is never mistaken for a clean codebase.
 The `/slop-guard:secure-review` command runs a read-only security-reviewer subagent over the
 current session's changed files. It cannot write or edit — it only reports.
 
+The `/slop-guard:deslop <path>` command runs an editing subagent over a file or directory,
+removing duplicate blocks and dead code flagged by jscpd and the linters. Without a test command
+it performs pure deletions only — it will not rename, reorder, or merge code. Supply
+`--tests <cmd>` to allow structural refactoring; the agent confirms the command passes before
+finishing. `--dry-run` lists what would be changed without writing anything.
+
 ## 🏷️ Labels and the merge gate
 
 Every PR carries the profile label (`ai-sdlc`) plus exactly one pipeline label: `review` after
@@ -499,5 +526,5 @@ are under [`specs/`](specs/), written in its own format.
 
 ## Licence
 
-Proprietary — copyright © 2026 Maksymilian Małecki, all rights reserved. Using, copying,
-modifying or redistributing any part of this requires written consent. See [`LICENSE`](LICENSE).
+MIT — copyright © 2026 [Max Małecki](https://mmx3.pl). Use it, fork it, ship it; keep the
+copyright notice. See [`LICENSE`](LICENSE).
