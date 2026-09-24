@@ -487,6 +487,7 @@ make validate       # manifests, required files, instruction budgets, shellcheck
 make selftest       # 41 assertions over the queue runner, using a stub claude — no API calls
 make eval-dry       # skill trigger sets, structural check only
 make harness-eval MODEL=haiku [SCENARIO=go-endpoint]   # the real thing; costs money
+make tool-integration              # real-binary parser tests; needs pinned toolchain (CI); skips per tool otherwise
 ```
 
 `make selftest` is the one to run after touching `bin/aisdlc`. It exists because a real run once

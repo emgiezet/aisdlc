@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# tests/tool-integration — standalone real-tool integration runner for slop-guard.
+#
+# Runs each tests/integration/*.sh against the real pinned toolchain through the
+# shipped hook path.  Skips cleanly when a tool binary is absent from PATH.
+#
+# NOT sourced by tests/run-tests — this suite is allowed to be slow and to
+# require real binaries installed by CI.  Run it independently:
+#
+#   plugins/slop-guard/tests/tool-integration
+#
+# Exit codes: 0 = all executed tests passed (skips are not failures),
+#             1 = at least one test failed.
+set -uo pipefail
+
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PLUGIN_ROOT="$(cd "${TESTS_DIR}/.." && pwd)"
+: "${CLAUDE_PLUGIN_ROOT:=$PLUGIN_ROOT}"
+export CLAUDE_PLUGIN_ROOT
+
+# --------------------------------------------------------------------------- #
+# Prerequisites
+# --------------------------------------------------------------------------- #
+
+command -v jq >/dev/null 2>&1 \
+    || { printf 'tool-integration: jq is required\n' >&2; exit 1; }
+
+command -v git >/dev/null 2>&1 \
+    || { printf 'tool-integration: git is required\n' >&2; exit 1; }
+
+# Source tools.sh for lock_bin (binary-name lookup from tools.lock.json).
+# shellcheck source=../lib/tools.sh
+. "${PLUGIN_ROOT}/lib/tools.sh"
+
+# --------------------------------------------------------------------------- #
+# Counters and temp workspace
+# --------------------------------------------------------------------------- #
+
+PASS=0
+FAIL=0
+SKIP=0
+
+# Snap-confined tools (ruff, hadolint, …) can access non-hidden $HOME dirs but
+# not /tmp or $HOME/.* hidden dirs.  Use a plain $HOME subdir so vendor/bin
+# symlinks resolve correctly on developer machines; CI native installs are fine
+# with any path.
+_IT_WORK="$(mktemp -d "${HOME}/sg-it-${$}-XXXXXX")"
+_IT_FIXTURES="${TESTS_DIR}/fixtures"
+_IT_CUR_PROJ=""
+_IT_RUN_N=0
+
+_it_cleanup() { rm -rf "${_IT_WORK}"; }
+trap '_it_cleanup' EXIT INT TERM
+
+# --------------------------------------------------------------------------- #
+# Helper API — used by tests/integration/*.sh
+# --------------------------------------------------------------------------- #
+
+it_ok()   { printf '  ok    %s\n' "$1"; PASS=$((PASS + 1)); }
+it_bad()  { printf '  FAIL  %s: %s\n' "$1" "$2"; FAIL=$((FAIL + 1)); }
+it_skip() { printf '  skip  %s\n' "$1"; SKIP=$((SKIP + 1)); }
+
+# it_skip_unless_tool <slopguard-tool-name>
+# Looks up the binary name via lock_bin, then checks PATH.
+# If absent: records one skip entry and returns 1.
+# If present: symlinks the binary into ${_IT_CUR_PROJ}/vendor/bin/ so
+#   resolve_tool finds it without the lockfile version check, then returns 0.
+# MUST be called after it_project so _IT_CUR_PROJ is set.
+it_skip_unless_tool() {
+    local tool="$1"
+    local bin path
+    bin="$(lock_bin "$tool" 2>/dev/null || printf '%s' "$tool")"
+    path="$(command -v "$bin" 2>/dev/null || true)"
+    if [ -z "$path" ]; then
+        it_skip "${tool}: '${bin}' not in PATH"
+        return 1
+    fi
+    # Symlink into vendor/bin of the current project (version-check bypass).
+    if [ -n "${_IT_CUR_PROJ:-}" ] && [ -d "${_IT_CUR_PROJ}/vendor/bin" ]; then
+        ln -sf "$path" "${_IT_CUR_PROJ}/vendor/bin/${bin}"
+    fi
+    return 0
+}
+
+# it_project <name>
+# Create a minimal git repo under ${_IT_WORK}/<name>/ with an empty vendor/bin.
+# Sets _IT_CUR_PROJ to the repo path.  Call directly (not inside $(...)):
+#   it_project ruff-bad
+#   _proj="$_IT_CUR_PROJ"
+# Using $() creates a subshell that silently drops the _IT_CUR_PROJ assignment.
+it_project() {
+    local name="${1:-proj}"
+    local dir="${_IT_WORK}/${name}"
+    mkdir -p "${dir}/vendor/bin"
+    git -C "$dir" init -q
+    git -C "$dir" config user.email "sg-integration@test"
+    git -C "$dir" config user.name "SlopGuard Integration"
+    _IT_CUR_PROJ="$dir"
+}
+
+# it_commit <dir> <relfile> <content>
+# Write <content> to <dir>/<relfile> and make an initial git commit.
+it_commit() {
+    local dir="$1" relfile="$2" content="$3"
+    mkdir -p "${dir}/$(dirname "$relfile")"
+    printf '%s' "$content" > "${dir}/${relfile}"
+    git -C "$dir" add "$relfile"
+    git -C "$dir" commit -q -m "initial"
+}
+
+# it_modify <dir> <relfile> <content>
+# Overwrite <dir>/<relfile> without committing (so git diff sees the change).
+it_modify() {
+    local dir="$1" relfile="$2" content="$3"
+    printf '%s' "$content" > "${dir}/${relfile}"
+}
+
+# it_run <dir> <abs_file_path> <tier>
+# Drive bin/slopguard post-write --tier=<tier> with a synthetic hook payload.
+# Always uses advisory enforcement so exit code is always 0 and all findings
+# (including pre-existing info) surface in hookSpecificOutput.additionalContext.
+# Prints combined stdout+stderr.
+it_run() {
+    local dir="$1" file="$2" tier="${3:-fast}"
+    _IT_RUN_N=$(( _IT_RUN_N + 1 ))
+    local sess="it-${$}-${_IT_RUN_N}"
+    local payload
+    payload="$(jq -n \
+        --arg sid "$sess" \
+        --arg fp  "$file" \
+        '{session_id:$sid,agent_id:null,tool_name:"Write",
+          tool_input:{file_path:$fp,content:""}}')"
+    local out
+    out="$(printf '%s\n' "$payload" | \
+        CLAUDE_PROJECT_DIR="$dir" \
+        CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+        CLAUDE_PLUGIN_DATA="${_IT_WORK}/plugin-data" \
+        CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory \
+        "${PLUGIN_ROOT}/bin/slopguard" post-write --tier="$tier" 2>&1)" || true
+    printf '%s' "$out"
+}
+
+# it_expect_ap <output> <AP-ID> <label>
+# Pass when <AP-ID> appears anywhere in <output>; fail otherwise.
+it_expect_ap() {
+    local out="$1" ap_id="$2" label="$3"
+    if printf '%s\n' "$out" | grep -qF "$ap_id"; then
+        it_ok "$label"
+    else
+        it_bad "$label" \
+            "expected ${ap_id}; hook output: $(printf '%s\n' "$out" | head -c 300)"
+    fi
+}
+
+# it_expect_silent <output> <label>
+# Pass when the hook produced no additionalContext (no findings).
+# Fail when any findings appear (additionalContext key present in JSON output).
+it_expect_silent() {
+    local out="$1" label="$2"
+    if printf '%s\n' "$out" | grep -qF '"additionalContext"'; then
+        it_bad "$label" \
+            "expected no findings; hook output: $(printf '%s\n' "$out" | head -c 300)"
+    else
+        it_ok "$label"
+    fi
+}
+
+# --------------------------------------------------------------------------- #
+# Source integration test files in sorted order
+# --------------------------------------------------------------------------- #
+
+INTEGRATION_DIR="${TESTS_DIR}/integration"
+
+printf 'slop-guard integration suite\n\n'
+
+if [ ! -d "$INTEGRATION_DIR" ]; then
+    printf 'no integration tests found (missing %s/)\n' "$INTEGRATION_DIR"
+    printf '\n%d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
+    exit 0
+fi
+
+_it_found=0
+for _it_file in "${INTEGRATION_DIR}"/*.sh; do
+    [ -f "$_it_file" ] || continue
+    _it_found=$(( _it_found + 1 ))
+    _it_name="$(basename "$_it_file")"
+    printf -- '--- %s ---\n' "$_it_name"
+    # shellcheck disable=SC1090
+    . "$_it_file"
+    printf '\n'
+done
+
+if [ "$_it_found" -eq 0 ]; then
+    printf 'no *.sh files in %s/\n' "$INTEGRATION_DIR"
+fi
+
+printf '%d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
+[ "$FAIL" -eq 0 ] || exit 1

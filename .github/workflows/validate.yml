@@ -88,6 +88,16 @@ jobs:
           CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
         run: make validate
 
+      # Runs each wired linter's own bad/good fixture through the shipped hook path.
+      # Fails this job if any parser does not understand its tool's real output.
+      # Skips per tool when the binary is absent (never the case here: slopguard doctor --install
+      # just ran above and installed the full pinned toolchain).
+      - name: Tool integration tests (real binaries)
+        env:
+          CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
+          CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
+        run: make tool-integration
+
   runner-and-fixture:
     runs-on: ubuntu-latest
     steps:

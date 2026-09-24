@@ -269,10 +269,13 @@ _stop_run_checkov() {
             --output json -d "$abs_dir" 2>/dev/null)" || true
         [ -z "$ckv_raw" ] && continue
 
-        # Capture failed checks (jaq workaround: variable first, then loop).
+        # Capture failed checks.  Checkov ≥ 3.x wraps results in an array (one
+        # element per framework); checkov 2.x emits a bare object.  Both forms
+        # handled the same way as _dispatch_run_checkov in dispatch.sh.
         local checks_json
         checks_json="$(printf '%s' "$ckv_raw" | jq -c \
-            '.results.failed_checks[]? // empty' 2>/dev/null || true)"
+            '(if type == "array" then .[] else . end) |
+             .results.failed_checks[]? // empty' 2>/dev/null || true)"
         [ -z "$checks_json" ] && continue
 
         while IFS= read -r chk; do
