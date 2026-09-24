@@ -2282,6 +2282,7 @@ Dodatkowo test spójności: każda reguła wymieniona w `rules/mapping/*.yaml` m
 6. **Koszt kontekstu** — `claude plugin details slop-guard`:
    - always-on < 600 tokenów,
    - każdy skill on-invoke < 3000 tokenów.
+7. **Integracja z rzeczywistymi binarkami** — testy jednostkowe weryfikują parsery przez stuby napisane przez tego samego autora co parser; dwukrotnie doprowadziło to do martwej ścieżki, która wyglądała na działającą: PHPStan czytał `.files[].errors` (liczba całkowita, nie tablica) zamiast `.files[].messages`; ruff czytał `.row` / `.end_row` zamiast `location.row` / `end_location.row`. Oba błędy przechodziły testy jednostkowe. Ta klasa uruchamia rzeczywistą binarkę narzędzia na własnych fixturach repozytorium (`tests/fixtures/<lang>/{bad,good}/`) przez rzeczywistą ścieżkę hooka i sprawdza, czy finding niesie właściwy identyfikator `AP-*` z `rules/mapping/<tool>.yaml`. Parser, który nie rozumie wyjścia swojego narzędzia, powoduje niepowodzenie builda. Wymaga zainstalowanego pinowanego toolchainu i dlatego jest tylko dla CI (`make tool-integration`); na maszynie deweloperskiej pomija per narzędzie, jeśli binarka jest nieobecna.
 
 ### 11.2 Ewaluacje zachowania agenta (`claude plugin eval`)
 

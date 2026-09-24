@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 31 commands, 8 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 31 commands, 10 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ The full numbers are in [`docs/ai-sdlc.md`](docs/ai-sdlc.md).
 npx skills add emgiezet/aisdlc --skill '*'
 ```
 
-That installs the eight knowledge skills — the spec format, the test-density rules, the
+That installs the ten knowledge skills — the spec format, the test-density rules, the
 architecture-review tier table, the pipeline contracts — so any agent you already use writes
 specs and tests the way this harness expects. Drop `--skill '*'` to cherry-pick.
 
@@ -210,6 +210,8 @@ Installable on their own with `npx skills add emgiezet/aisdlc --skill <name>`.
 | `pipeline-contracts` | The vocabulary every command shares: descriptors and their operations, chain markers, verdict tokens, the claim lock, pipeline labels, the bugfix approval rule. |
 | `discovery` | Brief and product-brief formats, evidence tags that never upgrade, the Definition of Ready. |
 | `harness-eval` | Measuring the harness on a cheap model, and a table from each failure symptom to the instruction file that caused it. |
+| `rest-api-design` | Resource naming, status-code selection, one error envelope per API, bounded pagination, idempotency, and the breaking-change table for an HTTP surface. |
+| `graphql-api-design` | Nullability as a contract, mutation input/payload shape, Relay connections, the N+1 rule, where a domain error belongs, and the breaking-change table for a schema. |
 
 Plus the `auto-qa` and `code-reviewer` agents, the `guard` hook, `bin/aisdlc`, and the shipped
 descriptors: trackers `github` and `local`, browsers `playwright` and `agent-browser`.
@@ -485,6 +487,7 @@ make validate       # manifests, required files, instruction budgets, shellcheck
 make selftest       # 41 assertions over the queue runner, using a stub claude — no API calls
 make eval-dry       # skill trigger sets, structural check only
 make harness-eval MODEL=haiku [SCENARIO=go-endpoint]   # the real thing; costs money
+make tool-integration              # real-binary parser tests; needs pinned toolchain (CI); skips per tool otherwise
 ```
 
 `make selftest` is the one to run after touching `bin/aisdlc`. It exists because a real run once

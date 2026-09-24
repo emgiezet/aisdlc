@@ -4,3 +4,7 @@
 
 # Queue state is per-checkout, never shared
 /.aisdlc/
+
+# Local scratch: git worktrees and subagent-driven-development ledgers
+.worktrees/
+.superpowers/

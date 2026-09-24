@@ -1,5 +1,5 @@
 .PHONY: help validate validate-slopguard selftest sandbox harness-eval eval-dry templates \
-        bump-patch bump-minor bump-major bump-slopguard
+        bump-patch bump-minor bump-major bump-slopguard tool-integration
 
 PLUGIN_JSON := plugins/sdlc/.claude-plugin/plugin.json
 SLOPGUARD_PLUGIN_JSON := plugins/slop-guard/.claude-plugin/plugin.json
@@ -21,9 +21,9 @@ COMMANDS := init spec mockup implement qa ship \
             issue triage root-cause fix-issue \
             brainstorm discover synthetic-users backlog ux-shape ux-setup \
             test-env integration-tests ux-review retro arch-review
-SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review
+SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review rest-api-design graphql-api-design
 AGENTS := auto-qa code-reviewer
-PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing
+PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing graphql-api
 TRACKERS := TEMPLATE github local
 BROWSERS := TEMPLATE playwright agent-browser
 
@@ -272,6 +272,14 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 		claude plugin validate plugins/slop-guard --strict; \
 	else \
 		echo "  – claude CLI not installed, plugin validate skipped"; \
+	fi
+
+# CI runs this step after installing the pinned toolchain via slopguard doctor --install.
+tool-integration: ## Run parser integration tests against real tool binaries (CI-only; skips per tool when absent)
+	@if test -x plugins/slop-guard/tests/tool-integration; then \
+		plugins/slop-guard/tests/tool-integration; \
+	else \
+		echo "  – plugins/slop-guard/tests/tool-integration not found or not executable, skipping"; \
 	fi
 
 selftest: ## Verify the queue runner against a stub claude (no API calls, no cost)

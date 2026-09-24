@@ -78,6 +78,23 @@ AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
     || bad "no-op detection" "status is $(task_field "$R" .status), expected failed"
 
 # --------------------------------------------------------------------------- #
+printf '\nthe message-array output shape is read like the bare result object\n'
+# Newer claude CLIs answer --output-format json with the whole message array. Read as an
+# object it yields 0 turns, so a phase that in fact succeeded was reported as never having run.
+R="$WORK/json-array"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB_JSON=array "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "array output: task completes" \
+    || bad "array output" "status is $(task_field "$R" .status), expected done"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -q 'implement ok (6 turns)' "$D/implement.log" \
+    && ok "array output: turns read from the result element" \
+    || bad "array output turns" "$(grep -c . "$D/implement.log") log lines, no 'implement ok (6 turns)'"
+[ "$(task_field "$R" .cost_usd)" != "0" ] && ok "array output: cost accumulated" \
+    || bad "array output cost" "cost_usd is $(task_field "$R" .cost_usd), expected non-zero"
+
+# --------------------------------------------------------------------------- #
 printf '\na blocked implementation keeps its evidence\n'
 R="$WORK/blocked"
 fresh_repo "$R"

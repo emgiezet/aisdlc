@@ -763,6 +763,19 @@ run_phase() {
         invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
     fi
 
+    # --output-format json answers with the single result object on some CLI versions and with
+    # the whole message array on others. Collapse the array to its result element so every
+    # reader below — cost, transcript, is_error, num_turns, the review verdict, and ship.json's
+    # PR number — sees one shape. Reading an array as an object yields 0 turns, which the check
+    # below reports as "the model never ran" for a phase that in fact succeeded.
+    if [ "$(jq -r 'type' "$out" 2>/dev/null)" = "array" ]; then
+        if jq -e '[.[] | select(.type == "result")] | last' "$out" > "$out.result" 2>/dev/null; then
+            mv "$out.result" "$out"
+        else
+            rm -f "$out.result"
+        fi
+    fi
+
     # Fold this phase's cost into the task total, whatever the outcome.
     if [ "$billing" = "subscription" ]; then
         # Subscription billing carries no per-token cost data; cost_usd stays null throughout.

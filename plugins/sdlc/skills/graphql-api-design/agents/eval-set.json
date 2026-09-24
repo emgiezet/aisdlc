@@ -1,0 +1,10 @@
+[
+  {"query": "Should this field be nullable or non-null?", "should_trigger": true, "note": "nullability is the core rule"},
+  {"query": "Add an archiveAccount mutation", "should_trigger": true, "note": "mutation input/payload shape"},
+  {"query": "This resolver hits the database once per row — how do I fix the schema side?", "should_trigger": true, "note": "N+1 and DataLoader"},
+  {"query": "Review this schema diff for breaking changes", "should_trigger": true, "note": "evolution table"},
+  {"query": "Where should an insufficient-funds failure go, errors or the payload?", "should_trigger": true, "note": "error placement table"},
+  {"query": "What status code do I return when the account does not exist?", "should_trigger": false, "note": "rest-api-design owns status codes"},
+  {"query": "Write the use-case table for ABC-204", "should_trigger": false, "note": "spec-authoring owns spec format"},
+  {"query": "Set up Apollo Server with Express", "should_trigger": false, "note": "wiring a server, not designing a schema"}
+]
