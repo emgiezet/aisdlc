@@ -51,11 +51,14 @@ value, because the pipeline has nowhere to put its output otherwise.
        by /sdlc:init. Commands name operations (**current-release**); this file runs them.
        none → /sdlc:release-check works from git history and says what it could not check. -->
 - **Environments:** `none`
-  <!-- ordered, lowest first, e.g. staging, production. The last one is the promotion target. -->
+  <!-- ordered, lowest first, e.g. staging, production. The last one is the promotion target.
+       none → /sdlc:release-check skips env-diff and pending-migrations for all environments. -->
 - **Merge deploys to:** `none`
-  <!-- the environment a merge to the default base ref reaches automatically, e.g. staging -->
+  <!-- the environment a merge to the default base ref reaches automatically, e.g. staging.
+       none → no automatic deployment on merge; a human or another pipeline decides. -->
 - **Promotion:** `manual`
-  <!-- manual | none. manual → /sdlc:release-check gates it and a human runs promote. -->
+  <!-- manual | none. manual → /sdlc:release-check gates the promotion gate and a human runs
+       promote. none → promotion is out of scope; /sdlc:release-check skips the promotion step. -->
 
 ## Contracts and decisions
 

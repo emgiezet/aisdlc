@@ -36,5 +36,5 @@ target, any deployment-id or run-url format}
 ### current-release    {env} → the ref (sha or tag) currently live in that environment
 ### env-diff           {from-env} {to-env} → one line per commit present in from but not to: sha, subject, PR number when derivable
 ### pending-migrations {env} → one line per migration present in the code but not applied in that environment; empty output means none
-### promote            {ref} {env} → the deployment id or run url, read back with deploy-status
+### promote            {env} {ref} → the deployment id or run url, read back with deploy-status
 ### rollback           {env} {ref} → the deployment id or run url, read back with deploy-status

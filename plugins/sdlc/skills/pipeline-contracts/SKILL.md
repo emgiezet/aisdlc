@@ -1,12 +1,12 @@
 ---
 name: pipeline-contracts
 description: >
-  The shared vocabulary every /sdlc command after ship and before spec speaks — tracker and
-  browser descriptors, the operation names, chain markers, verdict tokens, the claim lock, the
-  pipeline labels, and the bugfix approval rule. Use when a command needs to talk to the tracker
-  or a browser, hand a PR or issue number to the next command, decide whether it may take a
-  PR another agent claimed, set or read a pipeline label, or decide whether a bugfix spec counts
-  as approved.
+  The shared vocabulary every /sdlc command after ship and before spec speaks — tracker,
+  browser and deployer descriptors, the operation names, chain markers, verdict tokens, the
+  claim lock, the pipeline labels, and the bugfix approval rule. Use when a command needs to
+  talk to the tracker, a browser or a deployer, hand a PR or issue number to the next command,
+  decide whether it may take a PR another agent claimed, set or read a pipeline label, or
+  decide whether a bugfix spec counts as approved.
 ---
 
 # Pipeline contracts
