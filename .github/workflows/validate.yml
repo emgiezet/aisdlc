@@ -70,6 +70,9 @@ jobs:
           extensions: dom, simplexml, mbstring, tokenizer
           coverage: none
 
+      # --all, not the stack-scoped default: doctor now provisions only the tools
+      # this repository's own stacks use, but validate-configs and the integration
+      # suite demand every pinned analyser regardless of what this repo is written in.
       - name: Install pinned Slop Guard tools
         env:
           CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
@@ -77,7 +80,7 @@ jobs:
         run: |
           php --version
           python3 -m pip install uv==0.11.11
-          plugins/slop-guard/bin/slopguard doctor --install
+          plugins/slop-guard/bin/slopguard doctor --install --all
 
       # Owns the required-file lists and the instruction budgets.
       # GitHub Actions sets CI=true automatically; the Makefile passes --strict
