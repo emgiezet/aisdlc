@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Grep, Glob, SlashCommand
 
 # /sdlc:stack
 
-`$ARGUMENTS` is `<TICKET|pr#> [--merge] [--restack]`.
+`$ARGUMENTS` is `<TICKET|pr#> [--merge]`.
 
 This command is **interactive-only**. It is not in `ALL_PHASES` and is never invoked
 automatically — merging reaches staging and is always a human decision. There is no `--force`
@@ -49,7 +49,7 @@ Stack (bottom → top):
   #<n3>  <title>  (base: ai/<branch2>)
 ```
 
-Stop here unless `--merge` or `--restack` was passed.
+Stop here unless `--merge` was passed.
 
 ---
 
@@ -75,15 +75,28 @@ blocks the stack.
 
 Proceed only when `--merge` is passed and all Phase 2 gates have passed.
 
-**Step A — Record every member's current tip sha before any merge.** Branch names move after a
-rebase; only a saved sha is safe as a replay boundary. For each member branch, bottom to top:
+**Setup — fetch and materialize all branches.** Members are pushed from per-task worktrees;
+the local clone may lack their refs or have stale ones:
 
 ```bash
-<member>_old=$(git rev-parse <branch>)
+git fetch origin
+# for each member branch not yet in the local clone:
+git checkout --track origin/<branch>
 ```
 
-**Step B — For each member, starting from the bottom.** Let P be the member to merge this round,
-C be its direct child (next member up), and deeper be any members above C.
+**Repeating loop** — for each member from bottom to top. Call the current bottom P and its
+direct child C.
+
+**Step A — At the start of each round, before merging P, record the current tip sha of P and
+every remaining member.** Branch names move after a rebase; only a saved sha is a safe replay
+boundary:
+
+```bash
+P_old=$(git rev-parse <P-branch>)
+<each-remaining-member>_old=$(git rev-parse <branch>)
+```
+
+**Step B:**
 
 1. **review-pr** P approve with body:
    ```
@@ -92,31 +105,28 @@ C be its direct child (next member up), and deeper be any members above C.
    ```
 2. **merge-pr** P (squash). P's branch is deleted; its commits no longer exist as such.
 3. `git fetch` — the local default base ref must include P's squash commit before restacking C.
-4. Rebase C onto the default base ref, using P's saved sha as the replay boundary:
+4. Rebase C onto the default base ref, using P's sha from step A as the replay boundary:
    ```bash
    git rebase --onto origin/main "$P_old" <C-branch>
    ```
-5. Capture C's new tip immediately after the rebase: `C_rebased=$(git rev-parse <C-branch>)`.
-   This becomes C's saved sha for the next round (when C is the bottom being merged).
-6. For each deeper member D in order from nearest to farthest, rebase D onto its freshly-restacked
-   parent using that parent's saved sha as the replay boundary:
+5. For each deeper member D (nearest to farthest), rebase D onto its freshly-restacked parent
+   using **that parent's sha from this round's step A** as the boundary:
    ```bash
    git rebase --onto <D-parent-branch> "$D_parent_old" <D-branch>
    ```
-   After each rebase, update `D_parent_old` to `git rev-parse <D-parent-branch>` before proceeding
-   to the next deeper member. D's parent's saved sha is its tip after its own rebase, not its
-   original sha from step A.
-7. **retarget-pr** C to the default base ref.
-8. `git push --force-with-lease <C-branch>` — the guard hook permits `--force-with-lease`;
+   The boundary is always the sha recorded in step A of this round — never a post-rebase tip.
+   Do not update saved shas between deeper members within the same round.
+6. **retarget-pr** C to the default base ref.
+7. `git push --force-with-lease origin <C-branch>` — the guard hook permits `--force-with-lease`;
    `--force` and `-f` are blocked.
-9. **rerun-check** C. Wait for all required checks to pass before merging C in the next round.
+8. **rerun-check** C. Wait for all required checks to pass before merging C.
 
-**Conflict during any rebase:** report which member conflicted, set its pipeline label to
-`blocked`, leave everything already merged as merged, and say plainly that the remainder of the
-stack now needs a human.
+**Conflict during any rebase:** run `git rebase --abort` first, then report which member
+conflicted, set its pipeline label to `blocked`, leave everything already merged as merged,
+and say plainly that the remainder of the stack now needs a human.
 
-**Advancing to the next round:** C becomes the new P. Its saved sha is `C_rebased` from step 5,
-not its original sha from step A — the rebase moved the branch tip.
+In the next round, C is the new P. Step A re-reads C's current sha — now the post-rebase tip —
+giving the correct replay boundary for C's children without carrying any variable forward.
 
 ---
 
@@ -146,7 +156,7 @@ Merged:
 Blocked at #<n2> <title>:
   <one-line reason>
 
-⚠ NEEDS HUMAN
+Verdict: ⚠ NEEDS HUMAN
 PR: #<n2> (<url>)
 ```
 
