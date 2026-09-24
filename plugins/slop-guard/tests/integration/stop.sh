@@ -114,6 +114,11 @@ ENDXML
 <?php
 /**
  * Tainted SQL: $_GET['id'] flows to PDO::query() — TaintedSql → AP-PHP-SEC-001.
+ * search() is called at script level so psalm's interprocedural taint analysis
+ * traces the path from $_GET (source) to PDO::query (sink).  A function that
+ * is defined but never called is unreachable dead code; psalm 6.x does not
+ * report taint flows through unreachable functions.
+ * Reference: psalm.dev/docs/security_analysis — "data flows through your application".
  */
 function search(): void
 {
@@ -121,6 +126,7 @@ function search(): void
     $pdo = new \PDO('sqlite::memory:');
     $pdo->query("SELECT * FROM users WHERE id = {$id}");
 }
+search();
 ENDPHP
     # src/bad.php is untracked: _stop_diff_files picks it up via git ls-files --others.
 

@@ -538,6 +538,29 @@ _dispatch_run_zizmor() {
     local mapping="${CLAUDE_PLUGIN_ROOT}/rules/mapping/zizmor.yaml"
 
     local rule_id msg line ap_id severity category cwe_json fix snippet
+    # Collect jq output into a variable so we can guard against the silent-drop
+    # failure mode: zizmor serialises each location as {"symbolic":{...},"concrete":{...}};
+    # concrete is always present (zizmor v1.30.1 finding/location.rs Location struct),
+    # but iterating locations[] and selecting numeric rows is more robust than
+    # hardcoding locations[0].  Row is 0-based (tree-sitter via LineCol.line); +1
+    # converts to 1-based.  Reference: zizmor v1.30.1 finding/location.rs Point struct.
+    local _ziz_tsv
+    _ziz_tsv="$(printf '%s\n' "$raw" \
+        | jq -r '.[]? |
+            .ident as $id |
+            (.desc // "") as $msg |
+            (([.locations[].concrete.location.start_point.row
+               | select(type == "number")] | .[0] // 0) + 1 | tostring) as $ln |
+            [$id, $msg, $ln] | @tsv' 2>/dev/null || true)"
+    # Guard: findings in JSON but nothing emitted → jq path mismatch, log it.
+    if [ -z "$_ziz_tsv" ]; then
+        local _ziz_n; _ziz_n="$(printf '%s' "$raw" | jq 'length' 2>/dev/null || printf '0')"
+        case "$_ziz_n" in
+            ''|0) ;;
+            *) printf 'slopguard: zizmor: %s finding(s) in JSON but 0 rows emitted (check jq path)\n' \
+                   "$_ziz_n" >&2 ;;
+        esac
+    fi
     while IFS=$'\t' read -r rule_id msg line; do
         [ -n "$rule_id" ] || continue
         snippet="$(printf '%s' "$msg" | head -c 120)"
@@ -558,12 +581,7 @@ _dispatch_run_zizmor() {
             "$category" "$severity" "$cwe_json" \
             "$file" "$line" "$line" "$msg" "$fix" "$snippet" \
             "$is_untracked" "$changed_ranges" "$findings_out"
-    done <<< "$(printf '%s\n' "$raw" \
-        | jq -r '.[]? |
-            .ident as $id |
-            (.desc // "") as $msg |
-            (((.locations[0].concrete.location.start_point.row // 0) + 1) | tostring) as $ln |
-            [$id, $msg, $ln] | @tsv' 2>/dev/null || true)"
+    done <<< "$_ziz_tsv"
 }
 
 # --------------------------------------------------------------------------- #
