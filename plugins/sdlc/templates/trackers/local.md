@@ -70,7 +70,7 @@ see Prerequisites.
 ### update-pr
 `jq -c --argjson n {n} --arg t '{title}' 'if .number==$n then .title=$t else . end' $P > $P.tmp && mv $P.tmp $P`
 ### retarget-pr
-`jq -c --argjson n {n} --arg base '{base}' 'if .number==$n then .baseRefName=$base else . end' $P > $P.tmp && mv $P.tmp $P; jq -r --argjson n {n} 'select(.number==$n).baseRefName' $P`
+`jq -c --argjson n {n} --arg base '{base}' 'if .number==$n then .baseRefName=$base else . end' $P > $P.tmp && mv $P.tmp $P && jq -r --argjson n {n} 'select(.number==$n).baseRefName' $P`
 ### comment-pr
 `mkdir -p .aisdlc/tracker/prs; { printf -- '\n---\n%s @%s\n' "$now" "{me}"; cat {body-file}; } >> .aisdlc/tracker/prs/{n}.comments.md`
 ### label-pr
