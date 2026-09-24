@@ -1,0 +1,10 @@
+[
+  {"query": "What status code should this endpoint return when the account is not found?", "should_trigger": true, "note": "status-code table is the core"},
+  {"query": "Add a list endpoint for accounts", "should_trigger": true, "note": "collection rules: bounded pagination, plural noun"},
+  {"query": "Is renaming this response field a breaking change?", "should_trigger": true, "note": "evolution table"},
+  {"query": "Review this OpenAPI diff before I merge it", "should_trigger": true, "note": "contract review is the second entry point"},
+  {"query": "Should this be POST /v1/freezeAccount or something else?", "should_trigger": true, "note": "no verbs in paths"},
+  {"query": "Make the user field non-nullable in the schema", "should_trigger": false, "note": "graphql-api-design owns nullability"},
+  {"query": "How many tests does this endpoint need?", "should_trigger": false, "note": "dense-testing owns density floors"},
+  {"query": "The handler panics on a nil store pointer", "should_trigger": false, "note": "debugging, not surface design"}
+]

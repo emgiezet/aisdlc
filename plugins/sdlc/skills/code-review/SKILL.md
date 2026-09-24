@@ -43,6 +43,9 @@ For code PRs, every item below is a finding when violated.
 | PR is a draft, labelled, riskiest changes called out by `file:line` | `nit` |
 | No hardcoded credentials; unvalidated input does not reach exec/eval; no new permissions without a spec row | `blocker` |
 | Every operation the diff touches is traceable to a SKILL.md entry or spec row | `minor` |
+| A new endpoint or schema field introduces a second error shape instead of the API's existing envelope (`rest-api-design`, `graphql-api-design`) | `major` |
+| A published path, field, enum value or error code was removed, renamed or retyped in place, with no deprecation | `blocker` |
+| A collection endpoint or list field ships with no bounded page size | `major` |
 
 ### Slop-guard rule
 

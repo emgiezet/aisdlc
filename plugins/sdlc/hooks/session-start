@@ -60,6 +60,8 @@ Skills (load with the Skill tool):
 - code-review         — severity scale, verdict rule, review checklist, spec-review lenses
 - architecture-review — availability tiers and what each forces, dependency arithmetic, traffic profile, RPO/RTO
 - discovery           — brief format, evidence tags, Definition of Ready
+- rest-api-design     — resource naming, status codes, one error envelope, bounded pagination, breaking changes
+- graphql-api-design  — nullability, mutation input/payload shape, connections, N+1, breaking schema changes
 
 Agents: auto-qa — verifies an implementation against its spec; code-reviewer — reviews a PR spec-first.
 

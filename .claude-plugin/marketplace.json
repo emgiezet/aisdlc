@@ -19,8 +19,10 @@
         "./skills/code-review",
         "./skills/dense-testing",
         "./skills/discovery",
+        "./skills/graphql-api-design",
         "./skills/harness-eval",
         "./skills/pipeline-contracts",
+        "./skills/rest-api-design",
         "./skills/spec-authoring",
         "./skills/task-router"
       ]

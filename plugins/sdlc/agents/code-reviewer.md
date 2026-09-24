@@ -19,7 +19,9 @@ requirement.
 3. **Read the `Out:` scope.** Note every path and module excluded. Any diff touching those
    paths is a `major` finding immediately.
 4. **Read the diff.** The diff passed in context, or run `git diff <base>...HEAD`. For each
-   changed file, note what changed and which UC it could satisfy.
+   changed file, note what changed and which UC it could satisfy. If the diff touches an HTTP
+   route table, a contract/OpenAPI file, or a GraphQL schema, load the `rest-api-design` or
+   `graphql-api-design` skill before judging the surface.
 5. **Read the tests.** Map test names to UC ids (`grep -rho 'UC-[0-9]\+'`). Every UC id with
    no test carrying it is a `blocker`. A deleted, skipped, or `.only(`-focused test anywhere
    in the diff is always a `blocker`.

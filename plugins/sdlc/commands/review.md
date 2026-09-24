@@ -86,6 +86,9 @@ Diff: <get-pr-diff output>
 The agent reads the profile, spec, `Out:`, diff, tests, and runs the verification matrix.
 Collect its ranked findings list and `Verdict:` line.
 
+When the diff touches a route table, a contract/OpenAPI file, or a GraphQL schema, the reviewer
+loads `rest-api-design` or `graphql-api-design` before judging the surface.
+
 After the agent returns: check `.aisdlc/slop-guard/report.json` (or the path in `.claude/sdlc.md`).
 Import any blocker items as additional `[blocker]` findings.
 

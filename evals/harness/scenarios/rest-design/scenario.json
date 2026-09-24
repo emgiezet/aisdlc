@@ -1,0 +1,26 @@
+{
+  "name": "rest-design",
+  "ticket": "SBX-5",
+  "description": "Collection endpoint from a 5-UC spec. Exercises the rest-api-design skill: plural-noun collection path, bounded page size with a 400 above the maximum, cursor pagination, reuse of the shared error envelope, and leaving the existing operation untouched.",
+  "phases": "implement qa",
+  "assert": {
+    "commands": ["make verify"],
+    "uc_ids": ["UC-1", "UC-2", "UC-3", "UC-4", "UC-5"],
+    "test_paths": ["services/ledger"],
+    "diff_contains": [
+      "listAccounts",
+      "next_cursor",
+      "invalid_limit"
+    ],
+    "diff_absent": [
+      "/v1/(list|get|fetch|create)[A-Za-z]",
+      "/v1/accounts/list",
+      "^\\+.*\"(detail|title|errors)\"[[:space:]]*:",
+      "^-.*operationId: getAccount$"
+    ],
+    "files_changed": ["api/openapi/ledger.yaml"],
+    "min_test_funcs": 9,
+    "no_skips": true,
+    "qa_verdict": "PASS"
+  }
+}

@@ -24,6 +24,10 @@ assumption you had to make. Missing `/sdlc:init` is worth one line of advice, no
 **Load the `spec-authoring` skill** — it holds the section layout, the use-case rules, the sizing
 limits, and the review checklist this command applies.
 
+**When the ticket touches an API surface**, also load `rest-api-design` for an HTTP/REST change
+or `graphql-api-design` for a schema change. The use-case table then names the exact path,
+method, status code, or field nullability instead of leaving the agent to pick one.
+
 ---
 
 ## Phase 1: Gather the source
