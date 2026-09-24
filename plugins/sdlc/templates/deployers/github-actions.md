@@ -1,15 +1,16 @@
 # Deploy target: github-actions
 
 GitHub Actions workflows used as the deploy mechanism. Deployment state is tracked through the
-GitHub Deployments API; workflow triggers use `gh workflow run`. All operations require `gh`
-authenticated with repo, actions:read, and deployments:read scopes.
+GitHub Deployments API; workflow triggers use `gh workflow run`. Read operations require `repo`,
+`actions:read`, and `deployments:read`; **promote** and **rollback** additionally need
+`actions:write` (fine-grained token) or the classic `workflow` scope to dispatch workflows.
 
 ## Prerequisites
 
 `gh` ≥ 2.40, authenticated: run `gh auth status` before any other operation. The workflows
-`{deploy-workflow}` and `{promote-workflow}` must exist in `.github/workflows/` and each must
-declare `workflow_dispatch` inputs named `environment` and `ref`; `gh workflow run` rejects a
-trigger that names inputs the workflow does not declare.
+`{deploy-workflow}` and `{promote-workflow}` must exist in `.github/workflows/`.
+`{promote-workflow}` must declare `workflow_dispatch` inputs named `environment` and `ref`;
+`gh workflow run` rejects a trigger that names inputs the workflow does not declare.
 
 ## Conventions
 
@@ -24,8 +25,8 @@ deploy pipeline, not about this file.
 ## Operations
 
 ### deploy-status
-`dep_id=$(gh api "repos/{owner}/{repo}/deployments?environment={env}&per_page=1" --jq '.[0].id')`.
-`sha=$(gh api "repos/{owner}/{repo}/deployments/$dep_id" --jq '.sha')`.
+`dep_id=$(gh api "repos/{owner}/{repo}/deployments?environment={env}&per_page=1" --jq '.[0].id // empty') && [ -n "$dep_id" ] || { echo "no deployment record found for {env}"; exit 1; }`.
+`sha=$(gh api "repos/{owner}/{repo}/deployments/$dep_id" --jq '.sha // empty') && [ -n "$sha" ] || { echo "deployment $dep_id has no sha"; exit 1; }`.
 `gh api "repos/{owner}/{repo}/deployments/$dep_id/statuses?per_page=1" --jq '.[0]' | jq -r --arg sha "$sha" 'if .state == "success" then "succeeded" elif (.state == "failure" or .state == "error") then "failed" elif .state == "inactive" then "unknown" else "in-progress" end + " " + $sha + " " + (.updated_at // "")'`
 Returns: state (succeeded|failed|in-progress|unknown), sha, finished-at on one line.
 
