@@ -27,8 +27,8 @@ deploy pipeline, not about this file.
 ### deploy-status
 `dep_id=$(gh api "repos/{owner}/{repo}/deployments?environment={env}&per_page=1" --jq '.[0].id // empty') && [ -n "$dep_id" ] || { echo "no deployment record found for {env}"; exit 1; }`.
 `sha=$(gh api "repos/{owner}/{repo}/deployments/$dep_id" --jq '.sha // empty') && [ -n "$sha" ] || { echo "deployment $dep_id has no sha"; exit 1; }`.
-`st=$(gh api "repos/{owner}/{repo}/deployments/$dep_id/statuses?per_page=1" --jq '.[0]') && [ -n "$st" ] || { echo "failed to read statuses for deployment $dep_id"; exit 1; }`.
-`printf '%s\n' "$st" | jq -r --arg sha "$sha" 'if .state == "success" then "succeeded" elif (.state == "failure" or .state == "error") then "failed" elif .state == "inactive" then "unknown" else "in-progress" end + " " + $sha + " " + (.updated_at // "")'`
+`st=$(gh api "repos/{owner}/{repo}/deployments/$dep_id/statuses?per_page=1") && [ -n "$st" ] || { echo "failed to read statuses for deployment $dep_id"; exit 1; }`.
+`printf '%s\n' "$st" | jq -r --arg sha "$sha" '(.[0] // {}) | if .state == "success" then "succeeded" elif (.state == "failure" or .state == "error") then "failed" elif .state == "inactive" then "unknown" else "in-progress" end + " " + $sha + " " + (.updated_at // "")'`
 Returns: state (succeeded|failed|in-progress|unknown), sha, finished-at on one line.
 
 ### current-release
