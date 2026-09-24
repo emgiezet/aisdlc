@@ -12,15 +12,15 @@ description: >
 
 A reviewer who cannot hold the diff in their head approves it anyway, so review becomes a
 ritual and nobody can honestly own the merge. A stack trades one unreviewable PR for four
-reviewable ones. The cost is real: N PRs means N merges, N deploys to staging, and a restack
-after each squash. State this trade-off before you commit to the stack.
+reviewable ones.
 
 ## Why a stack
 
 One large PR fails review. The reviewer approximates and signs off. The bug that a smaller diff
 would have made obvious ships. A stack of four 100-line PRs reviewed in sequence catches what a
 400-line wall does not, because the reviewer can form a mental model of each one and hold it
-while reading. Every PR in the stack is independently shippable and independently green.
+while reading. Every PR passes its own gates independently and merges only in order. The cost is
+real: N PRs means N merges, N deploys to staging, and a restack after each squash.
 
 ## When not to stack
 
@@ -76,14 +76,20 @@ Bottom-up, one at a time, never in parallel. The full sequence:
 1. The bottom PR passes its own gates and merges (squash).
 2. Its branch is deleted; **its commits no longer exist** — the squash produced one new commit on
    main.
-3. Every child is now based on a deleted branch. Rebase each child onto the new base *before*
-   retargeting it:
+3. Only the direct child (next in line) is based on the deleted branch. Rebase it onto the
+   default base ref:
    ```bash
-   git rebase --onto origin/main <old-parent-branch> <child-branch>
+   git rebase --onto origin/main <old-parent-branch> <direct-child-branch>
    ```
-4. **retarget-pr** the next child to the default base ref, then force-push the rebased branch.
-   This is the one place the harness force-pushes; it is `/sdlc:stack`'s job, not a human's —
-   `hooks/guard` blocks `--force` from agent sessions by design.
+   Every deeper child rebases onto its freshly-restacked parent, keeping its own parent as base:
+   ```bash
+   git rebase --onto <new-parent-branch> <old-parent-branch> <child-branch>
+   ```
+   Only one PR at a time is ever based on the default base ref; grandchildren and deeper stay
+   targeted at their immediate parent.
+4. **retarget-pr** the direct child to the default base ref, then push with
+   `git push --force-with-lease`. The guard hook explicitly permits `--force-with-lease`;
+   `--force` and `-f` are blocked.
 5. Re-run CI on the retargeted child before merging. A green check from before the rebase proves
    nothing about the code that exists now.
 
