@@ -12,7 +12,7 @@ decision**. After a `READY` verdict this command prints the exact **promote** in
 the human to run — it does not run it. There is no `--promote` flag; a promotion nobody
 supervised is a production incident waiting to happen.
 
-Read `.claude/sdlc.md` for the **Deployer descriptor**, **Environments**, **Merge deploys to**,
+Read `.claude/sdlc.md` for the **Deployer descriptor**, **Environments**, **Default base ref**,
 and **Promotion**. `none` is a valid value for every key.
 
 **Load the `release-readiness` skill** — it owns the gate table, the migration and config
@@ -20,36 +20,55 @@ ordering rules, the rollback rules, and the one-page brief format this command a
 Execute those rules; do not restate them here.
 
 `--to <env>`: the target environment (default: the last entry in **Environments**).
-`--since <ref>`: override the base ref (default: **current-release** of the target).
+`--since <ref>`: base git ref for the no-deployer fallback only (default: most recent tag).
 
 ---
 
 ## Phase 1: Resolve the set [HARD STOP]
 
-Resolve `<target>` from `--to` or from the last entry in **Environments**. Resolve `<source>`
-as the environment directly before `<target>` in **Environments**.
-
-**Deployer descriptor is `none` or absent:** fall back to git history. Run:
+**`Environments: none`** — there is no promotion target. Enumerate the git history set:
 
 ```bash
-git log <base-ref>..<merge-target> --oneline
+git log <base-ref>..<default-base-ref> --oneline
 ```
 
-where `<base-ref>` is `--since <ref>` if given, else the output of
-`git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`;
-`<merge-target>` is the **Merge deploys to** branch (default `origin/main`). Record the
-git log output as `<set>`. Print one line:
+where `<base-ref>` is `--since <ref>` if given, else
+`git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`; and
+`<default-base-ref>` is **Default base ref** (e.g. `origin/main`). Print the set, then:
 
 ```
-Deployer unavailable — deploy-status, current-release, pending-migrations checks cannot be performed.
+Environments: none — no promotion target configured; every environment check skipped.
+```
+
+Stop here. Do not continue to Phase 2 or beyond.
+
+---
+
+Resolve `<target>` from `--to` or from the last entry in **Environments**. Resolve `<source>`
+as the entry directly before `<target>` in **Environments**.
+
+**`Deployer descriptor: none`** — fall back to git history. Resolve `<base-ref>` as
+`--since <ref>` if given, else the output of
+`git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`. Run:
+
+```bash
+git log <base-ref>..<default-base-ref> --oneline
+```
+
+Record the output as `<set>`. Print:
+
+```
+Deployer unavailable — deploy-status, current-release, pending-migrations cannot be performed.
 ```
 
 **With a deployer descriptor:**
 
-1. **current-release** `<target>` → `<target-ref>`. If `--since <ref>` was given, use that as
-   `<target-ref>` instead.
+1. **current-release** `<target>` → `<target-ref>` (always from the deployer; `--since` does
+   not override this value — `<target-ref>` must reflect what is actually live in the target).
 2. **current-release** `<source>` → `<source-ref>`.
 3. **env-diff** `<source>` `<target>` → `<set>`: one line per commit (sha, subject, PR number).
+   If `--since <ref>` was given, filter `<set>` to commits not reachable from `<since-ref>`:
+   intersect with `git log <since-ref>..<source-tip> --format=%H`.
 
 If `<set>` is empty: print `nothing to promote — <target> is level with <source>` and stop.
 
@@ -62,8 +81,8 @@ Record: `<set>`, `<target-ref>` (live ref in target before this promotion), `<so
 For each commit in `<set>`:
 
 1. **get-pr** or **search-prs** by sha → PR number, linked ticket.
-2. A commit with no associated PR is a finding — record: `untracked commit <sha> <subject>
-   reached <source> outside the pipeline`.
+2. A commit with no associated PR is a finding — record:
+   `untracked commit <sha> <subject> reached <source> outside the pipeline`.
 
 Record: sha → `{pr, ticket}` for every attributed commit.
 
@@ -72,32 +91,43 @@ Record: sha → `{pr, ticket}` for every attributed commit.
 ## Phase 3: Apply the gate [GATE]
 
 Load the `release-readiness` skill's promotion table. Walk **every row** — do not stop at the
-first failure. Collect each failing row as a `HOLD: <reason>` line. When a deployer operation
-cannot run (no deployer), record `HOLD: <row-name> — deployer unavailable, verify manually`.
+first failure. Collect each failing row as a `HOLD: <reason>` line.
 
-| Gate row | How to check |
-|---|---|
-| Staging verification — every set member verified, not merely deployed | **deploy-status** `<source>`; Phase 2 PR list |
-| Pending migrations — none unapplied in the target | **pending-migrations** `<target>` — empty output means none |
-| Config and secrets — every new key confirmed present in the target | inspect `<set>` for new keys; flag each for manual confirmation |
-| Feature flags — new behaviour behind a flag defaulting off | inspect `<set>` for flag introductions |
-| API contract — no breaking change for a client still in flight | review `<set>` against `rest-api-design` / `graphql-api-design` |
-| Rollback path — named owner and **rollback** command stated | no deployer call; must be stated in the brief |
-| Brief signed — exists and names a signer | answered in Phase 4 |
+Deployer operations called for two rows:
+
+- **Staging verification row** → **deploy-status** `<source>`, cross-checked against the Phase 2
+  PR list. With no deployer: `HOLD: staging verification — deployer unavailable, verify manually`.
+- **Migrations row** → **pending-migrations** `<target>` — empty output means none.
+  With no deployer: `HOLD: pending migrations — deployer unavailable, verify manually`.
+
+For the remaining rows (config and secrets, feature flags, API contract): inspect `<set>`; flag
+each for manual confirmation in the brief.
+
+Defer two rows to after Phase 4 (both require brief fields that do not exist yet):
+**rollback owner** and **brief signed**. Record them as pending; Phase 4 evaluates both.
 
 ---
 
 ## Phase 4: Write the brief [REQUIRED]
 
-Fill `plugins/sdlc/skills/release-readiness/references/release-brief.md` into
+Fill `../skills/release-readiness/references/release-brief.md` into
 `specs/releases/<YYYY-MM-DD>.md` (create `specs/releases/` if absent). Every section of the
-template must appear. Where a value cannot be determined, write `Not verified — <reason>`;
-never leave a section empty. If the set does not compress to one page, write:
-`Set too large — recommend promoting through <sha> first` and name the cut point.
+template must appear. Where a value is unknown: write `Not verified — <reason>`; never leave
+a section empty. If the set does not compress to one page: write
+`Set too large — recommend promoting through <sha> first` and name the sha.
 
-The **Rollback** section states the exact command the human would run to revert:
-`rollback <target> <target-ref>` (where `<target-ref>` is the ref Phase 1 recorded as live in
-the target before this promotion — not the ref being promoted).
+The **Rollback** section states: `rollback <target> <target-ref>` where `<target-ref>` is the
+ref Phase 1 recorded as live in the target before this promotion — not the ref being promoted.
+When the deployer is unavailable, write `Not verified — no deployer; rollback ref unknown`.
+
+Evaluate the two deferred gate rows now that the brief exists:
+
+- **Rollback owner**: the brief's `Rollback` line must name an owner. If absent:
+  add `HOLD: no rollback owner named — fill Owner in the brief and re-run`.
+- **Brief signed**: the brief's header must name a signer. If absent:
+  add `HOLD: brief not yet signed — fill Signer in the brief and re-run`.
+
+Append any new `HOLD:` lines to the Phase 3 list.
 
 Commit the brief:
 
@@ -115,11 +145,21 @@ git commit -m "docs(release): brief <YYYY-MM-DD> — <n> changes"
 Set: <n> commits · <source> → <target>
 Brief: specs/releases/<YYYY-MM-DD>.md
 
-HOLD: <reason>   ← one line per failing gate row; omit block when none
+HOLD: <reason>   ← one line per failing row from Phases 3 and 4; omit block when none
 ...
 ```
 
-`READY` only when every gate row passes. Print the verdict last, exactly once:
+`READY` only when every gate row passes. When `READY` and **Promotion** is not `none`, print
+the invocation for the human — **do not run it**:
+
+```
+To promote, run:
+  promote <target> <source-ref>
+```
+
+With `Promotion: none`: print the verdict and omit the invocation block.
+
+Print the verdict exactly once, last:
 
 ```
 Verdict: READY
@@ -129,13 +169,6 @@ or
 
 ```
 Verdict: HOLD
-```
-
-When `READY`, print the promote invocation for the human — **do not run it**:
-
-```
-To promote, run:
-  promote <target> <source-ref>
 ```
 
 ---
