@@ -99,6 +99,7 @@ jobs:
           CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
           CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
           SLOPGUARD_IT_REQUIRE: '1'
+          SLOPGUARD_IT_DEBUG: '1'
         run: make tool-integration
 
   runner-and-fixture:

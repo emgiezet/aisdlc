@@ -84,9 +84,26 @@ it_skip_unless_tool() {
         it_skip "${tool}: no binary (lockfile name: ${bin})"
         return 1
     fi
-    # Symlink into vendor/bin of the current project (version-check bypass).
+    # Place the binary where the dispatcher will find it under project-first.
+    # With SLOPGUARD_IT_DEBUG=1 a tee wrapper goes there instead, so a failing
+    # case can show what the tool actually printed rather than an empty hook
+    # output — diagnosing a silent parser from silence is how these defects
+    # survived review twice.
     if [ -n "${_IT_CUR_PROJ:-}" ] && [ -d "${_IT_CUR_PROJ}/vendor/bin" ]; then
-        ln -sf "$path" "${_IT_CUR_PROJ}/vendor/bin/${bin}"
+        if [ "${SLOPGUARD_IT_DEBUG:-0}" = "1" ]; then
+            _IT_RAW_TOOL="$tool"
+            _IT_RAW="${_IT_WORK}/raw-${tool}.out"
+            {
+                printf '#!/usr/bin/env bash\n'
+                printf 'out="$("%s" "$@" 2>&1)"; rc=$?\n' "$path"
+                printf 'printf "%%s" "$out" | tee -a "%s" >/dev/null\n' "$_IT_RAW"
+                printf 'printf "%%s" "$out"\n'
+                printf 'exit "$rc"\n'
+            } > "${_IT_CUR_PROJ}/vendor/bin/${bin}"
+            chmod +x "${_IT_CUR_PROJ}/vendor/bin/${bin}"
+        else
+            ln -sf "$path" "${_IT_CUR_PROJ}/vendor/bin/${bin}"
+        fi
     fi
     return 0
 }
@@ -149,7 +166,7 @@ it_run() {
         CLAUDE_PROJECT_DIR="$dir" \
         CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
         CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-${_IT_WORK}/plugin-data}" \
-        CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="${CLAUDE_PLUGIN_OPTION_TOOL_SOURCE:-project-first}" \
+        CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="$([ "${SLOPGUARD_IT_DEBUG:-0}" = "1" ] && printf 'project-first' || printf '%s' "${CLAUDE_PLUGIN_OPTION_TOOL_SOURCE:-project-first}")" \
         CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory \
         "${PLUGIN_ROOT}/bin/slopguard" post-write --tier="$tier" 2>&1)" || true
     printf '%s' "$out"
@@ -164,7 +181,30 @@ it_expect_ap() {
     else
         it_bad "$label" \
             "expected ${ap_id}; hook output: $(printf '%s\n' "$out" | head -c 300)"
+        # A failure here means a parser did not understand its tool. Guessing at
+        # the reason from an empty hook output is how these defects survived in
+        # the first place, so dump what the tool actually printed.
+        it_diagnose
     fi
+}
+
+# it_diagnose
+# Print the last raw tool invocation captured by it_capture, if any.
+it_diagnose() {
+    [ -s "${_IT_RAW:-/nonexistent}" ] || return 0
+    printf '        raw tool output (%s):\n' "${_IT_RAW_TOOL:-unknown}"
+    head -c 1200 "$_IT_RAW" | sed 's/^/        | /'
+    printf '\n'
+}
+
+# it_capture <tool> <dir> -- <cmd...>
+# Run a tool exactly as the dispatcher would and store its stdout for
+# it_diagnose. Used by cases that want the real payload on failure.
+it_capture() {
+    local tool="$1" dir="$2"; shift 3
+    _IT_RAW_TOOL="$tool"
+    _IT_RAW="${_IT_WORK}/raw-${tool}.json"
+    ( cd "$dir" && "$@" ) > "$_IT_RAW" 2>&1 || true
 }
 
 # it_expect_silent <output> <label>
