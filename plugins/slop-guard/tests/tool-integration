@@ -180,7 +180,7 @@ it_expect_ap() {
         it_ok "$label"
     else
         it_bad "$label" \
-            "expected ${ap_id}; hook output: $(printf '%s\n' "$out" | head -c 300)"
+            "expected ${ap_id}; hook output: $(printf '%s\n' "$out" | head -c 1500)"
         # A failure here means a parser did not understand its tool. Guessing at
         # the reason from an empty hook output is how these defects survived in
         # the first place, so dump what the tool actually printed.
@@ -214,7 +214,7 @@ it_expect_silent() {
     local out="$1" label="$2"
     if printf '%s\n' "$out" | grep -qF '"additionalContext"'; then
         it_bad "$label" \
-            "expected no findings; hook output: $(printf '%s\n' "$out" | head -c 300)"
+            "expected no findings; hook output: $(printf '%s\n' "$out" | head -c 1500)"
     else
         it_ok "$label"
     fi
