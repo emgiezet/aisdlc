@@ -153,10 +153,12 @@ stack_tier() {
     printf '%s\n' "$_tier"
 }
 
-# Tools every project needs, whatever its stacks:
-#   jq          — every hook parses its input with it
-#   betterleaks — secret scanning runs on the raw diff, not on a language
-#   shellcheck  — shell scripts carry no stack anchor of their own
+# Tools every project needs, whatever its stacks. Each line is prefixed so the
+# tool name never opens the comment: `# shellcheck …` would be read as a
+# ShellCheck directive and fail parsing (SC1073).
+#   - jq: every hook parses its input with it
+#   - betterleaks: secret scanning runs on the raw diff, not on a language
+#   - shellcheck: shell scripts carry no stack anchor of their own
 SLOPGUARD_CORE_TOOLS="betterleaks jq shellcheck"
 
 # stack_tools <tag>
