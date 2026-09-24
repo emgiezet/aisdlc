@@ -144,3 +144,6 @@ PR: #<n> (<url>)
   does not know which PRs to credit; that logic lives here.
 - **`/sdlc:close-fixed`** — closes issues fixed by merged PRs. Run that separately; this
   command only writes the changelog.
+- **`/sdlc:release-check`** — decides whether the set is safe to promote and writes the
+  one-page release brief. The brief is the input this command summarises; the brief decides,
+  the changelog records. Run `/sdlc:release-check` before `/sdlc:changelog`.

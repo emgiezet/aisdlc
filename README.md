@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 32 commands, 12 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 33 commands, 12 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -196,6 +196,7 @@ They ask questions, act once, and hand control back.
 | `/sdlc:stack <TICKET\|pr#>` | Merge a chain of stacked PRs bottom-up — gates every member first, then squash-merges and restacks between each merge; `Verdict: MERGED` or `⚠ NEEDS HUMAN`. |
 | `/sdlc:test-env` · `/sdlc:integration-tests <T>` | Boot the app portably and reuse it warm; write E2E tests against the running app with real locators. |
 | `/sdlc:retro [--since]` | Classify finished runs, rank causes by cost and wall-clock, map each to the harness file that owns it. |
+| `/sdlc:release-check [--to <env>] [--since <ref>]` | Gate between staging and production — enumerates the release set, walks the promotion table, writes the one-page brief, `READY` or `HOLD`; never promotes. |
 
 ### 🧠 Skills
 

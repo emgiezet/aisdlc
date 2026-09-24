@@ -69,6 +69,7 @@ commands travel in a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`, v
 | `/sdlc:arch-review` | `SOUND` `GAPS` | architecture verdict; `GAPS` = a blocker or unwaived major |
 | `/sdlc:stack` | `MERGED` | the whole chain landed; a partial merge reports `⚠ NEEDS HUMAN` instead |
 | any autofix loop | `⚠ NEEDS HUMAN` | stop; a person decides |
+| `/sdlc:release-check` | `READY` `HOLD` | the promotion decision for a release set |
 
 ## Claim lock
 

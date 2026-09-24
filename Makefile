@@ -20,7 +20,7 @@ COMMANDS := init spec mockup implement qa ship \
             review fix-pr review-prs autopilot continue merge stack merge-buddy followup close-fixed changelog \
             issue triage root-cause fix-issue \
             brainstorm discover synthetic-users backlog ux-shape ux-setup \
-            test-env integration-tests ux-review retro arch-review
+            test-env integration-tests ux-review retro arch-review release-check
 SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review rest-api-design graphql-api-design pr-stacking release-readiness
 AGENTS := auto-qa code-reviewer
 PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing graphql-api
