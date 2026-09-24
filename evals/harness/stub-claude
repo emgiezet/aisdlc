@@ -6,7 +6,8 @@
 #
 #   - it consumes stdin (which once ate the phase loop's own input, so only the first phase ran)
 #   - it accepts both the namespaced /sdlc:<command> and the bare /<command> form
-#   - it reports num_turns and total_cost_usd in the real result shape
+#   - it reports num_turns and total_cost_usd in the real result shape, as the bare result
+#     object or — with AISDLC_STUB_JSON=array — as the message array newer CLIs emit
 #
 # Behaviour is chosen by AISDLC_STUB:
 #   ok        (default) implement + qa succeed and commit
@@ -28,8 +29,14 @@ prompt="${prompt/sdlc:/}"
 ticket="${prompt##* }"
 
 result() {
-    printf '{"type":"result","subtype":"success","is_error":%s,"num_turns":%s,' "$1" "$2"
-    printf '"result":"%s","session_id":"stub","total_cost_usd":%s}\n' "$3" "$4"
+    local obj
+    obj="$(printf '{"type":"result","subtype":"success","is_error":%s,"num_turns":%s,' "$1" "$2"
+           printf '"result":"%s","session_id":"stub","total_cost_usd":%s}' "$3" "$4")"
+    if [ "${AISDLC_STUB_JSON:-object}" = "array" ]; then
+        printf '[{"type":"system","subtype":"init","session_id":"stub"},%s]\n' "$obj"
+    else
+        printf '%s\n' "$obj"
+    fi
 }
 
 commit() { git add -A >/dev/null 2>&1; git -c user.name=stub -c user.email=stub@localhost commit -qm "$1" >/dev/null 2>&1; }
