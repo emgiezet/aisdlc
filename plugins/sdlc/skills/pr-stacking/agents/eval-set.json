@@ -1,0 +1,10 @@
+[
+  {"query": "This PR is 2000 lines, how do I break it up?", "should_trigger": true, "note": "size budget and slicing are the core"},
+  {"query": "I merged the bottom PR and now the next one shows all its changes", "should_trigger": true, "note": "the restack-after-squash trap, stated symptom-first"},
+  {"query": "Can I merge these three PRs in any order?", "should_trigger": true, "note": "bottom-up merge order"},
+  {"query": "Split ABC-123 into slices I can review one at a time", "should_trigger": true, "note": "building a stack from a split spec"},
+  {"query": "What base branch should this second PR target?", "should_trigger": true, "note": "the base chain"},
+  {"query": "Is this release safe to promote to production?", "should_trigger": false, "note": "release-readiness owns the promotion gate"},
+  {"query": "How many tests does this endpoint need?", "should_trigger": false, "note": "dense-testing owns density floors"},
+  {"query": "Write the use-case table for ABC-204", "should_trigger": false, "note": "spec-authoring owns spec format"}
+]

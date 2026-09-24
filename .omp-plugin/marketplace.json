@@ -22,6 +22,7 @@
         "./skills/graphql-api-design",
         "./skills/harness-eval",
         "./skills/pipeline-contracts",
+        "./skills/pr-stacking",
         "./skills/rest-api-design",
         "./skills/spec-authoring",
         "./skills/task-router"
