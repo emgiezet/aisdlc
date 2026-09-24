@@ -26,6 +26,10 @@ Execute those rules; do not restate them here.
 
 ## Phase 1: Resolve the set [HARD STOP]
 
+If `--since <ref>` is passed and the **Deployer descriptor** names a deployer: the release
+set is defined by the deployer's view of what is live, not a git ref, so `--since` does not
+apply. Print that line and stop.
+
 **`Environments: none`** — there is no promotion target. Enumerate the git history set:
 
 ```bash
@@ -49,7 +53,8 @@ as the entry directly before `<target>` in **Environments**.
 
 **`Deployer descriptor: none`** — fall back to git history. Resolve `<base-ref>` as
 `--since <ref>` if given, else the output of
-`git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`. Run:
+`git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD`;
+`<default-base-ref>` is **Default base ref** (default `origin/main`). Run:
 
 ```bash
 git log <base-ref>..<default-base-ref> --oneline
@@ -67,8 +72,6 @@ Deployer unavailable — deploy-status, current-release, pending-migrations cann
    not override this value — `<target-ref>` must reflect what is actually live in the target).
 2. **current-release** `<source>` → `<source-ref>`.
 3. **env-diff** `<source>` `<target>` → `<set>`: one line per commit (sha, subject, PR number).
-   If `--since <ref>` was given, filter `<set>` to commits not reachable from `<since-ref>`:
-   intersect with `git log <since-ref>..<source-tip> --format=%H`.
 
 If `<set>` is empty: print `nothing to promote — <target> is level with <source>` and stop.
 
@@ -110,10 +113,13 @@ Defer two rows to after Phase 4 (both require brief fields that do not exist yet
 
 ## Phase 4: Write the brief [REQUIRED]
 
-Fill `../skills/release-readiness/references/release-brief.md` into
-`specs/releases/<YYYY-MM-DD>.md` (create `specs/releases/` if absent). Every section of the
-template must appear. Where a value is unknown: write `Not verified — <reason>`; never leave
-a section empty. If the set does not compress to one page: write
+If `specs/releases/<YYYY-MM-DD>.md` already exists (this is a re-run after the human filled
+in `Signer:` or `Owner:`): update it in place. Never rewrite it from the blank template and
+never overwrite a `Signer:` or `Owner:` value the human has filled in; only update the
+gate-derived sections (Contents, Migrations, Config, Flags, Not verified). If the file is
+absent, fill `../skills/release-readiness/references/release-brief.md` into it. Every section
+of the template must appear. Where a value is unknown: write `Not verified — <reason>`; never
+leave a section empty. If the set does not compress to one page: write
 `Set too large — recommend promoting through <sha> first` and name the sha.
 
 The **Rollback** section states: `rollback <target> <target-ref>` where `<target-ref>` is the
