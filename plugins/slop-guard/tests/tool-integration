@@ -70,9 +70,18 @@ it_skip_unless_tool() {
     local tool="$1"
     local bin path
     bin="$(lock_bin "$tool" 2>/dev/null || printf '%s' "$tool")"
-    path="$(command -v "$bin" 2>/dev/null || true)"
+    # Resolve exactly the way the dispatcher does. resolve_tool honours
+    # tool_source and the lockfile version, so a PATH copy of the wrong version
+    # is invisible here too — and, more importantly, the CI toolchain lives
+    # under CLAUDE_PLUGIN_DATA with tool_source=plugin-only, where a plain
+    # `command -v` finds nothing. That is how this suite first reported
+    # "0 passed, 0 failed, 11 skipped" in CI and still went green.
+    path="$(CLAUDE_PROJECT_DIR="${_IT_CUR_PROJ:-${PWD}}" resolve_tool "$tool" 2>/dev/null || true)"
     if [ -z "$path" ]; then
-        it_skip "${tool}: '${bin}' not in PATH"
+        path="$(command -v "$bin" 2>/dev/null || true)"
+    fi
+    if [ -z "$path" ]; then
+        it_skip "${tool}: no binary (lockfile name: ${bin})"
         return 1
     fi
     # Symlink into vendor/bin of the current project (version-check bypass).
@@ -196,3 +205,19 @@ fi
 
 printf '%d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
 [ "$FAIL" -eq 0 ] || exit 1
+
+# SLOPGUARD_IT_REQUIRE=1 turns a skip into a failure. CI sets it: there the whole
+# pinned toolchain is installed, so a skip means the suite could not find a tool
+# it should have found — and a run where everything skipped must not look like a
+# run where everything passed. That distinction is the only reason this file
+# earns its place.
+if [ "${SLOPGUARD_IT_REQUIRE:-0}" = "1" ]; then
+    if [ "$SKIP" -gt 0 ]; then
+        printf 'SLOPGUARD_IT_REQUIRE=1: %d tool(s) skipped — every pinned tool must run here\n' "$SKIP"
+        exit 1
+    fi
+    if [ "$PASS" -eq 0 ]; then
+        printf 'SLOPGUARD_IT_REQUIRE=1: nothing ran\n'
+        exit 1
+    fi
+fi

@@ -90,12 +90,15 @@ jobs:
 
       # Runs each wired linter's own bad/good fixture through the shipped hook path.
       # Fails this job if any parser does not understand its tool's real output.
-      # Skips per tool when the binary is absent (never the case here: slopguard doctor --install
-      # just ran above and installed the full pinned toolchain).
+      # SLOPGUARD_IT_REQUIRE=1 also fails on a skip: the whole pinned toolchain was
+      # installed above, so a skipped tool means the suite could not find one it
+      # should have — the first run of this step reported "0 passed, 11 skipped"
+      # and went green, which is exactly the false signal it exists to remove.
       - name: Tool integration tests (real binaries)
         env:
           CLAUDE_PLUGIN_DATA: ${{ runner.temp }}/slopguard-tools
           CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
+          SLOPGUARD_IT_REQUIRE: '1'
         run: make tool-integration
 
   runner-and-fixture:
