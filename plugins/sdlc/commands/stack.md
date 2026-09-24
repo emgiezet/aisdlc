@@ -49,7 +49,7 @@ Stack (bottom → top):
   #<n3>  <title>  (base: ai/<branch2>)
 ```
 
-Stop here unless `--merge` was passed.
+**HARD STOP** — if `--merge` is absent from `$ARGUMENTS`, print the chain above, print the gate table from Phase 2, and halt. Do not read Phase 2 instructions beyond the table, and do not read Phase 3 at all. Reading past this line without `--merge` is a defect; the run would merge without human intent.
 
 ---
 
@@ -127,10 +127,14 @@ P_old=$(git rev-parse <P-branch>)
    The boundary is always the sha recorded in step A of this round — never a tip produced by
    a rebase within this same round. Do not update saved shas between deeper members within
    the same round.
-6. **retarget-pr** C to the default base ref.
-7. `git push --force-with-lease origin <C-branch>` — the guard hook permits `--force-with-lease`;
+6. Return to the default base branch before any tracker operations: `git checkout <default-base-branch>`.
+   The three-argument form of `git rebase` checks out the target branch, leaving HEAD there;
+   every subsequent step in this round and the next round's **merge-pr** require HEAD to be on
+   the default base branch.
+7. **retarget-pr** C to the default base ref.
+8. `git push --force-with-lease origin <C-branch>` — the guard hook permits `--force-with-lease`;
    `--force` and `-f` are blocked.
-8. **rerun-check** C. Wait for all required checks to pass before merging C.
+9. **rerun-check** C. Wait for all required checks to pass before merging C.
 
 **Conflict during any rebase:** run `git rebase --abort` first, then report which member
 conflicted, set its pipeline label to `blocked`, leave everything already merged as merged,
