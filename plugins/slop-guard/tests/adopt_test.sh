@@ -237,10 +237,57 @@ printf '' > "${_all_proj}/zizmor.yml"
 # opengrep: create a .semgrep.yml so tool_config_path recognises it as project
 printf '' > "${_all_proj}/.semgrep.yml"
 
+# Descriptor templates also count as adoptable, so adopt them too before
+# asserting that nothing is left.
+mkdir -p "${_all_proj}/.slopguard/tools"
+for _tpl in "${PLUGIN_ROOT}"/configs/baseline/descriptors/*.yaml; do
+    [ -f "${_tpl}" ] || continue
+    cp "${_tpl}" "${_all_proj}/.slopguard/tools/${_tpl##*/}"
+done
+
 _all_out="$(CLAUDE_PROJECT_DIR="${_all_proj}" "${SLOPGUARD}" adopt-config 2>/dev/null)"
 printf '%s\n' "${_all_out}" | grep -qi 'all tools have project configs\|nothing to adopt' \
     && ok  "list: reports all configured when every tool has a project config" \
     || bad "list: reports all configured" "${_all_out}"
+
+# --------------------------------------------------------------------------- #
+printf '\nadopt-config: project-local descriptors\n'
+# --------------------------------------------------------------------------- #
+
+_desc_proj="${WORK}/descriptors"
+mkdir -p "${_desc_proj}"
+
+_desc_list="$(CLAUDE_PROJECT_DIR="${_desc_proj}" "${SLOPGUARD}" adopt-config 2>/dev/null)"
+printf '%s\n' "${_desc_list}" | grep -q 'mypy.*project-local descriptor' \
+    && ok  "list: mypy offered as a project-local descriptor" \
+    || bad "list: mypy offered as a project-local descriptor" "${_desc_list}"
+
+_desc_out="$(CLAUDE_PROJECT_DIR="${_desc_proj}" "${SLOPGUARD}" adopt-config mypy 2>&1)"
+_desc_dest="${_desc_proj}/.slopguard/tools/mypy.yaml"
+[ -f "${_desc_dest}" ] \
+    && ok  "adopt mypy: descriptor written to .slopguard/tools" \
+    || bad "adopt mypy: descriptor written to .slopguard/tools" "${_desc_out}"
+
+cmp -s "${PLUGIN_ROOT}/configs/baseline/descriptors/mypy.yaml" "${_desc_dest}" \
+    && ok  "adopt mypy: copied file is byte-identical to the template" \
+    || bad "adopt mypy: copied file is byte-identical to the template" "differs"
+
+printf '%s\n' "${_desc_out}" | grep -q 'installs nothing' \
+    && ok  "adopt mypy: output states the plugin installs nothing for it" \
+    || bad "adopt mypy: output states the plugin installs nothing for it" "${_desc_out}"
+
+if CLAUDE_PROJECT_DIR="${_desc_proj}" "${SLOPGUARD}" adopt-config mypy >/dev/null 2>&1; then
+    bad "adopt mypy: second run exits non-zero" "exit 0 on existing descriptor"
+else
+    ok "adopt mypy: second run exits non-zero"
+fi
+
+_desc_list2="$(CLAUDE_PROJECT_DIR="${_desc_proj}" "${SLOPGUARD}" adopt-config 2>/dev/null)"
+if printf '%s\n' "${_desc_list2}" | grep -q 'mypy.*project-local descriptor'; then
+    bad "list: adopted descriptor drops out of the listing" "${_desc_list2}"
+else
+    ok "list: adopted descriptor drops out of the listing"
+fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

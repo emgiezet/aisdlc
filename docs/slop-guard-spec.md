@@ -2165,6 +2165,28 @@ Warunkiem wejścia do Etapu 3 dla każdego języka jest przejście sondy Opengre
 3. Binarka z `PATH` — **tylko** gdy wersja zgadza się z `tools.lock.json` (sprawdzenie `--version`). W przeciwnym razie ignoruj i loguj w `doctor`.
 4. Narzędzie z deskryptora projektu (`.slopguard/tools/<name>.yaml`, §7.8): sprawdzane po narzędziach spinowanych przez plugin. Deskryptor nie może nadpisać wywołania narzędzia wbudowanego — kolizja nazwy skutkuje `status: refused:pinned-tool-collision` przy ładowaniu deskryptora.
 
+#### Zakres narzędzi — tylko stacki wykryte w projekcie
+
+Kolejność źródeł powyżej odpowiada na pytanie *skąd wziąć binarkę*. Osobne pytanie brzmi *które narzędzia w ogóle dotyczą tego repozytorium*.
+
+Każdy wpis w `rules/stacks.json` deklaruje pole `tools` — listę narzędzi z `tools.lock.json`, których ten stack używa (`python` → `ruff`, `opengrep`; `github-actions` → `zizmor`, `checkov`). Stacki frameworkowe (`laravel`, `react`, `vite`) mają `tools: []` i dziedziczą narzędzia przez `requires`/`implies`.
+
+Zbiór istotnych narzędzi to `SLOPGUARD_CORE_TOOLS` (`betterleaks jq shellcheck` — `lib/detect.sh`) plus suma pól `tools` wykrytych stacków; liczy go `tools_for_stacks`. Narzędzia spoza tego zbioru:
+
+- nie są sondowane w `session-start` (brak wywołania `--version`) i trafiają do `profile.json` jako `source: "not-applicable"`, `relevant: false`,
+- nie pojawiają się w raporcie `missing tools for this project:`,
+- nie są raportowane ani instalowane przez `slopguard doctor` / `doctor --install`; `doctor --all` przywraca pełne zestawienie.
+
+Uzasadnienie: repozytorium bez kodu Go nie zyskuje nic na linterze Go, a żądanie instalacji czternastu narzędzi w projekcie, który używa czterech, uczy użytkownika ignorować komunikaty pluginu. Zbiór core jest niezależny od stacków, bo `jq` parsuje wejście każdego hooka, skan sekretów czyta surowy diff, a skrypty powłoki nie mają własnej kotwicy stacku.
+
+Gwarancja pokrycia: gate `make validate-slopguard` odrzuca `stacks.json`, w którym jakikolwiek wpis nie ma tablicy `tools`, `tools` wskazuje narzędzie spoza `tools.lock.json`, albo narzędzie z lockfile'a nie należy do żadnego stacku ani do zbioru core — takie narzędzie nigdy by się nie uruchomiło.
+
+#### Analizatory rozwiązywane wyłącznie z projektu (mypy, pylint)
+
+`mypy` i `pylint` rozwiązują importy przez interpreter projektu, więc kopia zainstalowana przez plugin zgłaszałaby nieistniejące błędy (`no-member`, `import-not-found`). Oba są dostarczane jako szablony deskryptorów (§7.8) w `configs/baseline/descriptors/`, adoptowane przez `slopguard adopt-config mypy|pylint` do `.slopguard/tools/`. `resolve.project` obejmuje `.venv/bin`, `venv/bin`, `.tox/py/bin`; plugin nie pinuje ich i niczego dla nich nie instaluje — brak binarki w projekcie oznacza `status: absent`, nie błąd.
+
+Mapowania `rules/mapping/{mypy,pylint}.yaml` są wczytywane przez `ext_load_mapping` tak samo jak dla narzędzi pinowanych. Każdy wpis musi mieć niepuste `ap_id`: `_dispatch_run_one_ext_tool` czyta wiersz mapowania przez `@tsv` do `IFS=$'\t' read -r ap_id severity category cwe`, a tabulator jest znakiem białym w IFS — puste pierwsze pole znika i `severity` ląduje w `ap_id`. Reguły bez odpowiednika w katalogu dostają identyfikator kubełkowy (`AP-PY-TYPE-000`, `AP-PY-LINT-000`), tak jak istniejące `AP-DOCKER-LINT-000` czy `AP-CI-LINT-000`. `hooks/post-write` emituje linię `Details:` tylko wtedy, gdy plik referencyjny dla danego `ap_id` istnieje.
+
 
 #### Kolejność źródeł konfiguracji (`config_source`)
 

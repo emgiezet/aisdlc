@@ -214,6 +214,22 @@ validate-slopguard: ## Validate the slop-guard plugin, if present
 			plugins/slop-guard/rules/stacks.json > /dev/null \
 			&& echo "  ✓ stacks.json: context7 values are non-empty strings" \
 			|| (echo "  ✗ stacks.json: context7 field empty or wrong type" && exit 1); \
+		jq -e --slurpfile lock plugins/slop-guard/tools/tools.lock.json \
+			'($$lock[0].tools | keys | map({(.): true}) | add) as $$pinned | [to_entries[] | select(.value.tools == null or (.value.tools | type) != "array")] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: every entry declares a tools array" \
+			|| (echo "  ✗ stacks.json: entry missing the tools array" && exit 1); \
+		jq -e --slurpfile lock plugins/slop-guard/tools/tools.lock.json \
+			'($$lock[0].tools | keys | map({(.): true}) | add) as $$pinned | [to_entries[] | (.value.tools // [])[] | select($$pinned[.] == null)] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: tools refs are pinned in tools.lock.json" \
+			|| (echo "  ✗ stacks.json: tools references a tool absent from tools.lock.json" && exit 1); \
+		jq -e --slurpfile lock plugins/slop-guard/tools/tools.lock.json \
+			--argjson core "$$(sed -n 's/^SLOPGUARD_CORE_TOOLS="\(.*\)"$$/\1/p' plugins/slop-guard/lib/detect.sh | tr ' ' '\n' | jq -Rc 'select(length > 0)' | jq -sc .)" \
+			'([to_entries[] | (.value.tools // [])[]] + $$core | map({(.): true}) | add) as $$covered | [$$lock[0].tools | keys[] | select($$covered[.] == null)] | length == 0' \
+			plugins/slop-guard/rules/stacks.json > /dev/null \
+			&& echo "  ✓ stacks.json: every pinned tool is reachable from a stack or the core set" \
+			|| (echo "  ✗ stacks.json: a pinned tool belongs to no stack and is not core — it would never run" && exit 1); \
 	fi; \
 	if [ -f plugins/slop-guard/rules/registries.json ]; then \
 		jq . plugins/slop-guard/rules/registries.json > /dev/null \

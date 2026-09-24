@@ -374,6 +374,26 @@ under `.slopguard/` requires human approval to change (the `pre-write` hook asks
 pinned fixture tests and a sha256 in `tools/tools.lock.json` — open a PR to the plugin rather
 than adding a project descriptor. Descriptors are for tools upstream will never pin permanently.
 
+**Descriptors the plugin ships ready-made.** `mypy` and `pylint` resolve imports through the
+project's own interpreter, so a plugin-installed copy would report errors that do not exist.
+They are shipped as descriptor templates instead — adopt one and it runs from your virtualenv,
+or stays absent if you do not have it:
+
+```bash
+slopguard adopt-config mypy      # writes .slopguard/tools/mypy.yaml
+slopguard adopt-config pylint    # writes .slopguard/tools/pylint.yaml
+```
+
+Pylint symbols that name a catalog anti-pattern arrive with its id and severity
+(`bare-except` → AP-PY-MAINT-001, `eval-used` → AP-PY-SEC-007); the rest report as plain
+findings. `slopguard adopt-config` with no argument lists both the baseline configs and the
+descriptors your project has not adopted yet.
+
+**Which tools your project is asked for.** Slop Guard only reports and installs the tools your
+detected stacks can use, plus a small core set (`jq`, `betterleaks`, `shellcheck`). A Python
+repository is never told it is missing PHPStan. `slopguard doctor` shows the scope it applied;
+`slopguard doctor --all` reports every pinned tool regardless of stack.
+
 **Linter configuration and what the guard reports.** When your project has its own linter
 configuration (a `ruff.toml`, `.golangci.yml`, `eslint.config.*`, and so on), Slop Guard runs
 that tool with your config and reports everything it finds — style, performance, maintainability,
