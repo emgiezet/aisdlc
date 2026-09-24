@@ -89,8 +89,8 @@ git fetch origin <branch>:<branch>   # one per member, bottom to top
 A refspec fetch updates the local ref directly and refuses when the update is not a
 fast-forward. Absent branches are created. Any failure — ahead-of-remote, divergent, or
 currently checked out — stops the command: name the branch and exit. After every member
-succeeds, each local ref is identical to its remote head at this moment; no fetch in
-step B.3 will advance those member remote-tracking refs.
+succeeds, each local ref is identical to its remote head at this moment; the assertion fetch
+in step B.2 is scoped to the base branch only and does not advance member remote-tracking refs.
 
 **Repeating loop** — for each member from bottom to top. Call the current bottom P and its
 direct child C.
@@ -102,7 +102,7 @@ must live in the round's written output, not a `$VARIABLE`. Run:
 git rev-parse <P-branch>                    # → note as <P-old-sha> for this round
 git rev-parse <each-remaining-member-branch># → note as <member-old-sha>
 ```
-Write each literal 40-character sha into the round's progress notes. B.4 and B.5 use only
+Write each literal 40-character sha into the round's progress notes. B.3 and B.4 use only
 these literal shas as boundaries — never a `$VARIABLE` that may be empty.
 
 **Step B:**
@@ -113,25 +113,25 @@ these literal shas as boundaries — never a `$VARIABLE` that may be empty.
    Approving for squash-merge.
    ```
 2. **merge-pr** P (squash). P's branch is deleted; its commits no longer exist as such.
-   **Assert the squash landed before continuing.** Run:
+   **Assert the squash landed before continuing.** For the GitHub tracker (squash lands on the
+   remote), first run `git fetch origin <default-base-branch>` — this updates the tracking ref
+   and is scoped to the base branch, leaving member remote-tracking refs unchanged. For the
+   local tracker, `merge-pr` already advanced `main`; no fetch needed. Then run:
    ```bash
    git log --oneline -1 <default-base-ref>
    git rev-parse <default-base-ref>
    ```
    Confirm the output sha equals the `mergeCommit` the tracker just recorded for P. If they
    differ, the squash did not land on `<default-base-ref>`: stop, print the discrepancy,
-   and do not advance to B.3.
-3. Advance the **Default base ref** so it points to P's squash commit:
-   - **`origin/main`** (GitHub tracker, merge happened on the remote): `git fetch origin <default-base-branch>` — the squash is already on origin; a bare fetch updates the tracking ref.
-   - **`main`** (local tracker, merge-pr commits locally): no fetch needed — local `main` was updated by merge-pr and **is** `<default-base-ref>` already.
-4. Rebase C onto **Default base ref** using the literal sha Step A printed for P:
+   and do not continue to the rebase step.
+3. Rebase C onto **Default base ref** using the literal sha Step A printed for P:
    ```bash
    git rebase --onto <default-base-ref> <P-old-sha> <C-branch>
    ```
    `<P-old-sha>` is the 40-character sha recorded in Step A for P this round. If the rebase
    reports a conflict: run `git rebase --abort`, set C's pipeline label to `blocked`, and go
-   to the conflict block below without executing steps 5–9.
-5. **Restack every queued member** — all members that follow C in the stack (nearest to C first).
+   to the conflict block below without executing steps 4–8.
+4. **Restack every queued member** — all members that follow C in the stack (nearest to C first).
    Even when only one queued member exists, this step is mandatory; skipping it leaves the
    queue out of sync and the next round's rebase will replay the merged parent's diff and conflict.
    For each such member D in order (nearest C first):
@@ -142,21 +142,21 @@ these literal shas as boundaries — never a `$VARIABLE` that may be empty.
    pre-rebase sha, not the post-rebase tip (which is a new commit unreachable from D's history).
    If the rebase reports a conflict: run `git rebase --abort`, set D's pipeline label to
    `blocked`, and go to the conflict block below.
-6. Return to the default base branch before any tracker operations: `git checkout <default-base-branch>`.
+5. Return to the default base branch before any tracker operations: `git checkout <default-base-branch>`.
    The three-argument form of `git rebase` checks out the target branch, leaving HEAD there;
    every subsequent step in this round and the next round's **merge-pr** require HEAD to be on
    the default base branch. If this checkout fails (branch absent locally or checked out in a
    sibling worktree): confirm the working tree is clean, then stop and report the current state —
    P was squash-merged, all rebases for this round completed, and the operator must run
-   `git checkout <default-base-branch>` manually before continuing with steps 7–9 and the next round.
-7. **retarget-pr** C to `<default-base-branch>` (the branch name, e.g. `main`).
-8. `git push --force-with-lease origin <C-branch>` — the guard hook permits `--force-with-lease`;
+   `git checkout <default-base-branch>` manually before continuing with steps 6–8 and the next round.
+6. **retarget-pr** C to `<default-base-branch>` (the branch name, e.g. `main`).
+7. `git push --force-with-lease origin <C-branch>` — the guard hook permits `--force-with-lease`;
    `--force` and `-f` are blocked.
-9. **rerun-check** C. Wait for all required checks to pass before merging C.
+8. **rerun-check** C. Wait for all required checks to pass before merging C.
 
-**Conflict block** (reached from B.4 or B.5 inline): report which member conflicted, set its
+**Conflict block** (reached from B.3 or B.4 inline): report which member conflicted, set its
 pipeline label to `blocked`, leave already-merged PRs as merged, and state plainly that the
-remainder needs a human. **Failed checkout (step 6):** report the state — P was squash-merged,
+remainder needs a human. **Failed checkout (step 5):** report the state — P was squash-merged,
 all rebases completed — and the operator must run `git checkout <default-base-branch>` manually.
 
 In the next round, C is the new P. Step A prints C's current sha (now the post-rebase tip) fresh.
@@ -165,7 +165,10 @@ In the next round, C is the new P. Step A prints C's current sha (now the post-r
 
 ## Phase 4: Report
 
-When the full chain lands, verify every member's landing before printing MERGED. For each member:
+When the full chain lands, verify every member's landing before printing MERGED. For the
+GitHub tracker, first run `git fetch origin <default-base-branch>` — the last member's squash
+landed after B.2's fetch; without this, `<default-base-ref>` is stale for that commit.
+For the local tracker, no fetch needed. Then for each member:
 ```bash
 git merge-base --is-ancestor <mergeCommit> <default-base-ref>
 ```
@@ -196,7 +199,6 @@ Blocked at #<n2> <title>:
 Verdict: ⚠ NEEDS HUMAN
 PR: #<n2> (<url>)
 ```
-
 ---
 
 ## Not to be confused with
