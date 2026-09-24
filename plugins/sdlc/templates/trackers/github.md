@@ -56,6 +56,11 @@ Returns: PR URL; number is its last path segment.
 `gh api -X PATCH repos/{owner}/{repo}/pulls/{n} -f 'title={title}' -F body=@{body-file}`
 Not `gh pr edit`: it resolves the PR through a GraphQL query that still selects the retired
 `projectCards` connection, which fails on gh builds predating its removal.
+### retarget-pr
+`gh api -X PATCH repos/{owner}/{repo}/pulls/{n} -f 'base={base}' --jq '.base.ref'`
+Returns: the base branch GitHub now reports. Not `gh pr edit --base`, for the same reason
+`update-pr` avoids `gh pr edit`. A retarget on a PR whose head was rebased is only half the job:
+the rebase is `/sdlc:stack`'s, and it happens first.
 ### comment-pr
 `gh pr comment {n} --body-file {body-file}`
 ### label-pr

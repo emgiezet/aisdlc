@@ -44,6 +44,7 @@ equivalent, comment formatting}
 ### search-prs       {query} {state} → number, title, url
 ### create-pr        {title} {body-file} {base} {draft} [{verdict}] → number, url
 ### update-pr        {n} {title} {body-file}
+### retarget-pr     {n} {base} → the new base branch, read back from the PR
 ### comment-pr       {n} {body-file}
 ### label-pr         {n} {label}
 ### unlabel-pr       {n} {label}

@@ -33,7 +33,7 @@ Read back every mutation before reporting it done. `local` is a real provider (f
 |---|---|
 | Identity | **auth-check** **current-user** |
 | Issues | **get-issue** **search-issues** **create-issue** **comment-issue** **close-issue** **label-issue** **unlabel-issue** **assign-issue** |
-| Pull requests | **get-pr** **list-prs** **search-prs** **create-pr** **update-pr** **comment-pr** **label-pr** **unlabel-pr** **assign-pr** **review-pr** **merge-pr** **get-pr-diff** **get-pr-checks** **get-run-failed-logs** **checkout-pr** **rerun-check** **attach-image-evidence** |
+| Pull requests | **get-pr** **list-prs** **search-prs** **create-pr** **update-pr** **retarget-pr** **comment-pr** **label-pr** **unlabel-pr** **assign-pr** **review-pr** **merge-pr** **get-pr-diff** **get-pr-checks** **get-run-failed-logs** **checkout-pr** **rerun-check** **attach-image-evidence** |
 | Labels | **ensure-labels** (only `/sdlc:init` calls it) |
 | Lock | **claim** **check-claim** **release** |
 | Browser | **boot-check** **open** **goto** **click** **fill** **assert-text** **screenshot** **close** |
