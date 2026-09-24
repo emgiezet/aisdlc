@@ -1,7 +1,7 @@
 {
   "php": {
     "tier": 1,
-    "tools": ["phpstan", "psalm", "opengrep"],
+    "tools": ["phpstan", "psalm", "opengrep", "jscpd"],
     "anchors": {
       "files": ["composer.json"]
     },
@@ -50,7 +50,7 @@
   },
   "go": {
     "tier": 1,
-    "tools": ["golangci-lint", "opengrep"],
+    "tools": ["golangci-lint", "opengrep", "jscpd"],
     "anchors": {
       "files": ["go.mod"]
     },
@@ -59,7 +59,7 @@
   },
   "python": {
     "tier": 1,
-    "tools": ["ruff", "opengrep"],
+    "tools": ["ruff", "opengrep", "jscpd"],
     "anchors": {
       "files": ["pyproject.toml", "setup.cfg", "uv.lock", "poetry.lock"],
       "globs": ["requirements*.txt"]
@@ -69,7 +69,7 @@
   },
   "node": {
     "tier": 1,
-    "tools": ["eslint-stack", "opengrep"],
+    "tools": ["eslint-stack", "opengrep", "jscpd"],
     "anchors": {
       "files": ["package.json"]
     },
@@ -78,7 +78,7 @@
   },
   "typescript": {
     "tier": 1,
-    "tools": ["eslint-stack", "opengrep"],
+    "tools": ["eslint-stack", "opengrep", "jscpd"],
     "requires": "node",
     "anchors": {
       "files": ["tsconfig.json"]
@@ -183,7 +183,7 @@
   },
   "java": {
     "tier": 2,
-    "tools": ["opengrep"],
+    "tools": ["opengrep", "jscpd"],
     "anchors": {
       "files": ["pom.xml", "build.gradle", "build.gradle.kts"]
     },
@@ -192,7 +192,7 @@
   },
   "kotlin": {
     "tier": 2,
-    "tools": ["opengrep"],
+    "tools": ["opengrep", "jscpd"],
     "anchors": {
       "files": ["build.gradle.kts", "settings.gradle.kts"]
     },
@@ -201,7 +201,7 @@
   },
   "csharp": {
     "tier": 2,
-    "tools": ["opengrep"],
+    "tools": ["opengrep", "jscpd"],
     "anchors": {
       "files": ["Directory.Build.props"],
       "globs": ["*.sln", "*.csproj", "**/*.csproj"]
@@ -211,7 +211,7 @@
   },
   "ruby": {
     "tier": 2,
-    "tools": ["opengrep"],
+    "tools": ["opengrep", "jscpd"],
     "anchors": {
       "files": ["Gemfile", "Gemfile.lock", "config.ru"]
     },
@@ -220,7 +220,7 @@
   },
   "rust": {
     "tier": 2,
-    "tools": ["opengrep"],
+    "tools": ["opengrep", "jscpd"],
     "anchors": {
       "files": ["Cargo.toml"]
     },

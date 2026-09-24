@@ -561,6 +561,7 @@ _adopt_dest() {
         eslint-stack)  printf '%s/eslint.config.mjs'  "$_ad_dir" ;;
         golangci-lint) printf '%s/.golangci.yml'      "$_ad_dir" ;;
         hadolint)      printf '%s/.hadolint.yaml'     "$_ad_dir" ;;
+        jscpd)         printf '%s/.jscpd.json'        "$_ad_dir" ;;
         kube-linter)   printf '%s/.kube-linter.yaml'  "$_ad_dir" ;;
         phpstan)       printf '%s/phpstan.neon'       "$_ad_dir" ;;
         psalm)         printf '%s/psalm.xml'          "$_ad_dir" ;;

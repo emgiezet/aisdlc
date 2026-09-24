@@ -427,7 +427,8 @@ Async `PostToolUse` hook with `asyncRewake`. Starts after the fast hook; the age
 working while it runs. Only wakes the agent back if it finds new problems at `error` severity or
 above — warnings and info go to the next session summary, not a mid-task interruption. Wired tools:
 PHPStan (PHP), golangci-lint with `--new-from-rev` (Go), ESLint with type-info (JS/TS), tflint
-(Terraform), Checkov per-file (IaC), and Opengrep with the plugin's own rules (all stacks). Each
+(Terraform), Checkov per-file (IaC), Opengrep with the plugin's own rules (all stacks), and jscpd
+directory-scoped (duplication, all code stacks). Each
 tool runs only for the stack detected in the session. A three-second debounce collapses a batch of
 rapid edits into one run.
 
@@ -481,6 +482,12 @@ the detector is never mistaken for a clean codebase.
 
 The `/slop-guard:secure-review` command runs a read-only security-reviewer subagent over the
 current session's changed files. It cannot write or edit — it only reports.
+
+The `/slop-guard:deslop <path>` command runs an editing subagent over a file or directory,
+removing duplicate blocks and dead code flagged by jscpd and the linters. Without a test command
+it performs pure deletions only — it will not rename, reorder, or merge code. Supply
+`--tests <cmd>` to allow structural refactoring; the agent confirms the command passes before
+finishing. `--dry-run` lists what would be changed without writing anything.
 
 ## 🏷️ Labels and the merge gate
 

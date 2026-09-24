@@ -217,6 +217,65 @@ else
 fi
 
 # --------------------------------------------------------------------------- #
+# 11. jscpd: listing, adopt, second-run refusal, absent after adopt
+# --------------------------------------------------------------------------- #
+
+_jscpd_clean="${WORK}/jscpd-clean"
+mkdir -p "${_jscpd_clean}"
+
+_jscpd_list_out="$(CLAUDE_PROJECT_DIR="${_jscpd_clean}" "${SLOPGUARD}" adopt-config 2>/dev/null)"
+
+# jscpd should appear for a clean project (no .jscpd.json present)
+printf '%s\n' "${_jscpd_list_out}" | grep -q 'jscpd' \
+    && ok  "list: jscpd appears for clean project" \
+    || bad "list: jscpd appears for clean project" "${_jscpd_list_out}"
+
+# baseline filename must be named in the listing
+printf '%s\n' "${_jscpd_list_out}" | grep -q '\.jscpd\.json' \
+    && ok  "list: baseline filename .jscpd.json shown for jscpd" \
+    || bad "list: baseline filename .jscpd.json shown for jscpd" "${_jscpd_list_out}"
+
+# Adopt jscpd into the clean project
+_jscpd_adopt_out="$(CLAUDE_PROJECT_DIR="${_jscpd_clean}" "${SLOPGUARD}" adopt-config jscpd 2>/dev/null)"
+_jscpd_dest="${_jscpd_clean}/.jscpd.json"
+
+[ -f "${_jscpd_dest}" ] \
+    && ok  "adopt jscpd: .jscpd.json created in project" \
+    || bad "adopt jscpd: .jscpd.json created in project" "not found: ${_jscpd_dest}"
+
+_baseline_jscpd="${PLUGIN_ROOT}/configs/baseline/.jscpd.json"
+if [ -f "${_baseline_jscpd}" ] && [ -f "${_jscpd_dest}" ]; then
+    cmp -s "${_baseline_jscpd}" "${_jscpd_dest}" \
+        && ok  "adopt jscpd: copied file is byte-identical to baseline" \
+        || bad "adopt jscpd: copied file is byte-identical to baseline" "files differ"
+else
+    bad "adopt jscpd: byte-identity check" \
+        "missing: baseline=${_baseline_jscpd} or dest=${_jscpd_dest}"
+fi
+
+# Second run must exit non-zero and leave the file unmodified
+_jscpd_adopt2_err="$(CLAUDE_PROJECT_DIR="${_jscpd_clean}" "${SLOPGUARD}" adopt-config jscpd 2>&1)"
+_jscpd_adopt2_exit=$?
+
+[ "${_jscpd_adopt2_exit}" -ne 0 ] \
+    && ok  "adopt jscpd: second run exits non-zero" \
+    || bad "adopt jscpd: second run exits non-zero" "exit code was 0"
+
+if [ -f "${_baseline_jscpd}" ] && [ -f "${_jscpd_dest}" ]; then
+    cmp -s "${_baseline_jscpd}" "${_jscpd_dest}" \
+        && ok  "adopt jscpd: file unmodified after second-run refusal" \
+        || bad "adopt jscpd: file unmodified after second-run refusal" "file content changed"
+else
+    bad "adopt jscpd: file still present after second-run refusal" "file was removed"
+fi
+
+# jscpd must be absent from the listing once .jscpd.json is present
+_jscpd_list2="$(CLAUDE_PROJECT_DIR="${_jscpd_clean}" "${SLOPGUARD}" adopt-config 2>/dev/null)"
+printf '%s\n' "${_jscpd_list2}" | grep -qE '^\s+jscpd\s' \
+    && bad "list: jscpd must not appear when .jscpd.json exists" "${_jscpd_list2}" \
+    || ok  "list: jscpd absent from listing when .jscpd.json present"
+
+# --------------------------------------------------------------------------- #
 # 10. Listing shows "All tools have project configs" when all have configs
 # --------------------------------------------------------------------------- #
 
@@ -234,6 +293,7 @@ printf '' > "${_all_proj}/psalm.xml"
 printf '' > "${_all_proj}/ruff.toml"
 printf '' > "${_all_proj}/.tflint.hcl"
 printf '' > "${_all_proj}/zizmor.yml"
+printf '' > "${_all_proj}/.jscpd.json"
 # opengrep: create a .semgrep.yml so tool_config_path recognises it as project
 printf '' > "${_all_proj}/.semgrep.yml"
 

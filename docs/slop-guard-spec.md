@@ -1565,6 +1565,37 @@ Minimalny zestaw **własnych** reguł (MIT, pisane od zera; każda z fixture `ba
 | `sql-migrations.yaml` | `slopguard.laravel.migration-fk-without-index`, `slopguard.migration.not-null-without-default` | AP-SQL-003/004 |
 | `docker-ci.yaml` | `slopguard.docker.curl-pipe-shell`, `slopguard.gitlab.image-without-digest`, `slopguard.gitlab.include-remote` | AP-DOCKER-004, AP-CI-006 |
 
+### 6.12 Duplikacja — jscpd
+
+**Detekcja stosu**: `py`, `js`, `jsx`, `mjs`, `cjs`, `ts`, `tsx`, `mts`, `cts`, `go`, `php`, `java`, `kt`, `kts`, `cs`, `rb`, `rs`.
+
+`configs/baseline/.jscpd.json`:
+
+```json
+{
+  "minLines": 5,
+  "minTokens": 50,
+  "reporters": ["json"],
+  "gitignore": true,
+  "ignore": ["vendor/**", "node_modules/**", "*.lock", "*.min.*", "dist/**", "build/**", "generated/**"]
+}
+```
+
+Wywołanie (zakres katalogu, tier M):
+
+```bash
+jscpd "$SLOPGUARD_TARGET_DIR" --config "$CONFIG" --reporters=json \
+  --output="$SLOPGUARD_CACHE_DIR/jscpd" 2>/dev/null
+```
+
+Zasady:
+- Zakres: katalog pliku zmienionego, nie pojedynczy plik — duplikacja jest z definicji relacją między plikami; wywołanie per plik nie wykryłoby duplikacji między plikami.
+- Tier: **medium** (`asyncRewake`); koszt jednorazowego indeksowania katalogu jest za wysoki dla tiera fast.
+- Findings: reguła `duplicate-block` → `AP-SLOP-DUP-001`, severity `warn`, kategoria `maintainability`.
+- **Nakładka bezpieczeństwa (bypass)**: findings emitowane przez `_dispatch_filter_emit` (filtr diff zmienionych linii), z **pominięciem** nakładki bezpieczeństwa (`config_source=overlay`). Nakładka odrzuca każdy finding o kategorii innej niż `security`; `duplicate-block` ma kategorię `maintainability` — w domyślnej konfiguracji wszystkie findings byłyby pomijane, czyniąc narzędzie martwym. Granica: nakładka istnieje, żeby nie narzucać opinii stylistycznych z konfiguracji bazowej; próg duplikacji (`minLines: 5`, `minTokens: 50`) jest pomiarem (liczbą), a nie regułą stylu. `tool_config_mode = skip` jest nadal respektowany.
+- Identyfikator kubełkowy `AP-SLOP-DUP-001` nie ma strony referencyjnej w katalogu — analogicznie do `AP-CI-LINT-000`, `AP-DOCKER-LINT-000`.
+- `slopguard adopt-config jscpd` kopiuje `.jscpd.json` do repozytorium; po adopcji plik podlega ochronie `pre-write`.
+
 ---
 
 ## 7. Polityki (fail-closed)
@@ -2266,7 +2297,22 @@ Dla każdej konfiguracji bazowej na przypiętej wersji narzędzia:
 | zizmor | `zizmor --config configs/baseline/zizmor.yml tests/fixtures/ci/good` |
 | Opengrep | `opengrep --validate --config rules/opengrep` + `opengrep --test rules/opengrep` |
 
+| jscpd | `jscpd tests/fixtures/ --config configs/baseline/.jscpd.json --reporters=json --output=/tmp/jscpd-test && jq '.statistics.total.clones' /tmp/jscpd-test/jscpd-report.json` (poprawny JSON; brak duplikatów w `fixtures/good`) |
+
 Dodatkowo test spójności: każda reguła wymieniona w `rules/mapping/*.yaml` musi istnieć w narzędziu. Lista reguł pobierana komendami typu `ruff rule --all --output-format json`, `golangci-lint linters`, `kube-linter checks list`.
+
+### 9.4 Detekcja duplikacji — jscpd
+
+jscpd 5.3.2 jest przypięty w `tools/tools.lock.json` na czterech platformach (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64) z hashami sha256. Licencja: MIT (`https://github.com/kucherenko/jscpd`).
+
+**Tier i zakres**: medium (`asyncRewake`), zakres katalogu pliku zmienionego. Duplikacja jest relacją między plikami — wywołanie per plik nie mogłoby wykryć duplikacji między plikami, a re-indeksowanie całego katalogu przy każdym zapisie niszczyłoby sens debouncingu. Dispatcher uruchamia jscpd po 3-sekundowej przerwie w aktywności edycji.
+
+**Routing**: `_dispatch_medium_tools_for_file` kieruje do `_dispatch_run_jscpd` pliki z rozszerzeniami `py js jsx mjs cjs ts tsx mts cts go php java kt kts cs rb rs`. Narzędzie nie uruchamia się w tierze fast.
+
+**Nakładka bezpieczeństwa (bypass)**: findings jscpd trafiają do agenta przez `_dispatch_filter_emit` (filtr diff zmienionych linii), omijając kategoryczną filtrację nakładki bezpieczeństwa. Nakładka (`config_source=overlay`) przepuszcza wyłącznie findings z kategorii `security`; `duplicate-block` ma kategorię `maintainability` i byłby zawsze odrzucany w domyślnej konfiguracji. Jest to drugi wyjątek od nakładki — pierwszy dotyczy deskryptorów projektu (mypy, pylint), które są uruchamiane z konfiguracją projektu bezwarunkowo. Granica wyjątku: nakładka istnieje, żeby nie narzucać opinii stylistycznych; próg duplikacji (`minLines: 5`, `minTokens: 50`) jest pomiarem liczby bloków, a nie regułą stylu. `tool_config_mode = skip` jest nadal respektowany: jeśli projekt ustawi `skip` dla jscpd, narzędzie nie uruchamia się wcale.
+
+**Mapowanie**: `rules/mapping/jscpd.yaml`, reguła `duplicate-block` → `AP-SLOP-DUP-001`, severity `warn`, kategoria `maintainability`. Identyfikator kubełkowy bez strony referencyjnej w katalogu — analogicznie do `AP-CI-LINT-000`, `AP-DOCKER-LINT-000`.
+
 
 ---
 
