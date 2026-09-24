@@ -76,9 +76,9 @@ Bottom-up, one at a time, never in parallel. The full sequence:
 1. Record each stack member's current tip sha — branch names move or vanish during the restack
    and cannot serve as replay boundaries:
    ```bash
-   a_old=$(git rev-parse ai/<TICKET>-a)
-   b_old=$(git rev-parse ai/<TICKET>-b)
-   # one per member
+   git rev-parse ai/<TICKET>-a   # → note as <a-sha> (literal 40-char sha)
+   git rev-parse ai/<TICKET>-b   # → note as <b-sha>
+   # one per member; shell variables do not persist across Bash calls — copy each printed sha
    ```
 2. The bottom PR passes its own gates and merges (squash).
 3. Its branch is deleted; **its commits no longer exist** — the squash produced one new commit on
@@ -87,8 +87,8 @@ Bottom-up, one at a time, never in parallel. The full sequence:
    ref; each deeper child replays off its own parent's recorded tip onto that parent's
    freshly-restacked branch:
    ```bash
-   git rebase --onto origin/main "$a_old" ai/<TICKET>-b        # direct child
-   git rebase --onto ai/<TICKET>-b "$b_old" ai/<TICKET>-c      # deeper child
+   git rebase --onto <default-base-ref> <a-sha> ai/<TICKET>-b  # direct child; literal sha from step 1
+   git rebase --onto ai/<TICKET>-b <b-sha> ai/<TICKET>-c       # deeper child
    ```
    Destination is always a branch name; the replay boundary is always a saved sha. Only one PR
    at a time is ever based on the default base ref; grandchildren stay targeted at their parent.

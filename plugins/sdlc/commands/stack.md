@@ -115,11 +115,11 @@ these literal shas as boundaries — never a `$VARIABLE` that may be empty.
 2. **merge-pr** P (squash). P's branch is deleted; its commits no longer exist as such.
    **Assert the squash landed before continuing.** Run:
    ```bash
-   git log --oneline -1 <default-base-branch>
-   git rev-parse <default-base-branch>
+   git log --oneline -1 <default-base-ref>
+   git rev-parse <default-base-ref>
    ```
    Confirm the output sha equals the `mergeCommit` the tracker just recorded for P. If they
-   differ, the squash did not land on `<default-base-branch>`: stop, print the discrepancy,
+   differ, the squash did not land on `<default-base-ref>`: stop, print the discrepancy,
    and do not advance to B.3.
 3. Advance the **Default base ref** so it points to P's squash commit:
    - **`origin/main`** (GitHub tracker, merge happened on the remote): `git fetch origin <default-base-branch>` — the squash is already on origin; a bare fetch updates the tracking ref.
@@ -167,10 +167,10 @@ In the next round, C is the new P. Step A prints C's current sha (now the post-r
 
 When the full chain lands, verify every member's landing before printing MERGED. For each member:
 ```bash
-git merge-base --is-ancestor <mergeCommit> <default-base-branch>
+git merge-base --is-ancestor <mergeCommit> <default-base-ref>
 ```
-If any mergeCommit fails this check: print `DEFECT: #<n> mergeCommit <sha> absent from <default-base-branch>`
-and report `Verdict: ⚠ NEEDS HUMAN` instead of MERGED. Only when every check passes:
+If any mergeCommit fails this check: print `DEFECT: #<n> mergeCommit <sha> absent from <default-base-ref>`
+and report `Verdict: ⚠ NEEDS HUMAN` then `PR: #<n_last> (<url>)` instead of MERGED. Only when every check passes:
 ```
 ## Merged — Stack <TICKET>
 
