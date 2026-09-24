@@ -59,11 +59,11 @@ _it_stop_run() {
 
     printf '%s' "$_payload" | \
         CLAUDE_PROJECT_DIR="$_proj" \
-        CLAUDE_PLUGIN_DATA="$_IT_STOP_PDATA" \
+        CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$_IT_STOP_PDATA}" \
         CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=balanced \
         CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK="false" \
         CLAUDE_PLUGIN_OPTION_REQUIRE_DOCS_LOOKUP="false" \
-        CLAUDE_PLUGIN_OPTION_TOOL_SOURCE=project-first \
+        CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="${CLAUDE_PLUGIN_OPTION_TOOL_SOURCE:-project-first}" \
         "${PLUGIN_ROOT}/hooks/stop" 2>&1 || true
 
     rm -rf "${_IT_STOP_PDATA}/sessions/${_sess}" 2>/dev/null || true

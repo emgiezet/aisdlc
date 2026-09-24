@@ -140,10 +140,16 @@ it_run() {
         '{session_id:$sid,agent_id:null,tool_name:"Write",
           tool_input:{file_path:$fp,content:""}}')"
     local out
+    # CLAUDE_PLUGIN_DATA must be inherited when the caller set one: in CI the
+    # pinned toolchain lives there and tool_source is plugin-only, so pointing
+    # the hook at a fresh empty directory made every tool "unavailable" while
+    # the suite itself had resolved them fine. Session state lands under the
+    # same root, keyed by a unique session id, so cases stay isolated.
     out="$(printf '%s\n' "$payload" | \
         CLAUDE_PROJECT_DIR="$dir" \
         CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
-        CLAUDE_PLUGIN_DATA="${_IT_WORK}/plugin-data" \
+        CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-${_IT_WORK}/plugin-data}" \
+        CLAUDE_PLUGIN_OPTION_TOOL_SOURCE="${CLAUDE_PLUGIN_OPTION_TOOL_SOURCE:-project-first}" \
         CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE=advisory \
         "${PLUGIN_ROOT}/bin/slopguard" post-write --tier="$tier" 2>&1)" || true
     printf '%s' "$out"
