@@ -75,14 +75,17 @@ blocks the stack.
 
 Proceed only when `--merge` is passed and all Phase 2 gates have passed.
 
-**Setup — fetch and materialize all branches.** Members are pushed from per-task worktrees;
-the local clone may lack their refs or have stale ones:
+**Setup — fetch and confirm all branches.** Members are pushed from per-task worktrees; the
+local clone may have missing or stale refs. `git fetch origin` first, then for every member
+branch:
 
-```bash
-git fetch origin
-# for each member branch not yet in the local clone:
-git checkout --track origin/<branch>
-```
+- **Absent locally** → `git checkout --track origin/<branch>`.
+- **Present and fast-forwardable** to `origin/<branch>` → `git merge --ff-only origin/<branch>`.
+- **Present and divergent** from `origin/<branch>` → stop the whole command, name the branch,
+  and say the operator's local branch has commits the remote does not. A failed precondition
+  is a human's problem by design, like `/sdlc:merge` having no `--force` flag.
+
+Every sha step A records comes from a ref confirmed identical to its remote head.
 
 **Repeating loop** — for each member from bottom to top. Call the current bottom P and its
 direct child C.
@@ -114,8 +117,9 @@ P_old=$(git rev-parse <P-branch>)
    ```bash
    git rebase --onto <D-parent-branch> "$D_parent_old" <D-branch>
    ```
-   The boundary is always the sha recorded in step A of this round — never a post-rebase tip.
-   Do not update saved shas between deeper members within the same round.
+   The boundary is always the sha recorded in step A of this round — never a tip produced by
+   a rebase within this same round. Do not update saved shas between deeper members within
+   the same round.
 6. **retarget-pr** C to the default base ref.
 7. `git push --force-with-lease origin <C-branch>` — the guard hook permits `--force-with-lease`;
    `--force` and `-f` are blocked.
