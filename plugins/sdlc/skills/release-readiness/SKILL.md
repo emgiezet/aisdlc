@@ -22,9 +22,6 @@ when a human holds the whole set and takes responsibility for it.
 | Merge | Is this safe *on staging*? Cheap, revertible, auto-deployed | One change, staging only | The author |
 | Promote | Is this set safe *for users*? The whole set, not the last PR | All users, production | A named signer |
 
-When merge auto-deploys, teams apply the production bar at every merge and slow every PR down, or
-apply the staging bar at promote time and ship surprises. The bar belongs at the promote gate only.
-
 ## The release set
 
 The release set is everything merged since the last promotion — **not** the stack you just
@@ -32,14 +29,14 @@ merged. Enumerate it before any other gate runs:
 
 - **deploy-status**: the current deployment state of each environment
 - **current-release**: what the deploy target reports as live in production
-- **env-diff**: what staging has that production does not
+- **env-diff**: what staging has that **current-release** does not
 
-The set is the difference between **current-release** and **env-diff**. A release set nobody
-enumerated is the most common cause of "we didn't know that was in there."
+**env-diff** is the release set. A release set nobody enumerated is the most common cause
+of "we didn't know that was in there."
 
 ## Promotion gate
 
-Run each row in order. A failing row is a `HOLD`; name the failing row in the verdict.
+Run each row in order. A failing row is a `HOLD`; all rows passing is `READY`. Name the failing row in the verdict.
 
 | Check | HOLD reason |
 |---|---|
@@ -55,10 +52,11 @@ Run each row in order. A failing row is a `HOLD`; name the failing row in the ve
 
 Expand-then-contract, in this exact sequence. Each step ships as a separate release.
 
-1. Add the nullable column and write to both old and new paths — this step ships first.
+1. Add the nullable column; write to both old and new paths — this step ships first.
 2. Backfill: populate the new column from existing data — ships as its own release.
-3. Read from the new path only — ships after the backfill is complete and verified.
-4. Drop the old column — a later release, never the same one as step 3.
+3. Read from the new path only; continue writing to both paths — ships after the backfill is complete and verified.
+4. Stop writing the old column; the new path is the only writer — ships after step 3 is verified stable.
+5. Drop the old column — a later release, never the same one as step 4.
 
 **A release is rollback-safe only if every migration in it is forward-compatible with the
 previous release's code.** A destructive migration in the same set as the code that stopped

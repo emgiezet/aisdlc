@@ -1,6 +1,6 @@
 # Release <YYYY-MM-DD> — <n> changes
 
-**Set:** <first-sha>..<last-sha> · **Target:** <env> · **Signer:** <@who>
+**Set:** <first-sha>..<last-sha> · **Target:** <env> · **Blast radius:** <who is affected if this goes wrong> · **Signer:** <@who>
 
 ## What a user will notice
 <one bullet per user-visible change, in the user's words, not the PR title. "Nothing" is a
