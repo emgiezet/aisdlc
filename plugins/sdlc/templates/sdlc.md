@@ -51,6 +51,27 @@ value, because the pipeline has nowhere to put its output otherwise.
        drive the real application, plus one file per user-facing feature with a proven recipe.
        none → QA works out how to exercise the app each time, and nothing of that survives -->
 
+## Change budget
+
+The review surface one task may add. `/sdlc:spec` estimates against these numbers and calls
+`/sdlc:decompose` when the estimate breaks one; `scope-check` measures the finished branch and
+says so in `scope-report.md`. A spec may set its own `Change budget:` line under `## Scope` —
+that wins, which is how a mechanical codemod gets a wider budget than a behaviour change.
+Deleted lines, generated output, vendored trees, lock files and the specs directory never count.
+
+- **Added lines:** 400
+  <!-- defect finding degrades past ~400 reviewed lines (SmartBear/Cisco); Google's own
+       guidance calls 100 reasonable and 1000 too large -->
+- **Files:** 15
+  <!-- review attention drops ~8.7% per extra file; lowest latent-bug rate around 10 files
+       (arXiv 2609.22610, 330k PRs) -->
+- **Modules:** 3
+  <!-- a module is the first two path segments, e.g. services/billing. Cross-subsystem
+       co-changes are the defect-prone ones (D'Ambros 2009) -->
+- **Hard ceiling:** 3000
+  <!-- past this scope-check returns BLOCKED and the queue stops before ship: nobody reviews
+       a diff this wide, so it goes back through /sdlc:decompose -->
+
 ## Contracts and decisions
 
 - **API contract directory:** `none`

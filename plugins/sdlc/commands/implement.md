@@ -86,6 +86,15 @@ the test count comes from, and it is not optional.
 Never touch anything in the spec's `Out:` scope. If the change appears to require it, that is
 Phase 4, not a judgement call.
 
+**Watch the change budget while you build.** After each UC commit, measure the branch:
+`git diff --numstat <base>...HEAD`, added lines only, excluding generated output, vendored
+trees, lock files and the specs directory. Compare with the spec's `Change budget:` line, or
+the `## Change budget` section of `.claude/sdlc.md` when the spec is silent. Over budget with
+UCs still unbuilt is not a reason to speed up: finish the UC in hand, commit it, and go to
+Phase 4 with `Blocked by: change budget` — the spec was mis-sized and `/sdlc:decompose` splits
+the remainder. Past the hard ceiling `scope-check` refuses the branch anyway, after the work is
+already spent.
+
 ---
 
 ## Phase 3: Verify
@@ -126,8 +135,9 @@ Branch `ai/<TICKET>-<slug>`, <n> commits, UCs done: UC-1, UC-2. Working tree: cl
 ```
 
 Stop here for: a spec/test contradiction, a second failure of the same CI command, a required
-change inside `Out:` scope, a missing credential or service, an ambiguity with two defensible
-readings. Committing what works before stopping is correct — leave the branch inspectable.
+change inside `Out:` scope, a change budget already spent with UCs left, a missing credential
+or service, an ambiguity with two defensible readings. Committing what works before stopping is
+correct — leave the branch inspectable.
 
 ---
 
