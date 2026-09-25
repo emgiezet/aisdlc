@@ -49,6 +49,7 @@ After the PR:     /${NAME}:continue · /${NAME}:fix-pr · /${NAME}:autopilot · 
                   /${NAME}:close-fixed · /${NAME}:changelog
 QA surface:       /${NAME}:test-env · /${NAME}:integration-tests · /${NAME}:ux-review
 Harness:          /${NAME}:retro — rank what the runs cost, by cause
+                  /${NAME}:update [--check] — after a plugin upgrade, re-sync this repo's descriptors, profile fields and runner config
 Architecture:     /${NAME}:arch-review <EPIC|path> — grade a planned architecture against its traffic profile, availability tier and RPO/RTO
 
 Skills (load with the Skill tool):

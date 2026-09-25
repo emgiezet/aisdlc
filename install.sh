@@ -67,6 +67,25 @@ To set up a repository, start an omp session in the repo and run:
 
   /sdlc:init
 
+--- Updating ---
+
+Is anything to update?
+
+  aisdlc version --check   compares the installed version with the one published on GitHub
+
+The harness itself, per host:
+
+  Claude Code  /plugin update sdlc@aisdlc
+  Codex        codex plugin marketplace upgrade   (git source; for this checkout: git -C $HERE pull)
+  Grok         git -C $HERE pull, then reinstall from /plugins
+  omp          omp plugin upgrade sdlc@aisdlc
+  skills       npx skills update
+
+No host updates what /sdlc:init generated inside a repository. In each repo that ran it:
+
+  /sdlc:update           re-syncs descriptor operations, profile fields and runner config keys
+  /sdlc:update --check   reports what would change, writes nothing
+
 --- Queue runner (requires the claude CLI) ---
 
 Put the queue runner on your PATH:
