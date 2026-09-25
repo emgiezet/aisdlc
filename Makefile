@@ -16,7 +16,7 @@ SCRIPTS := plugins/sdlc/hooks/run-hook.cmd plugins/sdlc/hooks/session-start \
            plugins/sdlc/hooks/guard plugins/sdlc/bin/aisdlc \
            evals/harness/run.sh evals/harness/selftest.sh evals/harness/stub-claude \
            evals/harness/stub-gh
-COMMANDS := init update spec mockup implement qa ship \
+COMMANDS := init update spec decompose mockup implement qa ship \
             review fix-pr review-prs autopilot continue merge merge-buddy followup close-fixed changelog \
             issue triage root-cause fix-issue \
             brainstorm discover synthetic-users backlog ux-shape ux-setup \

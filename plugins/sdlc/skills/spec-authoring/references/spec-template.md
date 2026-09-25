@@ -19,6 +19,10 @@ In:
 Out:
 - <adjacent modules, refactors, and "while we're here" work that must not be touched>
 
+Change budget: <n> added lines, <n> files, <n> modules
+<!-- what this slice may add before scope-check calls it unreviewable; omit to take the
+     repo's defaults from .claude/sdlc.md -->
+
 ## Context
 
 - `path/to/file.ext` — <what lives here and why it matters to this change>

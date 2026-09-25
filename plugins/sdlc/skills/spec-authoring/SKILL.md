@@ -69,11 +69,31 @@ Rules:
 
 ## Sizing
 
-One spec is one queue task is one pull request. Split when the spec exceeds ~8 use cases, spans
-more than two stacks, or contains a row that cannot be tested until another row ships. Split into
-`specs/<TICKET>-a/`, `specs/<TICKET>-b/`, each independently shippable, each ordered
-walking-skeleton-first. For a ticket needing a narrative sequence of slices, decompose it however
-your team normally does, then write one spec per slice.
+One spec is one queue task is one pull request. The plan may be as large as the problem; the
+pull request may not — a slice a reviewer cannot hold is a slice that gets approved unread.
+
+**Split when any of these is true**, before writing the spec rather than after the branch grew:
+
+| Signal | Threshold | Why |
+|---|---|---|
+| Use cases | > ~8 | more than one reviewable outcome |
+| Stacks | > 2 | two review audiences, two CI matrices |
+| Added lines (estimate) | > the repo's `Added lines` budget (default 400) | defect finding degrades past ~400 reviewed lines (SmartBear/Cisco) |
+| Files | > the `Files` budget (default 15) | review attention falls ~8.7% per extra file; latent-bug risk is lowest near 10 (arXiv 2609.22610, 330k PRs) |
+| Modules (first two path segments) | > the `Modules` budget (default 3) | cross-subsystem co-changes are the defect-prone ones (D'Ambros 2009) — a design signal, not a size one |
+| Fan-out | many modules, few lines each | shotgun surgery: extract the seam as its own slice, then move one caller group per slice |
+| Ordering | a row that cannot be tested until another row ships | that row belongs to a later slice |
+
+Estimate honestly: paths named in `## Context` plus their call sites, compared with the three
+most similar past commits (`git log -- <dir>`, then `git show --numstat`). Record the result as
+a `Change budget:` line under `## Scope`; `scope-check` enforces it on the branch and the queue
+stops before ship past the repo's hard ceiling (default 3000 added lines).
+
+**Split into `specs/<TICKET>-a/`, `-b/`, …** — walking skeleton first, each independently
+shippable, each keeping the product working. `/sdlc:decompose` does this mechanically, picks
+the seam, and preserves UC ids across slices; `/sdlc:spec` calls it when its own estimate is
+over budget. A mechanical codemod is always its own slice with its own wider budget: a rename
+across 200 files is reviewable by pattern, the same rename mixed with logic is not.
 
 ## Anti-patterns
 
@@ -93,5 +113,6 @@ your team normally does, then write one spec per slice.
 - [ ] `Out:` scope lists the adjacent things not to touch
 - [ ] Context points at files and contract operations, not prose descriptions
 - [ ] No open questions left when flipping to `approved`
-- [ ] ≤ 8 UCs and ≤ 2 stacks, or split
+- [ ] ≤ 8 UCs, ≤ 2 stacks, and an estimate inside the change budget — or split
+- [ ] `Change budget:` line present under `## Scope`
 - [ ] UC ids stable versus the previous revision

@@ -3,6 +3,7 @@
   {"query": "Turn these acceptance criteria into a use-case table for specs/ABC-88/spec.md", "should_trigger": true, "note": "the UC table is this skill's central artefact"},
   {"query": "Is this spec ready to approve and queue, or is it too vague?", "should_trigger": true, "note": "readiness review against the checklist"},
   {"query": "This spec has 14 use cases across backend and frontend — should I split it?", "should_trigger": true, "note": "sizing rules live in this skill"},
+  {"query": "This change will touch 30 files across six services — how do I slice it so each PR is reviewable?", "should_trigger": true, "note": "change budget and decomposition seams live in this skill"},
   {"query": "Set up the task router and playbooks for this repository", "should_trigger": false, "note": "/sdlc:init and task-router own the instruction hierarchy"},
   {"query": "How many tests does this endpoint need to be adequately covered?", "should_trigger": false, "note": "dense-testing owns density floors"},
   {"query": "Verify the implementation on this branch matches what was asked for", "should_trigger": false, "note": "the auto-qa agent and /sdlc:qa own verification"},
