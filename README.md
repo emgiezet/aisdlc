@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 31 commands, 10 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 32 commands, 10 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -226,6 +226,7 @@ They ask questions, act once, and hand control back.
 | `/sdlc:issue "<brief>" \| <n> [--normalize] [--all]` | File a deduped, structured issue, or bring existing ones up to the template. |
 | `/sdlc:merge <pr#>` · `/sdlc:merge-buddy` | The human's merge — refused unless `merge-ready`, green, conflict-free, no blocking `GAPS`; a read-only report of what can merge now. |
 | `/sdlc:test-env` · `/sdlc:integration-tests <T>` | Boot the app portably and reuse it warm; write E2E tests against the running app with real locators. |
+| `/sdlc:verify-map` | The repo's committed answer to "how do I drive this app": launch, doctor, drive, evidence, cleanup, plus one file per user-facing feature. Creates it by driving the app once; audits it against source and a live pass when it already exists. QA reads it instead of improvising. |
 | `/sdlc:retro [--since]` | Classify finished runs, rank causes by cost and wall-clock, map each to the harness file that owns it. |
 
 ### 🧠 Skills
@@ -289,6 +290,7 @@ Same pipeline, different entry points. Each role runs one or two commands; the c
 |---|---|---|
 | `/sdlc:test-env` | boot discovery, portable `up.sh`/`down.sh`, health check | a warm, reusable running app |
 | `/sdlc:qa ABC-123` | `auto-qa`, the browser descriptor for UI use cases | `qa-report.md` with a UC×test matrix and a screenshot per UI use case |
+| `/sdlc:verify-map` | repo interview, one proving drive, source + live audit | `.claude/verify/<app>.md` and a feature map QA drives instead of guessing |
 | `/sdlc:integration-tests ABC-123` | DOM exploration, real locators | E2E tests named by use case, with artefact-based failure diagnosis |
 
 ### 🚀 Release manager

@@ -6,6 +6,7 @@
   {"query": "Does a spec with kind: bugfix run without a human setting status approved?", "should_trigger": true, "note": "bugfix approval rule"},
   {"query": "Where does the local file-backed tracker keep its issues and PRs?", "should_trigger": true, "note": "local provider layout"},
   {"query": "What tokens can /sdlc:triage return?", "should_trigger": true, "note": "verdict tokens"},
+  {"query": "Which profile key points at the file saying how to drive the running app, and where do its feature files live?", "should_trigger": true, "note": "verification map descriptor"},
   {"query": "How many tests does a new endpoint need per changed symbol?", "should_trigger": false, "note": "dense-testing, not contracts"},
   {"query": "Rewrite this UC so the result is observable", "should_trigger": false, "note": "spec-authoring"},
   {"query": "Why does this scenario pass on Sonnet but fail on Haiku?", "should_trigger": false, "note": "harness-eval"}

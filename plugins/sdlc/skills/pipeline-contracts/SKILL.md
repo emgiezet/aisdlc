@@ -21,6 +21,7 @@ paraphrasing it breaks the chain.
 |---|---|---|
 | **Tracker descriptor** | `.claude/trackers/<kind>.md` | `templates/trackers/{github,local,TEMPLATE}.md` |
 | **Browser descriptor** | `.claude/browsers/<provider>.md` | `templates/browsers/{playwright,agent-browser,TEMPLATE}.md` |
+| **Verification map** | `.claude/verify/<app>.md` + `features/*.md` | `templates/verify/{TEMPLATE,feature-TEMPLATE}.md` |
 
 Resolve: read the profile line, open the file, find `### <operation>`, run its body with the
 `{param}` placeholders filled. `none` → skip every step that needs it, say so in one line.
@@ -64,6 +65,7 @@ commands travel in a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`, v
 | `/sdlc:triage` | `NO_ACTION_NEEDED` `BUG` `FEATURE` | route decision |
 | `/sdlc:root-cause` | `LOW_CONFIDENCE` | trailing flag, copied into the PR body by ship |
 | `/sdlc:arch-review` | `SOUND` `GAPS` | architecture verdict; `GAPS` = a blocker or unwaived major |
+| `/sdlc:verify-map` | `CREATED` `UPDATED` `CLEAN` `BLOCKED` | the verification map's state after the run |
 | any autofix loop | `⚠ NEEDS HUMAN` | stop; a person decides |
 
 ## Claim lock
