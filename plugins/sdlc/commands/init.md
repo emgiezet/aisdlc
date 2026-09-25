@@ -144,6 +144,9 @@ Router near the top, and leave the rest alone.
 - `.claude/trackers/<kind>.md` — copied byte-for-byte from `templates/trackers/<kind>.md`; the
   same for `.claude/browsers/<provider>.md` when a provider was chosen. Then run the descriptor's
   **auth-check**; a failure goes in the report, not under the rug.
+- **Verification map** stays `none` here. It describes how to drive a *running* app, which this
+  command cannot observe from a static checkout — `/sdlc:verify-map` writes it, later, by
+  launching the app and driving one feature.
 - `.aisdlc/config.json` — runner defaults: `{"model", "budget", "base", "workers", "label",
   "specs_dir", "billing"}`. Pick `base` from the actual default branch. Set `"billing":
   "subscription"` when the queue runs under a Claude Pro/Max subscription plan (the CLI

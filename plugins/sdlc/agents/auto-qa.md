@@ -26,8 +26,11 @@ do not mention.
    output; never infer that a suite passes.
 5. **Then verify the UCs the tests do not cover.**
 
-   **API UCs** — `curl` against a locally started service or a database query. An untested
-   UC is not automatically broken, and not automatically working.
+   **API and CLI UCs** — read `Verification map:` from `.claude/sdlc.md`. A path: follow its
+   **Launch**, **Doctor** and **Drive** sections and the feature file covering the UC, and put
+   the captured response, exit code or row under `specs/<TICKET>/qa/`. `none`: `curl` against a
+   locally started service, or a database query. An untested UC is not automatically broken,
+   and not automatically working.
 
    **UI UCs** — read `Browser descriptor:` from `.claude/sdlc.md`:
    - `none`: write `browser: none — UI UCs verified by tests only` in the report; verdict

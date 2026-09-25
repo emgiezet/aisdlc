@@ -20,12 +20,13 @@ COMMANDS := init spec mockup implement qa ship \
             review fix-pr review-prs autopilot continue merge merge-buddy followup close-fixed changelog \
             issue triage root-cause fix-issue \
             brainstorm discover synthetic-users backlog ux-shape ux-setup \
-            test-env integration-tests ux-review retro arch-review
+            test-env integration-tests verify-map ux-review retro arch-review
 SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review rest-api-design graphql-api-design
 AGENTS := auto-qa code-reviewer
 PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing graphql-api
 TRACKERS := TEMPLATE github local
 BROWSERS := TEMPLATE playwright agent-browser
+VERIFY := TEMPLATE feature-TEMPLATE
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -140,6 +141,10 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 		test -f plugins/sdlc/templates/browsers/$$b.md && echo "  ✓ templates/browsers/$$b.md" || \
 		(echo "  ✗ templates/browsers/$$b.md MISSING" && exit 1); \
 	done
+	@for v in $(VERIFY); do \
+		test -f plugins/sdlc/templates/verify/$$v.md && echo "  ✓ templates/verify/$$v.md" || \
+		(echo "  ✗ templates/verify/$$v.md MISSING" && exit 1); \
+	done
 	@for p in $(PLAYBOOKS); do \
 		test -f plugins/sdlc/templates/playbooks/$$p.md && echo "  ✓ templates/playbooks/$$p.md" || \
 		(echo "  ✗ templates/playbooks/$$p.md MISSING" && exit 1); \
@@ -160,7 +165,8 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 			plugins/sdlc/commands/$$c.md || exit 1; \
 	done
 	@echo "  ✓ every command within 220 lines"
-	@for d in $(addprefix trackers/,$(TRACKERS)) $(addprefix browsers/,$(BROWSERS)); do \
+	@for d in $(addprefix trackers/,$(TRACKERS)) $(addprefix browsers/,$(BROWSERS)) \
+	          $(addprefix verify/,$(VERIFY)); do \
 		awk -v f="$$d" 'END { if (NR > 120) { print "  ✗ templates/" f ".md is " NR " lines, budget 120"; exit 1 } }' \
 			plugins/sdlc/templates/$$d.md || exit 1; \
 	done

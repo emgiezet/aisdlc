@@ -34,6 +34,13 @@ method; reading the implementation first makes you agree with it.
 
 Either way the output is a UC×test matrix, real suite output, and a findings list.
 
+**Runtime pass.** Read `Verification map:` from `.claude/sdlc.md`. When it is a path, the UCs
+whose observable result is runtime behaviour are driven through the map's **Drive** recipe —
+launch, doctor, drive, evidence into `specs/<TICKET>/qa/`, cleanup — instead of improvising a
+way in. A UC the map cannot reach is a finding naming the missing recipe, not a UC quietly
+dropped to "checked by hand"; run `/sdlc:verify-map` to close it. When it is `none`, the runtime
+check is improvised as before and the report says `verification map: none` in one line.
+
 ---
 
 ## Phase 2: Close the gaps

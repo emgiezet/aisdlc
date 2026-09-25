@@ -44,6 +44,13 @@ value, because the pipeline has nowhere to put its output otherwise.
   <!-- .claude/browsers/playwright.md | .claude/browsers/agent-browser.md | none.
        none → UI use cases are verified by tests only; QA says so in one line and moves on -->
 
+## Runtime verification
+
+- **Verification map:** `none`
+  <!-- .claude/verify/<app>.md — written by /sdlc:verify-map: how to launch, health-check and
+       drive the real application, plus one file per user-facing feature with a proven recipe.
+       none → QA works out how to exercise the app each time, and nothing of that survives -->
+
 ## Contracts and decisions
 
 - **API contract directory:** `none`
