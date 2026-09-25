@@ -66,6 +66,7 @@ commands travel in a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`, v
 | `/sdlc:root-cause` | `LOW_CONFIDENCE` | trailing flag, copied into the PR body by ship |
 | `/sdlc:arch-review` | `SOUND` `GAPS` | architecture verdict; `GAPS` = a blocker or unwaived major |
 | `/sdlc:verify-map` | `CREATED` `UPDATED` `CLEAN` `BLOCKED` | the verification map's state after the run |
+| `/sdlc:decompose` | `DECOMPOSED` `NOT NEEDED` `BLOCKED` | slicing outcome; `NOT NEEDED` = the estimate fits the change budget |
 | any autofix loop | `⚠ NEEDS HUMAN` | stop; a person decides |
 
 ## Claim lock

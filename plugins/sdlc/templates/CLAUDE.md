@@ -16,6 +16,7 @@ will need for the code.
 | Write or fix tests, chase coverage | `.claude/playbooks/testing.md` |
 | Deliver an approved spec end-to-end | run `/sdlc:implement <TICKET>` |
 | Turn a ticket into a spec | run `/sdlc:spec <TICKET>` |
+| A ticket too big for one reviewable PR | run `/sdlc:decompose <TICKET>` |
 | Fix a reported bug from its issue | run `/sdlc:fix-issue <issue#>` |
 | Review a pull request | run `/sdlc:review <pr#>` |
 | Finish a stalled or unreviewed PR | run `/sdlc:autopilot <pr#>` |
