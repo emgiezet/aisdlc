@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "sdlc",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy and descriptors for your repo; spec → mockup → implement → qa → ship → review runs unattended; issues enter through triage, PRs leave through a gated human merge",
   "author": {
     "name": "Max Małecki",
@@ -10,7 +10,16 @@
   "homepage": "https://github.com/emgiezet/aisdlc",
   "repository": "https://github.com/emgiezet/aisdlc",
   "license": "MIT",
-  "keywords": ["sdlc", "spec-driven", "agents", "harness", "task-router", "testing", "queue", "evals"],
+  "keywords": [
+    "sdlc",
+    "spec-driven",
+    "agents",
+    "harness",
+    "task-router",
+    "testing",
+    "queue",
+    "evals"
+  ],
   "extensions": {
     "com.openai": {
       "hooks": "./hooks/hooks.json",
@@ -20,7 +29,10 @@
         "longDescription": "A task router, an approval gate that is a spec, dense test floors, automated QA, and a fire-and-forget queue that turns approved specs into reviewable pull requests. Compose with Slop Guard for hook enforcement, Superpowers for disciplines, and Ponytail for implementation minimalism.",
         "developerName": "Max Małecki",
         "category": "Productivity",
-        "capabilities": ["Write", "Interactive"],
+        "capabilities": [
+          "Write",
+          "Interactive"
+        ],
         "defaultPrompt": [
           "$init — set up this repo for the SDLC pipeline",
           "$spec <TICKET> — turn a ticket into an executable spec",

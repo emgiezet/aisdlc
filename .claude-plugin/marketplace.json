@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "AI SDLC harness — the pipeline, the guardrails, and the evals that let cheap models deliver reviewable code",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
       "name": "sdlc",
       "source": "./plugins/sdlc",
       "description": "Spec-driven delivery for agents: /sdlc:init generates the instruction hierarchy and descriptors for your repo; spec → mockup → implement → qa → ship → review runs unattended; issues enter through triage, PRs leave through a gated human merge",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "strict": true,
       "skills": [
         "./skills/architecture-review",
@@ -31,7 +31,7 @@
       "name": "slop-guard",
       "source": "./plugins/slop-guard",
       "description": "Prevents, detects and gates security, performance and maintainability anti-patterns in agent-written code: per-language prevention skills, deterministic checks after each edit, and a Stop gate that blocks on unresolved blockers",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "strict": true
     }
   ]
