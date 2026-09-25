@@ -521,6 +521,14 @@ make tool-integration              # real-binary parser tests; needs pinned tool
 found that `claude` consumes stdin, which silently ate the queue's phase list — the kind of defect
 no amount of reading catches.
 
+Releases are not hand-made. When `Validate` goes green on `main`,
+[`.github/workflows/release.yml`](.github/workflows/release.yml) reads the commits since the last
+tag — `feat!`/`BREAKING CHANGE` → major, `feat` → minor, anything else → patch — runs the matching
+`make bump-*`, bumps `slop-guard` by the same step only when `plugins/slop-guard/` changed, then
+commits `chore(release): vX.Y.Z`, tags it and publishes the GitHub release with generated notes.
+Run it by hand with a forced level from the Actions tab (`workflow_dispatch`, `level:`); the manual
+path is still `make bump-patch|bump-minor|bump-major` and `make bump-slopguard`.
+
 The operating manual is [`docs/ai-sdlc.md`](docs/ai-sdlc.md); the specs this harness was built from
 are under [`specs/`](specs/), written in its own format.
 

@@ -1,0 +1,160 @@
+name: Release
+
+# Runs after Validate goes green on main — never on the push itself, so a red
+# main cannot be tagged. Pushes made here carry GITHUB_TOKEN, which does not
+# retrigger workflows, so the bump commit cannot start a second release.
+on:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      level:
+        description: Bump level (auto = conventional commits since the last tag)
+        default: auto
+        type: choice
+        options: [auto, patch, minor, major]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # pushes the bump commit, the tag and the release
+    steps:
+      # persist-credentials stays on: this job is the one that pushes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Decide the bump
+        id: plan
+        env:
+          LEVEL_INPUT: ${{ inputs.level }}
+        run: |
+          set -euo pipefail
+          case "$(git log -1 --format=%s)" in
+            'chore(release): v'*)
+              echo "HEAD is already a release commit — nothing to release"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          prev=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          range="${prev:+$prev..}HEAD"
+
+          if [ -z "$(git log --format=%H "$range")" ]; then
+            echo "No commits since $prev — nothing to release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          level="${LEVEL_INPUT:-auto}"
+          if [ "$level" = auto ]; then
+            log=$(git log --format='%s%n%b' "$range")
+            # Same rule as /sdlc:changelog: a breaking marker wins, then feat, then patch.
+            # Herestrings, not pipes: grep -q exits early, and with pipefail a
+            # SIGPIPE'd producer would report failure and silently downgrade the bump.
+            if grep -qE '^([a-z]+(\([^)]*\))?!:|BREAKING[ -]CHANGE)' <<<"$log"; then
+              level=major
+            elif grep -qE '^feat(\([^)]*\))?:' <<<"$log"; then
+              level=minor
+            else
+              level=patch
+            fi
+          fi
+
+          # slop-guard carries its own version; consumers only see an update when it moves.
+          slopguard=false
+          if [ -n "$(git log --format=%H "$range" -- plugins/slop-guard)" ]; then
+            slopguard=true
+          fi
+
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          echo "level=$level" >> "$GITHUB_OUTPUT"
+          echo "slopguard=$slopguard" >> "$GITHUB_OUTPUT"
+          echo "since ${prev:-the first commit}: level=$level slop-guard=$slopguard"
+
+      # The Makefile owns which manifests carry a version — five files per plugin,
+      # across four hosts. Duplicating that list here would be a second source of truth.
+      - name: Bump the manifests
+        id: bump
+        if: steps.plan.outputs.skip != 'true'
+        env:
+          LEVEL: ${{ steps.plan.outputs.level }}
+          SLOPGUARD: ${{ steps.plan.outputs.slopguard }}
+        run: |
+          set -euo pipefail
+          make "bump-$LEVEL"
+          version=$(jq -r .version plugins/sdlc/.claude-plugin/plugin.json)
+
+          if [ "$SLOPGUARD" = true ]; then
+            sg=$(jq -r .version plugins/slop-guard/.claude-plugin/plugin.json | awk -F. -v l="$LEVEL" '
+              l == "major" { print $1 + 1 ".0.0"; next }
+              l == "minor" { print $1 "." $2 + 1 ".0"; next }
+                           { print $1 "." $2 "." $3 + 1 }')
+            make _bump-slopguard "VERSION=$sg"
+          else
+            sg=$(jq -r .version plugins/slop-guard/.claude-plugin/plugin.json)
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "slopguard_version=$sg" >> "$GITHUB_OUTPUT"
+
+      # The same consistency check validate.yml runs, before the tag exists rather
+      # than after: a mismatch here is a bad bump, not a bad merge.
+      - name: Version consistency
+        if: steps.plan.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          for plugin in sdlc slop-guard; do
+            p=$(jq -r .version "plugins/$plugin/.claude-plugin/plugin.json")
+            m=$(jq -r ".plugins[] | select(.name == \"$plugin\") | .version" .claude-plugin/marketplace.json)
+            g=$(jq -r ".plugins[] | select(.name == \"$plugin\") | .version" .grok-plugin/marketplace.json)
+            o=$(jq -r ".plugins[] | select(.name == \"$plugin\") | .version" .omp-plugin/marketplace.json)
+            k=$(jq -r .version "plugins/$plugin/plugin.json")
+            j=$(jq -r .version "plugins/$plugin/package.json")
+            [ "$p" = "$m" ] && [ "$p" = "$g" ] && [ "$p" = "$o" ] && [ "$p" = "$k" ] && [ "$p" = "$j" ] \
+              || { echo "Version mismatch for $plugin: plugin=$p marketplace=$m grok=$g omp=$o portable=$k package=$j"; exit 1; }
+            echo "✓ $plugin $p"
+          done
+
+      - name: Commit, tag and push
+        if: steps.plan.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "chore(release): v$VERSION"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          # Not force: if main moved while this ran, the release loses and the next merge retries.
+          git push origin "HEAD:main" --follow-tags
+
+      - name: Create the GitHub release
+        if: steps.plan.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          SLOPGUARD_VERSION: ${{ steps.bump.outputs.slopguard_version }}
+          PREV: ${{ steps.plan.outputs.prev }}
+        run: |
+          set -euo pipefail
+          args=(-f "tag_name=v$VERSION" -f target_commitish=main)
+          if [ -n "$PREV" ]; then args+=(-f "previous_tag_name=$PREV"); fi
+          notes=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            "${args[@]}" --jq .body)
+          printf '| Plugin | Version |\n|---|---|\n| sdlc | %s |\n| slop-guard | %s |\n\n%s\n' \
+            "$VERSION" "$SLOPGUARD_VERSION" "$notes" \
+            | gh release create "v$VERSION" --title "v$VERSION" --notes-file -
