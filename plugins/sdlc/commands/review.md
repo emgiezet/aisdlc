@@ -97,6 +97,9 @@ phase before ship). Import its findings as follows:
 - Any file classified **out of bounds** → add `[blocker] scope violation: <file> (out of bounds)`
 - Any file classified **undeclared** → add `[major] scope gap: <file> (not declared in spec)`
 - `Verdict: BLOCKED` → the PR should not have reached review; add `[blocker] scope-check BLOCKED`
+- Any `## Size` finding → `[major] over change budget: <measure> (<n> vs <budget>)`, and
+  `[blocker]` when the hard ceiling was passed or the finding names shotgun surgery. The fix is
+  never "reviewers should try harder": it is `/sdlc:decompose <TICKET>` and a stack of slices.
 
 
 ---

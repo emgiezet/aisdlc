@@ -36,6 +36,17 @@ BUILTIN_LABEL="ai-sdlc"
 BUILTIN_SPECS_DIR="specs"
 BUILTIN_BILLING="api"
 
+# Change budget: the review surface one task may add before scope-check says so. Overridable
+# per spec (`Change budget:` under ## Scope) and per repo (## Change budget in .claude/sdlc.md).
+# Defaults follow the review evidence: defect finding degrades past ~400 reviewed lines
+# (SmartBear/Cisco), review attention drops ~8.7% per extra file (arXiv 2609.22610, optimum
+# ~10 files), cross-subsystem co-changes are the defect-prone ones (D'Ambros 2009). The ceiling
+# is where decomposition stops being advice: past it scope-check refuses to hand the branch on.
+BUILTIN_BUDGET_ADDED="400"
+BUILTIN_BUDGET_FILES="15"
+BUILTIN_BUDGET_MODULES="3"
+BUILTIN_BUDGET_CEILING="3000"
+
 # Map a phase name to its cost role.  Unknown phases → default.
 phase_role() {
     case "$1" in
@@ -946,6 +957,122 @@ _write_scope_report() {
     } > "$out"
 }
 
+# Paths that never count against a change budget: generated output, vendored trees, lock
+# files and the pipeline's own artefacts. Growth there is not review surface.
+# Backslashes are doubled: the pattern travels through awk -v, which unescapes once.
+_SIZE_EXCLUDE='(^|/)(vendor|node_modules|dist|build|target|__generated__|__snapshots__)/|(^|/)(package-lock\\.json|yarn\\.lock|pnpm-lock\\.yaml|composer\\.lock|Cargo\\.lock|go\\.sum|poetry\\.lock|Gemfile\\.lock)$|\\.(snap|pb\\.go|pb2\\.py)$|\\.generated\\.[a-z]+$'
+
+# Measure the review surface of a branch: added lines, files touched, modules touched.
+# Deleted lines never count — a change that removes code is not a big change to review.
+# A module is the first two path segments (or the first, for a top-level file); that is the
+# unit a reviewer holds in their head, and the unit shotgun surgery scatters across.
+# Prints: "<added> <files> <modules> <comma-separated module list>".
+_size_stats() {
+    local wt="$1" base="$2" specs_dir="$3"
+    git -C "$wt" diff --numstat "${base}...HEAD" 2>/dev/null | awk \
+        -v specs="$specs_dir" -v excl="$_SIZE_EXCLUDE" '
+        $1 == "-" { next }                                   # binary blob
+        {
+            path = $3
+            sub(/.*=> /, "", path); sub(/}$/, "", path)      # rename: {a => b}
+            if (specs != "" && index(path, specs "/") == 1) next
+            if (path ~ excl) next
+            added += $1; files++
+            n = split(path, seg, "/")
+            mod = (n >= 2) ? seg[1] "/" seg[2] : seg[1]
+            if (!(mod in seen)) {
+                seen[mod] = 1; mods++
+                modlist = modlist (modlist == "" ? "" : ",") mod
+            }
+        }
+        END { printf "%d %d %d %s\n", added + 0, files + 0, mods + 0, modlist }'
+}
+
+# Read one budget number. Spec wins over profile, profile over the built-in default.
+# Spec form (inside ## Scope):  Change budget: 400 added lines, 15 files, 3 modules
+# Profile form (## Change budget): - **Added lines:** 400
+_budget_spec() {
+    local file="$1" unit="$2"
+    [ -f "$file" ] || return 0
+    sed -n 's/^Change budget:[[:space:]]*//p' "$file" | head -1 | \
+        grep -oE "[0-9]+[[:space:]]+(added[[:space:]]+lines|files|modules)" | \
+        awk -v u="$unit" '$0 ~ u { print $1; exit }'
+}
+_budget_profile() {
+    local file="$1" label="$2"
+    [ -f "$file" ] || return 0
+    awk -v lbl="$label" '
+        /^## Change budget/ { in_b = 1; next }
+        in_b && /^## /      { in_b = 0 }
+        in_b && $0 ~ ("\\*\\*" lbl ":\\*\\*") {
+            if (match($0, /[0-9]+/)) { print substr($0, RSTART, RLENGTH); exit }
+        }' "$file"
+}
+budget_value() {
+    local spec="$1" profile="$2" unit="$3" label="$4" fallback="$5" v
+    v="$(_budget_spec "$spec" "$unit")"
+    [ -n "$v" ] || v="$(_budget_profile "$profile" "$label")"
+    [ -n "$v" ] || v="$fallback"
+    printf '%s' "$v"
+}
+
+# Judge a measured branch against its budget. Prints one finding per line.
+# Returns 0 clean, 1 over budget (GAPS), 2 past the hard ceiling (BLOCKED).
+# Finding text stays ASCII: it travels through read loops into the report and into review
+# findings, and a mangled byte there is a mangled byte in the pull request.
+_size_eval() {
+    local added="$1" n_files="$2" n_mods="$3" modlist="$4" \
+          b_added="$5" b_files="$6" b_mods="$7" ceiling="$8"
+    local out="" rc=0 per_file=0
+    [ "$n_files" -gt 0 ] && per_file=$((added / n_files))
+    if [ "$added" -gt "$b_added" ]; then
+        out="${out}over budget: $added added lines > $b_added. One spec is one PR: split it (spec-authoring, Sizing)"$'\n'
+        rc=1
+    fi
+    if [ "$n_files" -gt "$b_files" ]; then
+        out="${out}over budget: $n_files files touched > $b_files"$'\n'
+        rc=1
+    fi
+    if [ "$n_mods" -gt "$b_mods" ]; then
+        out="${out}over budget: $n_mods modules touched > $b_mods ($modlist)"$'\n'
+        rc=1
+    fi
+    # Shotgun surgery: many modules, thin edits in each. One behaviour smeared across the
+    # tree; the fix is a seam of its own, in its own slice, not a wider pull request.
+    if [ "$n_mods" -gt "$b_mods" ] && [ "$per_file" -lt 10 ]; then
+        out="${out}shotgun surgery: $n_mods modules, ~$per_file added lines per file. Extract the shared seam as its own slice, then move one caller group per slice"$'\n'
+        rc=1
+    fi
+    if [ "$added" -gt "$ceiling" ]; then
+        out="${out}hard ceiling: $added added lines > $ceiling. Nobody reviews this: run /sdlc:decompose before ship"$'\n'
+        rc=2
+    fi
+    printf '%s' "$out"
+    return "$rc"
+}
+
+# Append the size section to a scope report. ${10} is the newline-separated findings list.
+_write_size_section() {
+    local out="$1" added="$2" files="$3" mods="$4" modlist="$5" \
+          b_added="$6" b_files="$7" b_mods="$8" ceiling="$9" findings="${10}"
+    {
+        printf '\n## Size\n\n'
+        printf '| Measure | This branch | Budget |\n|---|---|---|\n'
+        printf '| Added lines | %s | %s (hard ceiling %s) |\n' "$added" "$b_added" "$ceiling"
+        printf '| Files touched | %s | %s |\n' "$files" "$b_files"
+        printf '| Modules touched | %s | %s |\n' "$mods" "$b_mods"
+        printf '\nModules: %s\n' "${modlist:-none}"
+        printf '\nGenerated output, vendored trees, lock files and the specs directory are\n'
+        printf 'excluded; deleted lines never count against the budget.\n'
+        if [ -n "$findings" ]; then
+            printf '\n### Findings\n\n'
+            while IFS= read -r f; do
+                [ -n "$f" ] && printf -- '- %s\n' "$f"
+            done <<< "$findings"
+        fi
+    } >> "$out"
+}
+
 # Native scope-check phase: classify the branch's changed files against the spec's
 # declared scope (In:/Out:/Context) and the project's repo-wide out-of-bounds list.
 # Writes specs/<TICKET>/scope-report.md and commits it. Records scope_verdict in
@@ -1036,8 +1163,35 @@ run_scope_check() {
     [ -n "$oob" ] && verdict="BLOCKED"
     [ -n "$undeclared" ] && [ "$verdict" = "PASS" ] && verdict="GAPS"
 
+    # Size budget. Deleted lines and generated paths are excluded upstream, so these three
+    # numbers are the review surface a human actually has to hold.
+    local stats added n_files n_mods modlist
+    stats="$(_size_stats "$wt" "$base" "$specs_dir")"
+    added="$(printf '%s' "$stats" | awk '{print $1}')"
+    n_files="$(printf '%s' "$stats" | awk '{print $2}')"
+    n_mods="$(printf '%s' "$stats" | awk '{print $3}')"
+    modlist="$(printf '%s' "$stats" | awk '{print $4}')"
+
+    local b_added b_files b_mods ceiling
+    b_added="$(budget_value  "$spec_file" "$profile" 'added lines' 'Added lines'  "$BUILTIN_BUDGET_ADDED")"
+    b_files="$(budget_value  "$spec_file" "$profile" 'files'       'Files'        "$BUILTIN_BUDGET_FILES")"
+    b_mods="$(budget_value   "$spec_file" "$profile" 'modules'     'Modules'      "$BUILTIN_BUDGET_MODULES")"
+    ceiling="$(_budget_profile "$profile" 'Hard ceiling')"
+    [ -n "$ceiling" ] || ceiling="$BUILTIN_BUDGET_CEILING"
+
+    local size_findings="" size_rc=0
+    size_findings="$(_size_eval "$added" "$n_files" "$n_mods" "$modlist" \
+        "$b_added" "$b_files" "$b_mods" "$ceiling")"; size_rc=$?
+    if [ "$size_rc" -eq 2 ]; then
+        verdict="BLOCKED"
+    elif [ "$size_rc" -eq 1 ] && [ "$verdict" = "PASS" ]; then
+        verdict="GAPS"
+    fi
+
     mkdir -p "$wt/$specs_dir/$ticket"
     _write_scope_report "$report_wt" "$ticket" "$base" "$in_files" "$undeclared" "$oob" "$verdict"
+    _write_size_section "$report_wt" "$added" "$n_files" "$n_mods" "$modlist" \
+        "$b_added" "$b_files" "$b_mods" "$ceiling" "$size_findings"
     git -C "$wt" add "$specs_dir/$ticket/scope-report.md" >> "$log" 2>&1
     git -C "$wt" -c user.name=aisdlc -c user.email=aisdlc@localhost \
         commit -q -m "docs(scope): scope report for $ticket [$verdict]" >> "$log" 2>&1
@@ -1663,6 +1817,12 @@ USAGE
 }
 
 # --------------------------------------------------------------------------- #
+
+# Sourcing the script exposes the functions without running a command; the test suite does
+# that to exercise the budget arithmetic directly.
+if [ "${BASH_SOURCE[0]}" != "${0}" ]; then
+    return 0
+fi
 
 need git; need jq; need flock
 
