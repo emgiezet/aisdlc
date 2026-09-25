@@ -76,6 +76,37 @@ The rules that cannot bend: never delete a test, skip a test, or loosen an asser
 Those are enforced by a `Stop` hook rather than by good intentions, because an agent under pressure
 to produce a green run will otherwise take the shortest path to green.
 
+### A plan may be large; a pull request may not
+
+Throughput is worthless if the review at the end is a rubber stamp, and review quality falls off
+a cliff with size. The numbers behind the defaults:
+
+| Signal | What the evidence says | Source |
+|---|---|---|
+| Added lines | Defect-finding degrades past ~400 reviewed lines; 200–400 LOC in 60–90 min yields 70–90% of findable defects | [SmartBear / Cisco review study](https://smartbear.com/learn/code-review/best-practices-for-peer-code-review/) (vendor telemetry, single org) |
+| Added lines | "100 lines is usually a reasonable size for a CL, and 1000 lines is usually too large"; reviewers may reject a change for size alone | [Google eng-practices, Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html) (guidance) |
+| Files | Each extra file in a PR cuts the odds that any given file gets a review comment by 8.7%; latent-bug risk is lowest near ~10 files | [arXiv 2609.22610](https://arxiv.org/abs/2609.22610) — 330,343 PRs, 182 projects (peer-reviewed preprint) |
+| Modules | Co-changes spanning different subsystems produce more defects than co-changes inside one | [D'Ambros, Lanza, Robbes, WCRE 2009](https://www.inf.usi.ch/lanza/PUBS/P/DAmb2009e.pdf); change entropy: [Hassan, ICSE 2009](https://dl.acm.org/doi/10.1109/ICSE.2009.5070510) |
+| Merge latency | 500+ line PRs average 9 days to merge; 50-line PRs merge ~40% faster and are reverted 15% less than 250-line ones | [Graphite](https://graphite.com/blog/the-ideal-pr-is-50-lines-long) (vendor telemetry, methodology disclosed) |
+
+So the harness budgets the change instead of hoping: **400 added lines, 15 files, 3 modules**, with
+a hard ceiling of **3000 added lines** past which `scope-check` returns `BLOCKED` and the queue
+stops before ship. Deleted lines, generated output, vendored trees, lock files and the specs
+directory never count — removing code is not a large change to review.
+
+The budget binds at planning time, not at review time: `/sdlc:spec` estimates the surface from the
+paths in `Context` plus their call sites, and calls `/sdlc:decompose` when the estimate breaks a
+number. Decomposition picks a seam that keeps every intermediate state shippable — walking
+skeleton, vertical slice, seam-first for shotgun surgery, expand/contract for data shapes, and a
+separate slice for anything mechanical. A 300-file rename is reviewable by pattern; the same
+rename mixed with logic is not, which is why a spec may declare its own wider `Change budget:`
+and why a mechanical slice never carries behaviour.
+
+Two numbers deliberately disagree with the research. The 3000-line ceiling is far above what any
+source would defend as reviewable — it is the outer bound on damage, not a target. And the file
+and module budgets produce `GAPS`, not `BLOCKED`: no primary source justifies blocking on module
+count alone, so it starts a decomposition conversation instead of stopping the run.
+
 ### QA before humans
 
 `auto-qa` re-derives the use cases from the spec *before* reading the implementation. Reading the

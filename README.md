@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 32 commands, 10 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 33 commands, 10 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -187,6 +187,7 @@ They ask questions, act once, and hand control back.
 |---|---|
 | `/sdlc:init [--discovery]` | The one-per-repo setup described above. |
 | `/sdlc:spec <T>` | A ticket, URL, file or description → `specs/<T>/spec.md` with a use-case table; adds the negative cases the ticket forgot; leaves `status: draft`. |
+| `/sdlc:decompose <T>` | Splits an oversized ticket, spec or brief into ordered, independently shippable slices that each fit one PR — estimates the change surface, picks the seam (walking skeleton, vertical, seam-first, expand/contract, mechanical), writes one draft spec per slice with its own change budget. `/sdlc:spec` calls it when its own estimate is over budget. |
 | `/sdlc:mockup <T>` | A clickable single-file mockup of the spec's UI use cases, including empty, loading, error and denied states. |
 | `/sdlc:arch-review <EPIC\|path>` | Grades a planned architecture against its numbers: elicits the traffic profile, availability tier and RPO/RTO one question at a time, checks topology and dependency chain against what the tier forces, verdict `SOUND`/`GAPS`. |
 | `/sdlc:brainstorm` · `/sdlc:discover` · `/sdlc:synthetic-users` · `/sdlc:backlog` | Discovery before a spec exists: one question at a time, evidence-tagged product briefs, synthetic panels that never count as evidence, epics and stories filed through `/sdlc:issue`. |

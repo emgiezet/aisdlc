@@ -91,8 +91,18 @@ While writing:
 - **If the spec is already tracked in git, preserve existing `UC-<n>` ids** — they are referenced
   by test names and past QA reports. Append new rows; never renumber.
 
-If it exceeds ~8 use cases or more than two stacks, split into `<TICKET>-a`, `<TICKET>-b`
-(walking skeleton first) and say why.
+**Declare the change budget.** End `## Scope` with one line —
+`Change budget: <n> added lines, <n> files, <n> modules` — estimated the way
+`/sdlc:decompose` Phase 0 describes: paths named in Context plus their call sites, compared
+against the three most similar past commits (`git log` then `git show --numstat`). This line is
+not decoration: `scope-check` enforces it on the branch before ship.
+
+**Then size the spec [GATE].** If the estimate breaks any budget number in `.claude/sdlc.md`
+(defaults: 400 added lines, 15 files, 3 modules), or the change spreads thinly across more
+modules than the budget allows, **run `/sdlc:decompose <TICKET>` and write its slices instead
+of this one spec.** Same for more than ~8 use cases or more than two stacks. Report what the
+estimate was and which seam the decomposition used. One spec is one queue task is one pull
+request; a spec nobody can review is not a spec that got approved faster.
 
 ---
 
@@ -146,3 +156,6 @@ Never offer to approve the spec yourself, and never continue into implementation
 - Any planning or decomposition workflow your project already has. If a ticket needs to become
   several independently shippable slices, decompose it first and run this command per slice —
   one spec is one queue task is one pull request.
+- **`/sdlc:decompose`** — the sizing escape hatch this command calls when its estimate is over
+  budget. Use it directly on a ticket you already know is too big; it writes one spec per
+  shippable slice, and each one comes back through this command's rules.
