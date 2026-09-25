@@ -145,10 +145,12 @@ Router near the top, and leave the rest alone.
   same for `.claude/browsers/<provider>.md` when a provider was chosen. Then run the descriptor's
   **auth-check**; a failure goes in the report, not under the rug.
 - `.aisdlc/config.json` — runner defaults: `{"model", "budget", "base", "workers", "label",
-  "specs_dir", "billing"}`. Pick `base` from the actual default branch. Set `"billing":
-  "subscription"` when the queue runs under a Claude Pro/Max subscription plan (the CLI
-  reports no per-token cost on a subscription, so the queue omits the spend cap and records
-  `cost_usd: null` instead of a zero that would look like a free run). Omit the key or set
+  "specs_dir", "billing"}`, plus `"harness_version"` set to this plugin's version (read it from
+  `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`) — that stamp is what `/sdlc:update` later
+  compares against to know which generated files are behind. Pick `base` from the actual default
+  branch. Set `"billing": "subscription"` when the queue runs under a Claude Pro/Max subscription
+  plan (the CLI reports no per-token cost on a subscription, so the queue omits the spend cap and
+  records `cost_usd: null` instead of a zero that would look like a free run). Omit the key or set
   `"billing": "api"` for pay-as-you-go API access.
 - `specs/.gitkeep` and `specs/briefs/.gitkeep` — so both directories exist before the first artefact.
 - `.gitignore` — append `.aisdlc/` if absent (the runner's state and, under `local`, the tracker's
@@ -204,6 +206,9 @@ The first spec you drive by hand teaches you more about this setup than the firs
 ## Not to be confused with
 
 - **`/sdlc:spec`** — writes one spec. This command sets up the repo so specs can be executed.
+- **`/sdlc:update`** — re-syncs an *existing* setup with a newer plugin: descriptor operations,
+  profile fields, config keys. It never proposes a router. Run it after every plugin upgrade; run
+  this command again only when the repo's shape changed enough that the router itself is wrong.
 - **Editing `CLAUDE.md` by hand** — always fine, and expected. This command produces a starting
   point calibrated to the repo; keeping it correct as the repo changes is ordinary maintenance. The
   `task-router` skill covers how.

@@ -101,13 +101,44 @@ aisdlc add ABC-123 && aisdlc run    ← queue runner is Claude-only
 
 ## 🔄 Update
 
-```bash
-npx skills update            # skills installed via npx
-/plugin update sdlc@aisdlc   # the Claude Code plugin
+Two halves, updated separately: **the harness** — commands, skills, templates — and **the setup
+`/sdlc:init` generated inside your repository**.
+
+| Installed with | Update the harness with |
+|---|---|
+| `npx skills add` | `npx skills update` |
+| Claude Code | `/plugin update sdlc@aisdlc` |
+| Codex | `codex plugin marketplace upgrade` for a git source; `git -C <checkout> pull` for a local path |
+| Grok | `git -C <checkout> pull`, then reinstall from `/plugins` |
+| omp | `omp plugin upgrade sdlc@aisdlc` |
+
+**Is there a newer one?** `aisdlc version --check` reads the published version straight from the
+marketplace manifest on GitHub (`raw.githubusercontent.com`, 5s timeout, no token, no telemetry)
+and prints `current`, `update available` with the command for each host, or `unreachable` when
+offline. `/sdlc:update` runs the same comparison in its first phase, reports it, and proceeds
+either way — syncing your repo to the plugin you actually have installed is correct regardless.
+
+No plugin manager touches your router, playbooks, rules, profile or descriptors — a silent rewrite
+of your agent configuration is precisely what you do not want. The price of that guarantee is
+drift: a descriptor generated months ago has no `### attach-image-evidence`, and the first command
+that names it fails mid-run. `/sdlc:update` closes that gap, in the repo, after the harness update:
+
+```
+/sdlc:update            # proposes each change, one file at a time
+/sdlc:update --check    # report only, writes nothing
+/sdlc:update --yes      # apply without the per-file questions
 ```
 
-Updates never touch the files `/sdlc:init` generated in your repo — your router, playbooks, rules,
-profile and descriptors are yours.
+| Re-synced — the machine-readable contract | Reported only — yours to change |
+|---|---|
+| Descriptor operations missing from `.claude/trackers/*.md` and `.claude/browsers/*.md`, copied byte-for-byte; bodies already there are never rewritten, local extras never deleted | Router rows in `CLAUDE.md` pointing at playbooks that do not exist |
+| Profile fields new in `.claude/sdlc.md`, added with their default and comment; an answered field is never overwritten | Playbook templates this version ships that your router has no row for |
+| `.aisdlc/config.json` keys the queue runner reads, added with defaults; existing values left alone | Line budgets (`CLAUDE.md` ≤ 90, playbooks and rules ≤ 70) and rules whose `paths:` now match nothing |
+| Pipeline labels under `github`, the specs directories, the `.aisdlc/` exclude | |
+
+It finishes by running the descriptor's **auth-check** and stamping `harness_version` into
+`.aisdlc/config.json` — the version the next `/sdlc:update` measures drift against. Setups written
+before stamping existed report `unrecorded` and are checked in full.
 
 ## 🔁 The pipeline
 
@@ -186,6 +217,7 @@ They ask questions, act once, and hand control back.
 | Command | What it does |
 |---|---|
 | `/sdlc:init [--discovery]` | The one-per-repo setup described above. |
+| `/sdlc:update [--check] [--yes]` | After a harness update: adds descriptor operations, profile fields and runner config keys that are new, reports drift in the router, playbooks and rules, stamps `harness_version`. Never rewrites an answer you gave. |
 | `/sdlc:spec <T>` | A ticket, URL, file or description → `specs/<T>/spec.md` with a use-case table; adds the negative cases the ticket forgot; leaves `status: draft`. |
 | `/sdlc:mockup <T>` | A clickable single-file mockup of the spec's UI use cases, including empty, loading, error and denied states. |
 | `/sdlc:arch-review <EPIC\|path>` | Grades a planned architecture against its numbers: elicits the traffic profile, availability tier and RPO/RTO one question at a time, checks topology and dependency chain against what the tier forces, verdict `SOUND`/`GAPS`. |

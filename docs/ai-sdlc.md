@@ -27,6 +27,7 @@ Three consequences shape everything below:
 |------|-----|----------|
 | `/sdlc:brainstorm`, `/sdlc:discover`, `/sdlc:backlog` (optional) | human with an agent | `specs/briefs/*.md`, issues |
 | `/sdlc:init` (once per repo) | agent proposes, human approves | `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md`, `.claude/trackers/`, `.claude/browsers/` |
+| `/sdlc:update` (after each plugin upgrade) | agent proposes, human approves | descriptor operations, `.claude/sdlc.md` fields and `.aisdlc/config.json` keys brought up to the installed version; drift in the router, playbooks and rules reported, never rewritten |
 | `/sdlc:spec <TICKET>` | agent drafts, human corrects | `specs/<TICKET>/spec.md`, `status: draft` |
 | `/sdlc:mockup <TICKET>` | agent builds, business reacts | `specs/<TICKET>/mockup/index.html` |
 | **Approve** | **human only** | `status: approved`, committed — or, for a bug, the `bug` label on the issue |

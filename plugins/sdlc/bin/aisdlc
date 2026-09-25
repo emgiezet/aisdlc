@@ -1540,6 +1540,55 @@ cmd_clean() {
     say "kept: running tasks$([ "$all" -eq 0 ] && echo ', and failed ones — they are your evidence')"
 }
 
+# The published version, read from the marketplace manifest on this plugin's own upstream.
+# Network is optional everywhere in this tool: no curl, no route, a moved manifest or a fork
+# that is not on GitHub all mean "unknown" — a version check is never worth failing a run over.
+upstream_version() {
+    local repo_url slug branch raw v
+    repo_url="$(manifest_field repository)"
+    case "$repo_url" in
+        https://github.com/*) slug="${repo_url#https://github.com/}" ;;
+        git@github.com:*)     slug="${repo_url#git@github.com:}" ;;
+        *) return 1 ;;
+    esac
+    slug="${slug%.git}"
+    command -v curl >/dev/null 2>&1 || return 1
+
+    for branch in main master; do
+        raw="$(curl -fsSL --max-time "${AISDLC_NET_TIMEOUT:-5}" \
+            "https://raw.githubusercontent.com/${slug}/${branch}/.claude-plugin/marketplace.json" 2>/dev/null)" \
+            || continue
+        v="$(printf '%s' "$raw" | jq -r --arg n "$PLUGIN_NAME" \
+            'first(.plugins[]? | select(.name == $n) | .version) // empty' 2>/dev/null)"
+        [ -n "$v" ] && { printf '%s' "$v"; return 0; }
+    done
+    return 1
+}
+
+cmd_version() {
+    local check=0
+    while [ $# -gt 0 ]; do case "$1" in --check|--check-upstream) check=1; shift ;; *) shift ;; esac; done
+    say "aisdlc $VERSION"
+    [ "$check" -eq 1 ] || return 0
+
+    local latest
+    latest="$(upstream_version)" || {
+        say "upstream: unreachable — offline, no curl, or this fork is not on GitHub"
+        return 0
+    }
+    if [ "$latest" = "$VERSION" ]; then
+        say "upstream: $latest — current"
+    elif [ "$(printf '%s\n%s\n' "$VERSION" "$latest" | sort -V | tail -1)" = "$VERSION" ]; then
+        say "upstream: $latest — this checkout is ahead of the published version"
+    else
+        say "upstream: $latest — update available"
+        say "  Claude Code  /plugin update $PLUGIN_NAME@aisdlc"
+        say "  omp          omp plugin upgrade $PLUGIN_NAME@aisdlc"
+        say "  Codex        codex plugin marketplace upgrade"
+        say "  then, in every repository that ran /$PLUGIN_NAME:init:  /$PLUGIN_NAME:update"
+    fi
+}
+
 cmd_help() {
     cat <<USAGE
 aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
@@ -1566,6 +1615,7 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
   aisdlc retry <id>             discard the worktree and re-queue
   aisdlc cancel <id>            drop a queued task
   aisdlc clean [--all]          remove finished task records and stale worktrees
+  aisdlc version [--check]      installed version; --check asks GitHub for the published one
 
 Phases: $ALL_PHASES (spec tickets); $ISSUE_PHASES (--issue tickets).
 --no-pr removes ship and review from either list. scope-check always runs when present.
@@ -1626,7 +1676,7 @@ case "${1:-help}" in
     retry)          shift; cmd_retry "$@" ;;
     cancel)         shift; cmd_cancel "$@" ;;
     clean)          shift; cmd_clean "$@" ;;
-    version|--version) say "aisdlc $VERSION" ;;
+    version|--version) shift; cmd_version "$@" ;;
     help|--help|-h) cmd_help ;;
     *)              die "unknown command '$1' — try: aisdlc help" ;;
 esac
