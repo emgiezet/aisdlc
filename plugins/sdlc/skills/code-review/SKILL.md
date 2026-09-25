@@ -47,11 +47,22 @@ For code PRs, every item below is a finding when violated.
 | A published path, field, enum value or error code was removed, renamed or retyped in place, with no deprecation | `blocker` |
 | A collection endpoint or list field ships with no bounded page size | `major` |
 
+| Branch inside its `Change budget:` (or the repo default) for added lines, files and modules | `major` |
+| Added lines past the repo's hard ceiling, or a scope report naming shotgun surgery | `blocker` |
+| Mechanical change (rename, codemod, generated update) mixed into a behaviour change | `major` |
 ### Slop-guard rule
 
 When `.aisdlc/slop-guard/report.json` exists, or the path configured under `slop-guard:` in
 `.claude/sdlc.md` exists, import every item it marks as a blocker as a `blocker` finding.
 Never re-implement the check; consume the file.
+
+### Size rule
+
+Size findings come from `specs/<TICKET>/scope-report.md` `## Size`, written by the
+`scope-check` phase; do not re-measure. A breach is a decomposition finding, never a request
+for a more careful reviewer: the remedy named in the finding is `/sdlc:decompose <TICKET>`.
+A spec that declared a wider `Change budget:` for a mechanical slice is compliant — the budget
+it set is the budget that applies.
 
 ## Spec-review lenses
 
