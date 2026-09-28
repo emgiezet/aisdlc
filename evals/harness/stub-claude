@@ -12,7 +12,9 @@
 # Behaviour is chosen by AISDLC_STUB:
 #   ok        (default) implement + qa succeed and commit
 #   noop      returns "Unknown command" with 0 turns — the silent no-op the runner must catch
-#   blocked   implement writes BLOCKED.md and exits non-zero
+#   nouc      implement's test carries no UC id — verify must fail the UC coverage check
+#   skiptest  implement's test is switched off with t.Skip — verify must see it
+#   deltest   implement deletes the baseline's existing test file — verify must see it
 set -uo pipefail
 printf 'stub-claude args: %s\n' "$*" >&2
 
@@ -63,7 +65,11 @@ case "$prompt" in
     /implement*)
         mkdir -p pkg
         printf 'package pkg\n\n// Stub implementation for %s.\nfunc Stub() string { return "%s" }\n' "$ticket" "$ticket" > "pkg/stub.go"
-        printf 'package pkg\n\nimport "testing"\n\nfunc TestStub_UC1(t *testing.T) {\n\tif Stub() == "" {\n\t\tt.Fatal("empty")\n\t}\n}\n' > "pkg/stub_test.go"
+        name="TestStub_UC1"; skip=""
+        [ "${AISDLC_STUB:-ok}" = "nouc" ] && name="TestStub_ReturnsSomething"
+        [ "${AISDLC_STUB:-ok}" = "skiptest" ] && skip='\tt.Skip("flaky")\n'
+        printf "package pkg\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n${skip}\tif Stub() == \"\" {\n\t\tt.Fatal(\"empty\")\n\t}\n}\n" "$name" > "pkg/stub_test.go"
+        [ "${AISDLC_STUB:-ok}" = "deltest" ] && git rm -q legacy/old_test.go
         commit "feat(pkg): stub implementation for UC-1 ($ticket)"
         result false 6 "stub phase complete" 0.05
         ;;

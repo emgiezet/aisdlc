@@ -306,8 +306,12 @@ workflow step.
 
 ## Credentials for the queue runner
 
-`aisdlc run` shells out to `claude -p` and sets no credentials of its own — whatever authenticates
-your `claude` CLI authenticates the queue. An API key is one option of four:
+`aisdlc run` shells out to `claude -p` — or `omp -p --mode json` for tasks queued with
+`--runtime omp`, which loads this plugin through `--plugin-dir` (and with it the guard extension)
+— and sets no credentials of its own: whatever authenticates that CLI authenticates the queue.
+omp forwards an unknown `/command` to the model as plain text and strips HTML comments from a
+command before the model sees it, so the runner checks the command file exists and reads the
+expanded prompt back from the event stream; an unexpanded one fails the phase. An API key is one option of four:
 
 | Option | Environment variable(s) | Billed against |
 |--------|------------------------|----------------|

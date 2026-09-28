@@ -25,8 +25,8 @@ manifest_field() {
 VERSION="$(manifest_field version)"; [ -n "$VERSION" ] || VERSION="unknown"
 PLUGIN_NAME="$(manifest_field name)";  [ -n "$PLUGIN_NAME" ] || PLUGIN_NAME="sdlc"
 
-ALL_PHASES="implement qa scope-check ship review"
-ISSUE_PHASES="triage root-cause implement qa scope-check ship review"
+ALL_PHASES="implement qa scope-check verify ship review"
+ISSUE_PHASES="triage root-cause implement qa scope-check verify ship review"
 
 # Built-in defaults. Precedence: CLI flag > .aisdlc/config.json > environment > these.
 BUILTIN_MODEL="sonnet"
@@ -35,6 +35,13 @@ BUILTIN_WORKERS="3"
 BUILTIN_LABEL="ai-sdlc"
 BUILTIN_SPECS_DIR="specs"
 BUILTIN_BILLING="api"
+BUILTIN_RUNTIME="claude"
+
+# The CLI that runs each phase. claude is `claude -p`; omp is `omp -p --mode json`, which loads
+# this plugin through --plugin-dir and expands /<plugin>:<phase> itself.
+check_runtime() {
+    case "$1" in claude|omp) ;; *) die "runtime must be 'claude' or 'omp' (got '$1')" ;; esac
+}
 
 # Change budget: the review surface one task may add before scope-check says so. Overridable
 # per spec (`Change budget:` under ## Scope) and per repo (## Change budget in .claude/sdlc.md).
@@ -50,7 +57,7 @@ BUILTIN_BUDGET_CEILING="3000"
 # Map a phase name to its cost role.  Unknown phases → default.
 phase_role() {
     case "$1" in
-        scope-check|ship)     printf 'smol'    ;;
+        scope-check|ship|verify) printf 'smol'    ;;
         implement|qa|triage)  printf 'default' ;;
         review|root-cause)    printf 'slow'    ;;
         *)                    printf 'default' ;;
@@ -541,7 +548,7 @@ tracker_release() {
 cmd_add() {
     # Empty means "not given on the command line" — resolve_default fills these in once the
     # repo is known, since the config file lives inside it.
-    local ticket="" repo="." model="" budget="" base="" phases="" billing=""
+    local ticket="" repo="." model="" budget="" base="" phases="" billing="" runtime=""
     local no_pr=0 plugin_dir=0 force=0 issue_n=""
 
     while [ $# -gt 0 ]; do
@@ -556,6 +563,7 @@ cmd_add() {
             --force)      force=1; shift ;;
             --issue)      issue_n="$2"; shift 2 ;;
             --billing)    billing="$2"; shift 2 ;;
+            --runtime)    runtime="$2"; shift 2 ;;
             -*)           die "unknown flag for add: $1" ;;
             *)            ticket="$1"; shift ;;
         esac
@@ -567,7 +575,7 @@ cmd_add() {
         [ -n "$phases" ] || phases="$ISSUE_PHASES"
     fi
 
-    [ -n "$ticket" ] || die "usage: aisdlc add <TICKET> [--repo .] [--model sonnet] [--budget 5]"
+    [ -n "$ticket" ] || die "usage: aisdlc add <TICKET> [--repo .] [--model sonnet] [--budget 5] [--runtime claude|omp]"
 
     repo="$(resolve_repo "$repo")"
     init_state "$repo"
@@ -580,6 +588,8 @@ cmd_add() {
     base="$(resolve_default "$repo" base "$base" "${AISDLC_BASE:-}" "")"
     [ -n "$base" ] || base="$(detect_base "$repo")"
     [ -n "$phases" ] || phases="$ALL_PHASES"
+    runtime="$(resolve_default "$repo" runtime "$runtime" "${AISDLC_RUNTIME:-}" "$BUILTIN_RUNTIME")"
+    check_runtime "$runtime"
 
     local specs_dir
     specs_dir="$(resolve_default "$repo" specs_dir "" "${AISDLC_SPECS_DIR:-}" "$BUILTIN_SPECS_DIR")"
@@ -642,12 +652,12 @@ cmd_add() {
 
     jq -n --arg id "$id" --arg ticket "$ticket" --arg repo "$repo" --arg model "$model" \
           --arg base "$base" --arg phases "$phases" --arg t "$(ts)" --arg sd "$specs_dir" \
-          --arg billing "$billing" \
+          --arg billing "$billing" --arg runtime "$runtime" \
           --argjson budget "$budget" --argjson no_pr "$no_pr" --argjson plugin_dir "$plugin_dir" \
           --argjson is_issue "$is_issue_flag" --argjson cost_init "$cost_init" \
           --argjson models_obj "$models_arg" \
           '({id:$id, ticket:$ticket, repo:$repo, model:$model, base:$base, specs_dir:$sd,
-            billing:$billing,
+            billing:$billing, runtime:$runtime,
             phases:($phases|split(" ")|map(select(length>0))), budget:$budget,
             no_pr:($no_pr==1), plugin_dir:($plugin_dir==1), is_issue:($is_issue==1),
             status:"queued", attempts:0, cost_usd:$cost_init, created:$t, updated:$t,
@@ -657,7 +667,7 @@ cmd_add() {
     flock "$(state_dir "$repo")/queue.lock" \
         bash -c "printf '%s\n' \"$id\" >> \"$(state_dir "$repo")/queue.jsonl\""
 
-    say "queued $id  ($ticket → $model, budget \$$budget, phases: $phases)"
+    say "queued $id  ($ticket → $model on $runtime, budget \$$budget, phases: $phases)"
     say "run it:  aisdlc run --repo $repo"
 }
 
@@ -690,6 +700,92 @@ seed_spec() {
         commit -q -m "docs(spec): add spec for $ticket" >> "$log" 2>&1
 }
 
+# The directories a phase loads the pipeline from. One marketplace, two plugins: --plugin-dir
+# names a single directory, so without the sibling a queued phase runs the pipeline with none of
+# the Slop Guard hooks. The sibling is optional, so a checkout without it still runs.
+plugin_dirs() {
+    printf '%s\n' "$PLUGIN_ROOT"
+    local sibling="$PLUGIN_ROOT/../slop-guard"
+    [ -d "$sibling" ] && (cd "$sibling" && pwd)
+    return 0
+}
+
+# A fingerprint of the worktree's policy layer. `.claude/` is gitignored, so git cannot see an
+# edit there; claude is denied Write(.claude/**) by settings.json, omp has no path-scoped deny,
+# so for omp the runner compares this before and after the phase instead.
+policy_fingerprint() {
+    local wt="$1"
+    [ -d "$wt/.claude" ] || { printf 'absent'; return 0; }
+    (cd "$wt" && find .claude -type f -print0 | sort -z | xargs -0 sha256sum 2>/dev/null) | sha256sum | cut -c1-16
+}
+
+# Fold an `omp --mode json` event stream into the result object the runner already reads from
+# claude: result, num_turns, is_error, total_cost_usd. Lines that are not JSON are skipped.
+#
+# `expanded` is the evidence that omp ran the plugin's command: an unknown /name is not an error
+# in omp, it reaches the model as plain text, so a first user message that still starts with "/"
+# means the model improvised a phase instead of running one. That is a failure, never a success.
+omp_result() {
+    jq -R -s '
+        def text(m): (m.content // []) | if type == "string" then . else map(select(.type == "text") | .text) | join("") end;
+        split("\n") | map(fromjson? // empty) as $ev
+        | [$ev[] | select(.type == "turn_end")] as $turns
+        | ([$ev[] | select(.type == "agent_end" and .isTerminal != false)] | last) as $end
+        | (($end.messages // []) | map(select(.role == "user")) | first) as $asked
+        | (($end.messages // []) | map(select(.role == "assistant")) | last) as $last
+        | (if $asked == null then "" else text($asked) end) as $prompt
+        | ($prompt | startswith("/") | not) as $expanded
+        | {type: "result", runtime: "omp",
+           num_turns: ($turns | length),
+           total_cost_usd: ([$turns[] | .message.usage.cost.total // 0] | add // 0),
+           expanded: $expanded,
+           stop_reason: ($last.stopReason // null),
+           result: (if $expanded then (if $last == null then "" else text($last) end)
+                    else "Unknown command: \($prompt | split(" ") | first) — omp sent it to the model as plain text" end),
+           is_error: ($end == null or $expanded == false
+                      or (($last.stopReason // "") | IN("error", "aborted")))}'
+}
+
+# One headless omp invocation, normalised to the claude result shape in $out. The raw event
+# stream stays beside it as $out.stream.jsonl, and the session in the task's sessions/ dir.
+#
+# The plugin is always loaded through --plugin-dir: that is what makes /<plugin>:<phase> resolve
+# to this checkout's command, and it also loads the plugin's omp extension — the guard hooks.
+# `--approval-mode yolo` because nobody is there to answer a prompt; the guard is the floor, as
+# it is for claude under bypassPermissions.
+invoke_omp() {
+    local prompt="$1" model="$2" budget="$3" wt="$4" out="$5" log="$6" billing="${7:-api}"
+    local sessions; sessions="$(dirname "$out")/sessions"
+
+    local -a args=(-p --mode json --no-title --approval-mode yolo --session-dir "$sessions" --model "$model")
+    local d
+    while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+
+    # omp has no spend cap, so none is claimed. Under api billing the cost is still recorded.
+    if [ "$billing" = "subscription" ]; then
+        printf '[%s] === omp -p "%s" (model %s, billing subscription — no cost data)\n' \
+            "$(ts)" "$prompt" "$model" >> "$log"
+    else
+        printf '[%s] === omp -p "%s" (model %s, no spend cap — omp cannot enforce $%s; cost recorded)\n' \
+            "$(ts)" "$prompt" "$model" "$budget" >> "$log"
+    fi
+
+    local rc=0 before after
+    before="$(policy_fingerprint "$wt")"
+    # Same two load-bearing details as invoke_claude: stdin from /dev/null, and AISDLC_HEADLESS
+    # so the guard turns every `ask` into a `deny`.
+    ( cd "$wt" && AISDLC_HEADLESS=1 omp "${args[@]}" "$prompt" < /dev/null ) > "$out.stream.jsonl" 2>> "$log" || rc=$?
+    omp_result < "$out.stream.jsonl" > "$out"
+    after="$(policy_fingerprint "$wt")"
+
+    if [ "$before" != "$after" ]; then
+        printf '[%s] the phase edited .claude/ — the policy layer is the runner'"'"'s, not the model'"'"'s\n' "$(ts)" >> "$log"
+        jset "$out" '.is_error = true | .result = "the phase modified .claude/"'
+        [ "$rc" -ne 0 ] || rc=1
+    fi
+    return $rc
+}
+
 # One headless invocation. Prints nothing; writes $out and appends to $log.
 invoke_claude() {
     local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}"
@@ -705,7 +801,10 @@ invoke_claude() {
     # Subscription billing: omit --max-budget-usd — a spend cap that cannot be enforced
     # reads as a guarantee and is worse than silence.
     [ "$billing" != "subscription" ] && args+=(--max-budget-usd "$budget")
-    [ "$use_plugin_dir" = "true" ] && args+=(--plugin-dir "$PLUGIN_ROOT")
+    if [ "$use_plugin_dir" = "true" ]; then
+        local d
+        while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+    fi
 
     if [ "$billing" = "subscription" ]; then
         printf '[%s] === claude -p "%s" (model %s, billing subscription — no cost data)\n' \
@@ -721,23 +820,30 @@ invoke_claude() {
     return $rc
 }
 
-run_phase() {
-    local repo="$1" id="$2" phase="$3" wt="$4" ticket="$5"
-    local dir; dir="$(task_dir "$repo" "$id")"
-    local log="$dir/${phase}.log" out="$dir/${phase}.json"
-    local model budget plugin_dir settings billing
-    model="$(jq -r --arg ph "$phase" '.models[$ph] // .model // empty' "$(task_file "$repo" "$id")" 2>/dev/null)"
-    budget="$(task_get "$repo" .budget "$id")"
-    plugin_dir="$(task_get "$repo" .plugin_dir "$id")"
-    billing="$(task_get "$repo" .billing "$id")"
-    billing="${billing:-api}"
-    settings="$(state_dir "$repo")/settings.json"
+# --output-format json answers with the single result object on some CLI versions and with
+# the whole message array on others. Collapse the array to its result element so every
+# reader — cost, transcript, is_error and num_turns — sees one shape. Reading an array as an object yields
+# 0 turns, which then reads as "the model never ran" for a call that in fact succeeded.
+collapse_result() {
+    local out="$1"
+    if [ "$(jq -r 'type' "$out" 2>/dev/null)" = "array" ]; then
+        if jq -e '[.[] | select(.type == "result")] | last' "$out" > "$out.result" 2>/dev/null; then
+            mv "$out.result" "$out"
+        else
+            rm -f "$out.result"
+        fi
+    fi
+}
 
+# claude's command resolution, split out so run_phase reads as one path per runtime. Uses the
+# caller's locals (dynamic scope): repo id phase wt ticket model budget settings plugin_dir
+# billing out log.
+run_claude_phase() {
     # Commands loaded from --plugin-dir are namespaced (/sdlc:qa); an installed plugin also
     # answers to the bare name. Guessing wrong is free to detect — the CLI rejects an unknown
     # command locally, with no tokens spent — so try the likely form, then the other. The
     # namespace comes from the manifest, so renaming the plugin needs no change here.
-    local primary alternate
+    local primary alternate rc=0
     if [ "$phase" = "review" ]; then
         # Review uses the PR number extracted after ship, not the ticket name.
         local pr_url pr_num=""
@@ -766,26 +872,43 @@ run_phase() {
         alternate="/${PLUGIN_NAME}:${phase} ${ticket}"
     fi
 
-    local rc=0
     invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
     if grep -q '"result":"Unknown command' "$out" 2>/dev/null; then
         printf '[%s] %s not registered — retrying as "%s"\n' "$(ts)" "${primary%% *}" "${alternate%% *}" >> "$log"
         rc=0
         invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
     fi
+    return $rc
+}
 
-    # --output-format json answers with the single result object on some CLI versions and with
-    # the whole message array on others. Collapse the array to its result element so every
-    # reader below — cost, transcript, is_error, num_turns, the review verdict, and ship.json's
-    # PR number — sees one shape. Reading an array as an object yields 0 turns, which the check
-    # below reports as "the model never ran" for a phase that in fact succeeded.
-    if [ "$(jq -r 'type' "$out" 2>/dev/null)" = "array" ]; then
-        if jq -e '[.[] | select(.type == "result")] | last' "$out" > "$out.result" 2>/dev/null; then
-            mv "$out.result" "$out"
-        else
-            rm -f "$out.result"
+run_phase() {
+    local repo="$1" id="$2" phase="$3" wt="$4" ticket="$5"
+    local dir; dir="$(task_dir "$repo" "$id")"
+    local log="$dir/${phase}.log" out="$dir/${phase}.json"
+    local model budget plugin_dir settings billing runtime
+    model="$(jq -r --arg ph "$phase" '.models[$ph] // .model // empty' "$(task_file "$repo" "$id")" 2>/dev/null)"
+    budget="$(task_get "$repo" .budget "$id")"
+    plugin_dir="$(task_get "$repo" .plugin_dir "$id")"
+    billing="$(task_get "$repo" .billing "$id")"
+    billing="${billing:-api}"
+    settings="$(state_dir "$repo")/settings.json"
+    runtime="$(task_get "$repo" .runtime "$id")"; runtime="${runtime:-claude}"
+
+    local rc=0
+    if [ "$runtime" = "omp" ]; then
+        # omp does not reject an unknown command, it forwards it to the model as text. So check
+        # before spending anything that the command exists, and never guess a second form.
+        if [ ! -f "$PLUGIN_ROOT/commands/${phase}.md" ]; then
+            printf '[%s] %s FAILED — no command %s/commands/%s.md for omp to run\n' \
+                "$(ts)" "$phase" "$PLUGIN_ROOT" "$phase" >> "$log"
+            return 1
         fi
+        invoke_omp "/${PLUGIN_NAME}:${phase} ${ticket}" "$model" "$budget" "$wt" "$out" "$log" "$billing" || rc=$?
+    else
+        run_claude_phase || rc=$?
     fi
+
+    collapse_result "$out"
 
     # Fold this phase's cost into the task total, whatever the outcome.
     if [ "$billing" = "subscription" ]; then
@@ -1225,6 +1348,133 @@ cmd_scope_check() {
     run_scope_check "$repo" "$id" "$wt" "$ticket" "$specs_dir" "$base"
 }
 
+# --------------------------------------------------------------------------- #
+# verify — the repository's own answer, on the final commit, before anything is pushed
+# --------------------------------------------------------------------------- #
+#
+# Everything before this is either a model's report or a classification of paths. This runs the
+# commands a human would run before opening the PR, and reads from git what no report can hide:
+#   1. .aisdlc/config.json `verify` — a list of shell commands, run in the worktree in order.
+#      None configured is a FAIL, not a skip: a gate that silently passes when unconfigured is
+#      how a pipeline ships untested code while every report says PASS.
+#   2. every UC-<n> in the spec's acceptance table appears in at least one test file this branch
+#      added or changed — the traceability dense-testing asks for, checked rather than claimed.
+#   3. no test file deleted, and no .skip/.only/xit/t.Skip-style switch added to a test file.
+
+# A path that is a test file, by the conventions of the stacks this plugin supports.
+_is_test_path() {
+    printf '%s' "$1" | grep -qE '(^|/)(tests?|__tests__|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.(go|py)$|(^|/)test_[^/]*\.py$'
+}
+
+# Writes <specs>/<TICKET>/verify-report.md, commits it, records .verify_verdict.
+# Returns 1 on FAIL (the pipeline stops before ship); 0 on PASS.
+run_verify() {
+    local repo="$1" id="$2" wt="$3" ticket="$4" specs_dir="$5" base="$6"
+    local dir; dir="$(task_dir "$repo" "$id")"
+    local log="$dir/verify.log" spec_file="$wt/$specs_dir/$ticket/spec.md"
+    local report_wt="$wt/$specs_dir/$ticket/verify-report.md"
+    local -a rows=() failures=()
+
+    printf '[%s] verify begin (base %s)\n' "$(ts)" "$base" >> "$log"
+
+    # 1. The repository's verification commands.
+    local cmds n=0 c rc
+    cmds="$(jq -r '.verify // [] | .[]' "$(state_dir "$repo")/config.json" 2>/dev/null || true)"
+    if [ -z "$cmds" ]; then
+        failures+=("no verify commands configured — set \"verify\": [...] in .aisdlc/config.json")
+        rows+=("| commands | **FAIL** | none configured |")
+    else
+        while IFS= read -r c; do
+            [ -n "$c" ] || continue
+            n=$((n + 1)); rc=0
+            printf '[%s] $ %s\n' "$(ts)" "$c" >> "$log"
+            ( cd "$wt" && AISDLC_HEADLESS=1 bash -c "$c" < /dev/null ) >> "$log" 2>&1 || rc=$?
+            if [ "$rc" -eq 0 ]; then
+                rows+=("| \`$c\` | PASS | exit 0 |")
+            else
+                rows+=("| \`$c\` | **FAIL** | exit $rc — see verify.log |")
+                failures+=("\`$c\` exited $rc")
+            fi
+        done <<< "$cmds"
+    fi
+
+    # Files this branch touched, excluding the harness's own bookkeeping (same rule as scope-check).
+    local changed deleted tests=""
+    changed="$(git -C "$wt" diff --name-only --diff-filter=AMR "${base}...HEAD" 2>/dev/null \
+        | grep -v "^$specs_dir/$ticket/" | grep -vE '^(AGENTS\.md|CLAUDE\.md|\.claude/)' || true)"
+    local f
+    while IFS= read -r f; do
+        [ -n "$f" ] && _is_test_path "$f" && tests="${tests:+$tests$'\n'}$f"
+    done <<< "$changed"
+
+    # 2. Every UC in the acceptance table has a test that names it.
+    local ucs uc missing=""
+    ucs="$(grep -E '^\|[[:space:]]*UC-[0-9]+' "$spec_file" 2>/dev/null | grep -oE 'UC-[0-9]+' | sort -u || true)"
+    if [ -z "$ucs" ]; then
+        if [ -z "$tests" ]; then
+            rows+=("| tests | **FAIL** | the spec has no UC table and the branch changed no test |")
+            failures+=("no test added or changed")
+        else
+            rows+=("| UC coverage | n/a | the spec has no UC table; $(printf '%s\n' "$tests" | wc -l | tr -d ' ') test file(s) changed |")
+        fi
+    else
+        # The id as dense-testing writes it in each stack: `UC-3:` in a test title, `_UC1_` in a Go
+        # test function, `test_uc2_` in pytest. Case-insensitive, separator optional, not a prefix
+        # of a longer number.
+        for uc in $ucs; do
+            if [ -z "$tests" ] || ! (cd "$wt" && printf '%s\n' "$tests" \
+                    | xargs grep -liqE "(^|[^a-z])uc[-_]?${uc#UC-}([^0-9]|\$)" 2>/dev/null); then
+                missing="${missing:+$missing, }$uc"
+            fi
+        done
+        if [ -n "$missing" ]; then
+            rows+=("| UC coverage | **FAIL** | no changed test names $missing |")
+            failures+=("untested: $missing")
+        else
+            rows+=("| UC coverage | PASS | $(printf '%s' "$ucs" | wc -w | tr -d ' ') UC(s), each named by a changed test |")
+        fi
+    fi
+
+    # 3. Nothing weakened: no deleted test file, no newly skipped or focused test.
+    deleted="$(git -C "$wt" diff --name-only --diff-filter=D "${base}...HEAD" 2>/dev/null || true)"
+    local removed=""
+    while IFS= read -r f; do
+        [ -n "$f" ] && _is_test_path "$f" && removed="${removed:+$removed, }$f"
+    done <<< "$deleted"
+    local switched=""
+    if [ -n "$tests" ]; then
+        switched="$(cd "$wt" && printf '%s\n' "$tests" | xargs git diff "${base}...HEAD" -U0 -- 2>/dev/null \
+            | grep -E '^\+[^+]' \
+            | grep -E '\b(it|test|describe)\.(skip|only|todo)\(|\b(xit|xdescribe|fit|fdescribe)\(|t\.Skip(Now)?\(|@(Disabled|Ignore)\b|pytest\.mark\.skip|@unittest\.skip' \
+            | head -5 || true)"
+    fi
+    if [ -n "$removed" ] || [ -n "$switched" ]; then
+        rows+=("| tests not weakened | **FAIL** | ${removed:+deleted: $removed }${switched:+switched off: $(printf '%s' "$switched" | tr '\n' ' ' | cut -c1-160)} |")
+        failures+=("a test was deleted or switched off")
+    else
+        rows+=("| tests not weakened | PASS | no test deleted, skipped or focused |")
+    fi
+
+    local verdict="PASS"
+    [ "${#failures[@]}" -eq 0 ] || verdict="FAIL"
+    mkdir -p "$wt/$specs_dir/$ticket"
+    {
+        printf '%s\n\n# Verify — %s\n\n' "$verdict" "$ticket"
+        printf 'Base: `%s`  \nHead: `%s`  \nChecked: %s\n\n' "$base" "$(git -C "$wt" rev-parse --short HEAD)" "$(ts)"
+        printf '| check | result | detail |\n|---|---|---|\n'
+        printf '%s\n' "${rows[@]}"
+    } > "$report_wt"
+    git -C "$wt" add "$specs_dir/$ticket/verify-report.md" >> "$log" 2>&1
+    git -C "$wt" -c user.name=aisdlc -c user.email=aisdlc@localhost \
+        commit -q -m "docs(verify): verify report for $ticket [$verdict]" >> "$log" 2>&1
+    cp "$report_wt" "$dir/verify-report.md"
+    local joined=""
+    [ "${#failures[@]}" -eq 0 ] || joined="$(printf '%s; ' "${failures[@]}")"
+    task_set "$repo" "$id" --arg v "$verdict" --arg f "${joined%; }" '.verify_verdict = $v | .verify_failures = $f'
+    printf '[%s] verify: %s%s\n' "$(ts)" "$verdict" "${joined:+ — ${joined%; }}" >> "$log"
+    [ "$verdict" = "PASS" ]
+}
+
 
 execute_task() {
     local repo="$1" id="$2"
@@ -1312,6 +1562,10 @@ execute_task() {
         if [ "$phase" = "scope-check" ]; then
             run_scope_check "$repo" "$id" "$wt" "$ticket" "$specs_dir" "$base" \
                 || { failed="$phase"; break; }
+        elif [ "$phase" = "verify" ]; then
+            if ! run_verify "$repo" "$id" "$wt" "$ticket" "$specs_dir" "$base"; then
+                failed="$phase"; break
+            fi
         elif ! run_phase "$repo" "$id" "$phase" "$wt" "$ticket"; then
             failed="$phase"; break
         fi
@@ -1354,6 +1608,7 @@ execute_task() {
         local err hint=""
         [ -f "$wt/$specs_dir/$ticket/BLOCKED.md" ] && hint=" (BLOCKED.md written)"
         [ "$failed" = "scope-check" ]              && hint=" (see scope-report.md)"
+        [ "$failed" = "verify" ] && hint=" — see verify-report.md: $(task_get "$repo" .verify_failures "$id")"
         if [ "$failed" = "review" ]; then
             err="review blockers remain"
         else
@@ -1381,6 +1636,7 @@ execute_task() {
     # Collect the artifacts a human will want, then release the worktree.
     [ -f "$wt/$specs_dir/$ticket/qa-report.md" ]    && cp "$wt/$specs_dir/$ticket/qa-report.md"    "$dir/"
     [ -f "$wt/$specs_dir/$ticket/scope-report.md" ] && cp "$wt/$specs_dir/$ticket/scope-report.md" "$dir/"
+    [ -f "$wt/$specs_dir/$ticket/verify-report.md" ] && cp "$wt/$specs_dir/$ticket/verify-report.md" "$dir/"
     [ -f "$wt/$specs_dir/$ticket/pr-body.md" ]      && cp "$wt/$specs_dir/$ticket/pr-body.md"      "$dir/"
     git -C "$wt" diff "$base"...HEAD > "$dir/changes.diff" 2>/dev/null || true
 
@@ -1420,6 +1676,16 @@ execute_task() {
     return 0
 }
 
+# The distinct runtimes of the tasks still in the queue; a task from before --runtime is claude.
+queued_runtimes() {
+    local repo="$1" id rt
+    while read -r id; do
+        [ -n "$id" ] || continue
+        rt="$(task_get "$repo" .runtime "$id")"
+        printf '%s\n' "${rt:-claude}"
+    done < "$(state_dir "$repo")/queue.jsonl" | sort -u
+}
+
 cmd_run() {
     local repo="." workers="" once=0
     while [ $# -gt 0 ]; do
@@ -1431,7 +1697,6 @@ cmd_run() {
             *)         die "run takes no positional arguments" ;;
         esac
     done
-    need claude
     repo="$(resolve_repo "$repo")"
     init_state "$repo"
     [ "$once" -eq 1 ] || workers="$(resolve_default "$repo" workers "$workers" "${AISDLC_WORKERS:-}" "$BUILTIN_WORKERS")"
@@ -1439,6 +1704,11 @@ cmd_run() {
     local pending
     pending="$(wc -l < "$(state_dir "$repo")/queue.jsonl" | tr -d ' ')"
     [ "${pending:-0}" -gt 0 ] || { say "queue is empty"; return 0; }
+
+    # Every runtime the queued tasks were added with must be installed, checked before any
+    # task is popped: a missing CLI found mid-queue fails a task that was never attempted.
+    local rt
+    for rt in $(queued_runtimes "$repo"); do need "$rt"; done
 
     say "aisdlc $VERSION — $pending queued, $workers worker(s)$([ "$once" -eq 1 ] && echo ', single task')"
 

@@ -35,9 +35,19 @@ fresh_repo() {
         echo "|----|-------|--------|----------------------------|------|"
         echo "| UC-1 | caller | calls Stub() | returns a non-empty string | unit |"
     } > "$dir/specs/SBX-1/spec.md"
+    # Create .claude/ so the policy edit test can detect modifications.
+    mkdir -p "$dir/.claude/rules"
+    printf '# test rule\n' > "$dir/.claude/rules/test.md"
+    # A test that already exists on the base, so a branch deleting it can be caught.
+    mkdir -p "$dir/legacy"
+    printf 'package legacy\n\nimport "testing"\n\nfunc TestLegacy(t *testing.T) {}\n' > "$dir/legacy/old_test.go"
     git -C "$dir" add -A
     git -C "$dir" commit -q -m "chore: selftest baseline"
     git -C "$dir" update-ref refs/remotes/origin/master HEAD
+    # verify fails closed without commands, so every fixture carries one that passes. Written
+    # after the commit: .aisdlc/ is state, never part of the tree.
+    mkdir -p "$dir/.aisdlc"
+    printf '{"verify":["test -f pkg/stub_test.go"]}\n' > "$dir/.aisdlc/config.json"
 }
 
 task_field() {
@@ -49,9 +59,10 @@ task_field() {
 rm -rf "$WORK"
 mkdir -p "$STUB_DIR"
 ln -sf "$HARNESS_DIR/stub-claude" "$STUB_DIR/claude"
+ln -sf "$HARNESS_DIR/stub-omp" "$STUB_DIR/omp"
 export PATH="$STUB_DIR:$PATH"
 
-printf 'aisdlc runner selftest (stub claude, no API calls)\n\n'
+printf 'aisdlc runner selftest (stub claude and stub omp, no API calls)\n\n'
 
 # --------------------------------------------------------------------------- #
 printf 'every requested phase runs, in order\n'
@@ -67,6 +78,8 @@ D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 [ -f "$D/qa.log" ] && ok "qa ran too (stdin not swallowed)" || bad "qa" "no qa.log — the phase loop lost its input"
 [ -f "$D/qa-report.md" ] && ok "qa report collected" || bad "artifacts" "qa-report.md not copied out"
 [ -s "$D/changes.diff" ] && ok "diff collected" || bad "artifacts" "changes.diff empty"
+head -1 "$D/verify-report.md" 2>/dev/null | grep -qx PASS && ok "verify ran and passed" \
+    || bad "verify" "no PASS verify-report.md in the task dir"
 
 # --------------------------------------------------------------------------- #
 printf '\na phase that never ran is a failure, not a success\n'
@@ -574,7 +587,7 @@ printf '\nbilling=subscription: null cost, no --max-budget-usd in args\n'
 R="$WORK/billing-sub"
 fresh_repo "$R"
 mkdir -p "$R/.aisdlc"
-printf '{"billing":"subscription"}\n' > "$R/.aisdlc/config.json"
+printf '{"verify":["true"],"billing":"subscription"}\n' > "$R/.aisdlc/config.json"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
 "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "done" ] \
@@ -596,7 +609,7 @@ grep -q 'billing subscription' "${D}implement.log" \
 R="$WORK/billing-sub-noop"
 fresh_repo "$R"
 mkdir -p "$R/.aisdlc"
-printf '{"billing":"subscription"}\n' > "$R/.aisdlc/config.json"
+printf '{"verify":["true"],"billing":"subscription"}\n' > "$R/.aisdlc/config.json"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
 AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "failed" ] \
@@ -671,7 +684,7 @@ printf '\nmodel_roles: run_phase routes each phase to its model (UC-3)\n'
 R="$WORK/mr-uc3"
 fresh_repo "$R"
 mkdir -p "$R/.aisdlc"
-printf '{"model_roles":{"smol":"haiku","slow":"opus"}}\n' > "$R/.aisdlc/config.json"
+printf '{"verify":["true"],"model_roles":{"smol":"haiku","slow":"opus"}}\n' > "$R/.aisdlc/config.json"
 "$AISDLC" add SBX-1 --repo "$R" --model sonnet >/dev/null 2>&1
 "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
@@ -690,7 +703,7 @@ printf '\nmodel_roles partial: missing roles fall back to task model (UC-4)\n'
 R="$WORK/mr-uc4"
 fresh_repo "$R"
 mkdir -p "$R/.aisdlc"
-printf '{"model_roles":{"smol":"haiku"}}\n' > "$R/.aisdlc/config.json"
+printf '{"verify":["true"],"model_roles":{"smol":"haiku"}}\n' > "$R/.aisdlc/config.json"
 "$AISDLC" add SBX-1 --repo "$R" --model sonnet --no-pr >/dev/null 2>&1
 TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
 [ "$(jq 'has("models")' "$TF")" = "true" ] \
@@ -715,10 +728,10 @@ printf '\nmodel_roles snapshot: config edit after add does not affect queued tas
 R="$WORK/mr-uc5"
 fresh_repo "$R"
 mkdir -p "$R/.aisdlc"
-printf '{"model_roles":{"smol":"haiku","slow":"opus"}}\n' > "$R/.aisdlc/config.json"
+printf '{"verify":["true"],"model_roles":{"smol":"haiku","slow":"opus"}}\n' > "$R/.aisdlc/config.json"
 "$AISDLC" add SBX-1 --repo "$R" --model sonnet >/dev/null 2>&1
 # Edit config after add — snapshot in task.json must be used, not the new config
-printf '{"model_roles":{"smol":"changed-model","slow":"another-model"}}\n' > "$R/.aisdlc/config.json"
+printf '{"verify":["true"],"model_roles":{"smol":"changed-model","slow":"another-model"}}\n' > "$R/.aisdlc/config.json"
 "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 grep -q '(model haiku' "${D}ship.log" 2>/dev/null \
@@ -775,6 +788,133 @@ jq -e '(.labels | index("in-progress")) | not' "$STUB_GH_STATE" >/dev/null \
     || bad "pr release" "label still set: $(cat "$STUB_GH_STATE")"
 unset STUB_GH_STATE STUB_GH_LOG STUB_GH_USER
 rm -f "$STUB_DIR/gh"
+
+
+# --------------------------------------------------------------------------- #
+printf '\nverify is the last gate before ship, and it reads git, not reports\n'
+verify_case() {  # <name> <stub mode> <config json> — expects FAIL and no ship
+    local name="$1" mode="$2" config="$3"
+    R="$WORK/verify-$name"
+    fresh_repo "$R"
+    [ -n "$config" ] && printf '%s\n' "$config" > "$R/.aisdlc/config.json"
+    "$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+    AISDLC_STUB="$mode" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+    D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+}
+verify_case unconfigured ok '{}'
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "no verify commands is a FAIL, not a skip" \
+    || bad "verify" "verdict is $(task_field "$R" .verify_verdict) with nothing configured"
+[ ! -f "$D/ship.log" ] && ok "ship never ran" || bad "verify" "it shipped without a verify PASS"
+case "$(task_field "$R" .error)" in *verify*configured*) ok "the error says what to configure" ;;
+    *) bad "verify" "error is $(task_field "$R" .error)" ;; esac
+
+verify_case redcommand ok '{"verify":["true","exit 3"]}'
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a failing verification command fails verify" \
+    || bad "verify" "verdict is $(task_field "$R" .verify_verdict)"
+grep -q 'exit 3.*exited 3\|`exit 3` exited 3' <<< "$(task_field "$R" .verify_failures)" \
+    && ok "the failure names the command" || bad "verify" "failures: $(task_field "$R" .verify_failures)"
+[ ! -f "$D/ship.log" ] && ok "ship never ran" || bad "verify" "shipped past a red command"
+
+verify_case nouc nouc ''
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a UC with no test naming it fails verify" \
+    || bad "verify" "verdict is $(task_field "$R" .verify_verdict)"
+grep -q 'UC-1' "$D/verify-report.md" && ok "the report names the untested UC" || bad "verify" "UC-1 not in verify-report.md"
+
+verify_case skiptest skiptest ''
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a switched-off test fails verify" \
+    || bad "verify" "t.Skip was accepted"
+
+verify_case deltest deltest ''
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a deleted test file fails verify" \
+    || bad "verify" "deleting legacy/old_test.go was accepted"
+grep -q 'legacy/old_test.go' "$D/verify-report.md" && ok "the report names the deleted file" \
+    || bad "verify" "deleted file not named"
+
+# --------------------------------------------------------------------------- #
+printf '\nthe omp runtime runs the same pipeline\n'
+R="$WORK/omp"
+TRACE="$WORK/omp-invocations.txt"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp >/dev/null 2>&1
+[ "$(task_field "$R" .runtime)" = "omp" ] && ok "runtime recorded at queue time" \
+    || bad "omp runtime" "runtime is $(task_field "$R" .runtime)"
+AISDLC_STUB_TRACE="$TRACE" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "status is done" || bad "omp runtime" "status is $(task_field "$R" .status): $(task_field "$R" .error)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+for ph in implement qa ship review; do  # verify runs in-process, no model
+    grep -q "=== omp -p \"/sdlc:$ph SBX-1\"" "$D/$ph.log" 2>/dev/null \
+        && ok "$ph ran through omp as /sdlc:$ph" || bad "omp runtime" "$ph.log has no omp invocation"
+done
+[ -f "$D/implement.json.stream.jsonl" ] && ok "the raw event stream is kept" || bad "omp runtime" "no implement.json.stream.jsonl"
+[ "$(jq -r '.num_turns' "$D/implement.json")" = "6" ] && ok "turns counted from turn_end events" \
+    || bad "omp runtime" "num_turns is $(jq -r '.num_turns' "$D/implement.json")"
+# stub-claude reports 0.05 per phase except review (0.02); four model phases ran.
+[ "$(jq -r '.cost_usd' "$D/task.json")" = "0.17" ] && ok "cost summed from turn usage" \
+    || bad "omp runtime" "cost_usd is $(jq -r '.cost_usd' "$D/task.json")"
+grep -q -- '--plugin-dir [^ ]*/plugins/sdlc ' "$TRACE" && ok "--plugin-dir loads this checkout's plugin" \
+    || bad "omp runtime" "no --plugin-dir for the sdlc plugin"
+grep -q -- '--plugin-dir [^ ]*/plugins/slop-guard' "$TRACE" && ok "--plugin-dir loads the guard plugin beside it" \
+    || bad "omp runtime" "no --plugin-dir for slop-guard"
+grep -q -- '--approval-mode yolo' "$TRACE" && ok "no approval prompt can stall the phase" \
+    || bad "omp runtime" "--approval-mode yolo missing"
+grep -q '^omp headless:1 ' "$TRACE" && ok "the phase runs with AISDLC_HEADLESS=1" \
+    || bad "omp runtime" "AISDLC_HEADLESS not set"
+grep -q 'max-budget-usd' "$TRACE" && bad "omp runtime" "a spend cap omp cannot enforce was passed" \
+    || ok "no spend cap is claimed"
+
+printf '\nomp forwards an unknown command to the model; the runner must not accept that\n'
+R="$WORK/omp-noop"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp >/dev/null 2>&1
+AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "an unexpanded command fails the phase" \
+    || bad "omp expansion" "status is $(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ ! -f "$D/qa.log" ] && ok "nothing runs after it" || bad "omp expansion" "qa ran after an improvised implement"
+grep -q 'Unknown command' "$D/implement.log" && ok "the log says the command was not expanded" \
+    || bad "omp expansion" "implement.log does not say why"
+
+R="$WORK/omp-nocmd"
+TRACE="$WORK/omp-nocmd.txt"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp --phase implement,bogus --no-pr >/dev/null 2>&1
+AISDLC_STUB_TRACE="$TRACE" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "a phase with no command file fails" \
+    || bad "omp command check" "status is $(task_field "$R" .status)"
+[ "$(grep -c '/sdlc:bogus' "$TRACE" 2>/dev/null)" = "0" ] && ok "omp was never invoked for it" \
+    || bad "omp command check" "omp ran a command that does not exist"
+
+printf '\nan omp phase that edits the policy layer fails\n'
+R="$WORK/omp-policy"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp --no-pr >/dev/null 2>&1
+AISDLC_STUB=policyedit "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "editing .claude/ fails the task" \
+    || bad "omp policy" "status is $(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -q 'edited .claude/' "$D/implement.log" && ok "the log names the policy edit" \
+    || bad "omp policy" "implement.log does not mention .claude/"
+
+printf '\nthe runtime is validated and resolved like every other default\n'
+R="$WORK/omp-config"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime nonsense >/dev/null 2>&1 \
+    && bad "runtime" "an unknown runtime was accepted" || ok "an unknown runtime is refused"
+mkdir -p "$R/.aisdlc"
+printf '{"verify":["true"],"runtime":"omp"}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+[ "$(task_field "$R" .runtime)" = "omp" ] && ok "config.json sets the runtime" \
+    || bad "runtime" "runtime is $(task_field "$R" .runtime)"
+# A queued omp task on a machine without omp: refuse up front, leave the task queued.
+NO_OMP="$WORK/no-omp-bin"
+mkdir -p "$NO_OMP"
+for tool in git jq flock bash sed awk grep find sort sha256sum cut tr wc head tail date dirname basename mkdir cat printf readlink; do
+    p="$(command -v "$tool")" && ln -sf "$p" "$NO_OMP/$tool"
+done
+PATH="$NO_OMP" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1 \
+    && bad "runtime" "run started without omp installed" || ok "run refuses when a queued task's runtime is missing"
+[ "$(task_field "$R" .status)" = "queued" ] && ok "the task stays queued" \
+    || bad "runtime" "status is $(task_field "$R" .status)"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
