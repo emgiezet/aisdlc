@@ -27,6 +27,38 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
     exit 0
 fi
 
+: "${CLAUDE_PROJECT_DIR:=$PWD}"
+
+# An initialised repository has been told all of this already: the router, the
+# descriptors and the playbooks are on disk and the model reads them from there.
+# Repeating the full pipeline every session spends context on a page nobody needs
+# twice. The long form is for the repo that still has to run /sdlc:init.
+if [ -f "${CLAUDE_PROJECT_DIR}/CLAUDE.md" ] && [ -f "${CLAUDE_PROJECT_DIR}/.claude/sdlc.md" ]; then
+    context_raw="AI SDLC harness active (${NAME} v${VERSION}) — this repository is initialised.
+
+A spec is the only approval point: /${NAME}:spec <TICKET> → a human flips status: approved →
+/${NAME}:implement → /${NAME}:qa → /${NAME}:ship → /${NAME}:review <pr#>. Queue it unattended with
+aisdlc add <TICKET>. Every other command is listed under /${NAME}: and documented in .claude/sdlc.md.
+
+Skills load by name: spec-authoring, task-router, dense-testing, code-review, security-review,
+pipeline-contracts, discovery, architecture-review, rest-api-design, graphql-api-design, harness-eval.
+Agents: auto-qa, code-reviewer.
+
+Tracker and browser access go through the descriptors named in .claude/sdlc.md — never call gh or a
+browser directly. Force pushes, --no-verify and test deletion are blocked by hooks, not by intention."
+
+    context_escaped=$(escape_for_json "$context_raw")
+    cat <<EOF
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "${context_escaped}"
+  }
+}
+EOF
+    exit 0
+fi
+
 context_raw="AI SDLC harness active (${NAME} v${VERSION}).
 
 The pipeline. A spec is the only approval point; everything after it runs unattended:
@@ -59,6 +91,7 @@ Skills (load with the Skill tool):
 - harness-eval        — measuring the harness on a cheap model, and fixing instructions not tiers
 - pipeline-contracts  — descriptors, operations, chain markers, verdict tokens, claim lock, labels
 - code-review         — severity scale, verdict rule, review checklist, spec-review lenses
+- security-review     — trust boundaries, the auth/token/takeover lenses, and what counts as a finding
 - architecture-review — availability tiers and what each forces, dependency arithmetic, traffic profile, RPO/RTO
 - discovery           — brief format, evidence tags, Definition of Ready
 - rest-api-design     — resource naming, status codes, one error envelope, bounded pagination, breaking changes
