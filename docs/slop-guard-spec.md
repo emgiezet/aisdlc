@@ -1607,9 +1607,9 @@ Dispatcher dzieli komendę na podkomendy (`&&`, `||`, `;`, `|`, `$()`, backticki
 | Wzorzec (opis) | Decyzja | Powód dla agenta (EN, skrót) |
 |---|---|---|
 | `curl`/`wget` … `\|` `sh`/`bash`/`zsh`/`python` | `deny` | Remote script execution. Download, verify checksum, then run explicitly. |
-| `npm\|pnpm\|yarn\|bun` `add`/`install <pkg>`/`i <pkg>` | `ask` | New dependency. Confirm name (typosquatting), maintainer, release age, license. |
-| `composer require <pkg>` | `ask` | jw. |
-| `pip install <pkg>`, `uv add <pkg>`, `poetry add <pkg>` | `ask` | jw. |
+| `npm\|pnpm\|yarn\|bun` `add`/`install <pkg>`/`i <pkg>` | `note` (`ask` przy sygnale typosquattingu) | New dependency added. Pin the current stable version and verify it with: slopguard deps-check. |
+| `composer require <pkg>` | jw. | jw. |
+| `pip install <pkg>`, `uv add <pkg>`, `poetry add <pkg>` | jw. | jw. |
 | `go get <mod>@latest`, `go install <mod>@latest` | `ask` | Pin an explicit version instead of @latest. |
 | `npm install -g`, `pip install --break-system-packages`, `sudo pip`/`sudo npm` | `deny` | Global/system install is out of scope for project work. |
 | `npm install --force` / `--legacy-peer-deps` | `ask` | Forcing resolution hides dependency conflicts. |
@@ -1622,9 +1622,10 @@ Dispatcher dzieli komendę na podkomendy (`&&`, `||`, `;`, `|`, `$()`, backticki
 | `npm ci`, `pnpm install --frozen-lockfile`, `composer install`, `go mod download`, `uv sync --frozen` | brak decyzji | Instalacja z lockfile'a jest OK. |
 
 Uwagi:
-- Dla `ask` przy nowej zależności dispatcher dołącza w `permissionDecisionReason` wynik lokalnych heurystyk bez sieci:
+- Rutynowy `add`/`install` nie pyta: przechodzi z `additionalContext` (AP-AGENT-004). Pytanie pojawia się wyłącznie, gdy lokalne heurystyki bez sieci wskażą podszywanie się pod popularny pakiet:
   - odległość Levenshteina ≤ 2 od popularnych pakietów z wbudowanej listy top-N per ekosystem,
   - nazwa z sufiksami typu `-js`, `-dev`, `-utils` przy znanym pakiecie bazowym.
+- Pinowanie i przegląd licencji należą do `slopguard deps-check` przy bramce Stop (AP-AGENT-009), nie do promptu przy instalacji.
 - Przy `allow_network=true` może dodatkowo sprawdzić datę pierwszej publikacji (np. `< 30 dni` → oznacz w powodzie).
 - Skill `node-antipatterns` rekomenduje w projektach pnpm ustawienie `minimumReleaseAge` (dostępne od pnpm 10.16).
 
@@ -1650,10 +1651,14 @@ Decyzja:
 - `ask`, jeśli uzasadnienie jest, ale wyciszana reguła ma severity `blocker`.
 - Wyciszenia z uzasadnieniem dla `warn`/`error` przechodzą i trafiają do raportu Stop jako `info` („suppressions added this session").
 
-**C. Chronione pliki** (`rules/policies/protected-files.yaml`) → `ask` z powodem „lowering quality gates must be reviewed by a human":
-- konfiguracje narzędzi: `phpstan*.neon*`, `psalm*.xml*`, `.golangci.*`, `eslint.config.*`, `.eslintrc*`, `ruff.toml`, `.ruff.toml`, `pyproject.toml` (tylko gdy diff dotyka sekcji `[tool.ruff]`/`[tool.mypy]`/`[tool.pyright]`), `tsconfig*.json` (tylko gdy wyłącza `strict`/flagi strict), `.tflint.hcl`, `.checkov.yaml`, `.kube-linter.yaml`, `.hadolint.yaml`, `zizmor.yml`, `.gitleaks.toml`, `.sqlfluff`, `.slopguard.json`;
-- baseline'y: `phpstan-baseline.neon`, `psalm-baseline.xml`, `.eslintcache`, `*.baseline.json`;
-- pliki CI: `.github/workflows/*`, `.gitlab-ci.yml` — tylko gdy diff usuwa kroki lint/test/security.
+**C. Bramki jakości** (`rules/policies/write.yaml`) — dwa różne akty, dwie różne decyzje:
+
+`ask` — osłabienie wymaganej bramki testowej albo edycja konfiguracji samego slop-guarda:
+- próg pokrycia, który spada lub znika: `cov-fail-under`, `fail_under`, `coverageThreshold`, `coverage_threshold`, `minimum_coverage`, `min_coverage` (dowolny plik);
+- pliki CI `.github/workflows/*`, `.gitlab-ci.yml` — gdy diff usuwa krok `test`/`coverage` albo dodaje `continue-on-error: true`, `allow_failure: true`, `if: false`;
+- `.slopguard.json`, `.slopguard/tools/*.yaml`, `.slopguard/mapping/*.yaml` — ściszenie strażnika usuwa bramkę tak samo jak usunięcie joba.
+
+`note` (`additionalContext`, bez promptu) — poluzowanie progów lintera lub type-checkera: `phpstan*.neon*`, `psalm*.xml*`, `.golangci.*`, `eslint.config.*`, `.eslintrc*`, `ruff.toml`, `.ruff.toml`, `pyproject.toml` (sekcje `[tool.ruff]`/`[tool.mypy]`/`[tool.pyright]`), `tsconfig*.json` (wyłączenie `strict`), `.tflint.hcl`, `.checkov.yaml`, `.kube-linter.yaml`, `.hadolint.yaml`, `zizmor.yml`, `.gitleaks.toml`, `.sqlfluff`, baseline'y (`phpstan-baseline.neon`, `psalm-baseline.xml`, `.eslintcache`, `*.baseline.json`). Repozytorium, które wydaje codziennie, zmienia je legalnie; prompt przy każdej zmianie uczy człowieka zatwierdzać bez czytania.
 
 **D. Wyłączanie testów** → `ask`:
 - dodanie `markTestSkipped`, `$this->markTestIncomplete`, `t.Skip(`, `it.skip(`, `describe.skip(`, `test.skip(`, `xit(`, `@pytest.mark.skip`, `@unittest.skip`,

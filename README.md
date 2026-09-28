@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 34 commands, 10 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 34 commands, 11 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ The full numbers are in [`docs/ai-sdlc.md`](docs/ai-sdlc.md).
 npx skills add emgiezet/aisdlc --skill '*'
 ```
 
-That installs the ten knowledge skills — the spec format, the test-density rules, the
+That installs the eleven knowledge skills — the spec format, the test-density rules, the
 architecture-review tier table, the pipeline contracts — so any agent you already use writes
 specs and tests the way this harness expects. Drop `--skill '*'` to cherry-pick.
 
@@ -246,6 +246,7 @@ Installable on their own with `npx skills add emgiezet/aisdlc --skill <name>`.
 | `harness-eval` | Measuring the harness on a cheap model, and a table from each failure symptom to the instruction file that caused it. |
 | `rest-api-design` | Resource naming, status-code selection, one error envelope per API, bounded pagination, idempotency, and the breaking-change table for an HTTP surface. |
 | `graphql-api-design` | Nullability as a contract, mutation input/payload shape, Relay connections, the N+1 rule, where a domain error belongs, and the breaking-change table for a schema. |
+| `security-review` | The reviewer's lens for security findings: trust boundaries, ten review lenses covering authentication through supply-chain, evidence rules for what counts as a finding, and the auth-change checklist. |
 
 Plus the `auto-qa` and `code-reviewer` agents, the `guard` hook, `bin/aisdlc`, and the shipped
 descriptors: trackers `github` and `local`, browsers `playwright` and `agent-browser`.
@@ -509,7 +510,27 @@ each, with the safe alternative.
 | `node-antipatterns` | `*.js`, `*.mjs`, `*.cjs` |
 | `sql-antipatterns` | `*.sql` |
 | `iac-antipatterns` | `*.tf`, `*.yaml`, `*.yml`, `Dockerfile` (IaC context) |
-| `agent-discipline` | always — AP-AGENT-001 through AP-AGENT-010 |
+| `auth-antipatterns` | auth, login, session, token, password and OAuth paths — AP-AUTH-001 through AP-AUTH-011 |
+| `agent-discipline` | always — AP-AGENT-001 through AP-AGENT-009 |
+
+`auth-antipatterns` is the one catalogue that is not a language: token entropy, reset-token storage
+and TTL, password hashing, session rotation and invalidation, JWT verification, re-authentication
+before a credential change, rate limits, account enumeration, OAuth2 state and PKCE, OTP attempt
+limits. The review-time counterpart is the `security-review` skill.
+
+Two always-on rules are deliberately narrow, because a factory that ships daily cannot answer a
+prompt per edit. **AP-AGENT-002** asks only when a required *test* gate is weakened — a coverage
+threshold that drops or disappears, a test step removed from CI or told to fail open, or an edit to
+slop-guard's own configuration; linter and type-checker thresholds are recorded as context instead.
+**AP-AGENT-004** always blocks `curl | sh`, global installs and lifecycle-script overrides, but a
+routine dependency add proceeds with a note — it asks only when the package name resembles a popular
+one. Pinning and licence review stay with `slopguard deps-check` at the stop gate (AP-AGENT-009).
+
+Both session banners shrink once they have been read. The nine always-on rules print in full the
+first time a repository starts a session and become a one-line pointer afterwards
+(`SLOPGUARD_DIGEST=full` forces the long form back); the AI SDLC pipeline banner collapses to four
+lines as soon as `CLAUDE.md` and `.claude/sdlc.md` exist, and stays long only for a repository that
+still has to run `/sdlc:init`.
 
 Tier-2 stacks (JVM, C#, Ruby, Rust) load their own skills with Opengrep-backed detection but no
 type-analysis tools. `SessionStart` says which tier each detected stack runs at, so silence from

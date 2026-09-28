@@ -23,6 +23,7 @@
         "./skills/harness-eval",
         "./skills/pipeline-contracts",
         "./skills/rest-api-design",
+        "./skills/security-review",
         "./skills/spec-authoring",
         "./skills/task-router"
       ]
