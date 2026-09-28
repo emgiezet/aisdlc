@@ -1,0 +1,12 @@
+[
+  {"query": "Review this PR — the diff adds a password reset endpoint with no rate limit and reset tokens stored in plaintext", "should_trigger": true, "note": "core use case — account recovery lens, rate limiting, token entropy (AP-AUTH-001/002/008)"},
+  {"query": "The diff adds a POST /admin/users endpoint callable by any authenticated user — what trust boundary check is needed?", "should_trigger": true, "note": "trust boundary: authenticated user → privileged resource; authorization re-check required"},
+  {"query": "This PR changes the login flow and session handling — what must appear in the diff and the tests?", "should_trigger": true, "note": "auth-change checklist: rotation, invalidation, re-auth, rate limit, and corresponding tests"},
+  {"query": "User input from the request body is concatenated directly into a SQL query — how do I classify this as a finding?", "should_trigger": true, "note": "input-reaching-interpreter lens; entry point, sink and path all in the diff — it is a blocker finding"},
+  {"query": "The diff fetches a URL supplied in the request body and returns the response to the caller — is this a finding?", "should_trigger": true, "note": "outbound-request lens; SSRF with no allow-list check on a caller-supplied URL is a blocker finding"},
+  {"query": "A new OAuth2 callback endpoint is added in this diff — what lenses and AP-AUTH rules apply?", "should_trigger": true, "note": "authentication lens: AP-AUTH-005/010 (JWT, OAuth2 state, PKCE, redirect_uri); trust boundary: unauthenticated HTTP edge"},
+  {"query": "What verdict should I give for a PR that only has nit findings?", "should_trigger": false, "note": "code-review owns the verdict rule — only minor/nit present → APPROVED"},
+  {"query": "How many tests does a new endpoint need, and how do I name them?", "should_trigger": false, "note": "dense-testing owns density floors and the UC-id naming convention"},
+  {"query": "Write a spec for the authentication redesign with a UC table", "should_trigger": false, "note": "spec-authoring owns spec format and UC table authoring"},
+  {"query": "What availability tier does an authentication service require, and what topology does it force?", "should_trigger": false, "note": "architecture-review owns availability tiers, dependency arithmetic and RPO/RTO"}
+]
