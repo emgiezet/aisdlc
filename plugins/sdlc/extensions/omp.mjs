@@ -8,7 +8,8 @@
  *   SessionStart  → session_start  : run hooks/session-start; post context via sendMessage
  *   PreToolUse(Bash) → tool_call (bash) : guard pre-bash; exit 2 = block
  *   Stop          → turn_end        : guard stop; exit 2 = advisory via sendMessage
- *                                     (omp turn_end cannot block; enforcement is advisory)
+ *                                     (omp turn_end cannot block; enforcement is advisory,
+ *                                      sent once per unchanged set of findings)
  *
  * hooks.json has NO PreToolUse binding for Write or Edit, so those events are
  * NOT intercepted here.  The guard's test-weakening rules only fire on bash
@@ -168,13 +169,23 @@ export default function sdlcOmpExtension(pi) {
   // ── turn_end: advisory stop-gate ────────────────────────────────────────────
   // hooks.json binds Stop (→ guard stop); omp's turn_end cannot block execution
   // so findings are surfaced as a persistent message the agent sees next turn.
+  // Each message starts a new turn, so an unchanged advisory is sent once: re-sending
+  // it every turn_end loops forever (Claude breaks the same loop with stop_hook_active).
+  // A clean run clears it, so findings that come back later are reported again.
+  let lastAdvisory = '';
   pi.on('turn_end', async (_event, ctx) => {
     try {
       const { rc, stderr } = await runHook(
         guardScript, ['stop'], buildStopPayload(false), env(ctx),
       );
-      if (rc === 2 && stderr.trim()) {
-        await pi.sendMessage(stderr.trim());
+      if (rc === 0) {
+        lastAdvisory = '';
+        return;
+      }
+      const advisory = stderr.trim();
+      if (rc === 2 && advisory && advisory !== lastAdvisory) {
+        lastAdvisory = advisory;
+        await pi.sendMessage(advisory);
       }
     } catch (err) {
       pi.logger?.warn?.('sdlc: guard stop failed (non-fatal):', String(err?.message));

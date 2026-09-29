@@ -4,7 +4,8 @@
 # Usage (from hooks.json, via run-hook.cmd):
 #   guard pre-bash   — PreToolUse on Bash: deny force pushes, --no-verify, dangerous rm
 #   guard stop       — Stop: deny finishing a session that deleted or skipped tests
-#                      (advisory warning on Grok — Stop hooks are passive there)
+#                      (advisory warning on Grok — Stop hooks are passive there).
+#                      Deletions listed with a reason in .claude/retired-tests are allowed.
 #
 # Contract:
 #   Claude/Codex PreToolUse — exit 0 = allow; exit 2 = block, reason on stderr.
@@ -102,7 +103,41 @@ Fix what the hook reports instead of skipping it."
 # --------------------------------------------------------------------------- #
 TEST_PATH_RE='(_test\.(go|py|rb)|test_[^/]*\.py|\.(test|spec)\.(ts|tsx|js|jsx|mjs)$|Test\.php$|/tests?/|/Tests/|/__tests__/|/e2e/)'
 
-SKIP_ADD_RE='(t\.Skip\(|t\.Skipf\(|testing\.Short\(\)|\.skip\(|\.only\(|it\.skip|describe\.skip|xit\(|xdescribe\(|fdescribe\(|fit\(|markTestSkipped|@pytest\.mark\.skip|@unittest\.skip|@Ignore|->skip\(|Skip::)'
+# Jasmine/Jest focus and exclude helpers (xit, fit, xdescribe, fdescribe) only as whole
+# identifiers — 'SystemExit(' and 'benefit(' are not tests.
+SKIP_ADD_RE='(t\.Skip\(|t\.Skipf\(|testing\.Short\(\)|\.skip\(|\.only\(|it\.skip|describe\.skip|(^|[^[:alnum:]_$.])(xit|fit|xdescribe|fdescribe)\(|markTestSkipped|@pytest\.mark\.skip|@unittest\.skip|@Ignore|->skip\(|Skip::)'
+
+# Retired-tests ledger, relative to the repository root. One entry per line:
+#   <path-or-glob> <reason>
+# '#' starts a comment. An entry without a reason is ignored. Globs use shell case matching,
+# so '*' also crosses '/'.
+RETIRED_LEDGER='.claude/retired-tests'
+
+# retired_patterns BASE — print the path patterns of ledger entries that carry a reason.
+# Headless runs read the ledger as it was at BASE only: an unattended session cannot approve
+# its own deletions. Interactive sessions read the working tree, where a human is present.
+retired_patterns() {
+    local base="$1" src top
+    if [ "${AISDLC_HEADLESS:-0}" = "1" ]; then
+        [ -n "$base" ] || return 0
+        src="$(git show "${base}:${RETIRED_LEDGER}" 2>/dev/null)" || return 0
+    else
+        top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+        src="$(cat "${top}/${RETIRED_LEDGER}" 2>/dev/null)" || return 0
+    fi
+    printf '%s\n' "$src" | awk '$1 !~ /^#/ && NF >= 2 {print $1}'
+}
+
+# is_retired PATH PATTERNS — true when PATH matches one of the newline-separated PATTERNS.
+is_retired() {
+    local path="$1" pat
+    while IFS= read -r pat; do
+        [ -n "$pat" ] || continue
+        # shellcheck disable=SC2254 # unquoted on purpose: the ledger entry is a glob
+        case "$path" in $pat) return 0 ;; esac
+    done <<< "$2"
+    return 1
+}
 
 stop_check() {
     local input reentered
@@ -139,23 +174,59 @@ stop_check() {
 
     local findings=""
 
-    local deleted
+    local deleted retired="" f
     deleted="$(printf '%s\n' "$names" | awk '$1 ~ /^D/ {print $2}' | grep -E "$TEST_PATH_RE" | sort -u || true)"
+    if [ -n "$deleted" ]; then
+        local patterns kept=""
+        patterns="$(retired_patterns "$base")"
+        while IFS= read -r f; do
+            if [ -n "$patterns" ] && is_retired "$f" "$patterns"; then
+                retired="${retired}${f}
+"
+            else
+                kept="${kept}${f}
+"
+            fi
+        done <<< "$deleted"
+        deleted="${kept%$'\n'}"
+    fi
     if [ -n "$deleted" ]; then
         findings="${findings}Deleted test files:
 $(printf '%s\n' "$deleted" | sed 's/^/  - /')
 "
     fi
 
+    # Only lines added to test files count: a skip marker in a hook, a regex or a doc is not a
+    # skipped test. ENVIRON keeps the regex's backslashes intact (awk -v would eat them).
     local skips
-    skips="$(printf '%s\n' "$diff" | grep -E '^\+' | grep -v '^+++' | grep -E "$SKIP_ADD_RE" | sed 's/^+[[:space:]]*//' | sort -u | head -20 || true)"
+    skips="$(printf '%s\n' "$diff" \
+        | TEST_PATH_RE="$TEST_PATH_RE" awk 'BEGIN { re = ENVIRON["TEST_PATH_RE"] }
+            /^\+\+\+ / { intest = (substr($0, 7) ~ re); next }
+            intest && /^\+/' \
+        | grep -E "$SKIP_ADD_RE" | sed 's/^+[[:space:]]*//' | sort -u | head -20 || true)"
     if [ -n "$skips" ]; then
         findings="${findings}Added skipped or focused tests:
 $(printf '%s\n' "$skips" | sed 's/^/  + /')
 "
     fi
 
-    [ -n "$findings" ] || exit 0
+    if [ -z "$findings" ]; then
+        # Approved retirements pass, but stay visible so the reviewer sees them.
+        [ -n "$retired" ] && printf 'guard: deleted test files retired via %s:\n%s\n' \
+            "$RETIRED_LEDGER" "$(printf '%s' "$retired" | sed 's/^/  - /')" >&2
+        exit 0
+    fi
+
+    local retire_hint
+    if [ "${AISDLC_HEADLESS:-0}" = "1" ]; then
+        retire_hint="A test that is genuinely obsolete or moved by a refactor is retired by a human: an entry
+'<path-or-glob> <reason>' in ${RETIRED_LEDGER}, committed on the default branch before the run.
+An unattended session cannot add that entry for itself."
+    else
+        retire_hint="If a deleted test is genuinely obsolete or was folded into another by a refactor, record it
+in ${RETIRED_LEDGER} as '<path-or-glob> <reason>' — the entry is a human decision and shows in
+the PR diff. Skipped or focused tests are never retired this way."
+    fi
 
     if [ "$reentered" = "true" ]; then
         printf 'guard: test-weakening findings are still present:\n%s\nRecord them in the PR body or BLOCKED.md — they will not pass review.\n' "$findings" >&2
@@ -165,7 +236,7 @@ $(printf '%s\n' "$skips" | sed 's/^/  + /')
     # On Grok, Stop hooks are passive: emit an advisory to stderr and exit 0.
     # Claude/Codex retain the blocking exit-2 behavior via deny().
     if [ -n "$IS_GROK" ]; then
-        printf 'guard [advisory]: this session weakened the test suite.\n\n%s\nRestore the tests and make them pass.\n\nIf a test genuinely contradicts the spec, that is a decision for a human — stop and report the\ncontradiction (unattended runs: write specs/<TICKET>/BLOCKED.md and exit non-zero) instead of\nremoving the test.\n' "$findings" >&2
+        printf 'guard [advisory]: this session weakened the test suite.\n\n%s\nRestore the tests and make them pass.\n\nIf a test genuinely contradicts the spec, that is a decision for a human — stop and report the\ncontradiction (unattended runs: write specs/<TICKET>/BLOCKED.md and exit non-zero) instead of\nremoving the test.\n\n%s\n' "$findings" "$retire_hint" >&2
         exit 0
     fi
 
@@ -177,7 +248,9 @@ get a green run. Restore them and make them pass.
 
 If a test genuinely contradicts the spec, that is a decision for a human — stop and report the
 contradiction (unattended runs: write specs/<TICKET>/BLOCKED.md and exit non-zero) instead of
-removing the test."
+removing the test.
+
+${retire_hint}"
 }
 
 case "$MODE" in

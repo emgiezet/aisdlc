@@ -11,6 +11,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 import sdlcOmpExtension, {
   runHook,
@@ -117,4 +120,36 @@ test('unknown tool (read) spawns nothing and returns undefined', async () => {
 
   assert.equal(result, undefined, 'unknown tool should return undefined (no block)');
   assert.equal(pi.warns.length, 0, 'no warnings should be logged for unknown tool');
+});
+
+test('turn_end sends an unchanged stop advisory once, and again after a clean turn', async (t) => {
+  // Every sendMessage starts a new turn; re-sending the same advisory on each turn_end
+  // loops the session forever. Runs the real guard in a throwaway repo.
+  const repo = mkdtempSync(join(tmpdir(), 'sdlc-omp-stop-'));
+  const cwd = process.cwd();
+  t.after(() => { process.chdir(cwd); rmSync(repo, { recursive: true, force: true }); });
+  const git = (...args) => execFileSync('git', [
+    '-c', 'user.email=omp@localhost', '-c', 'user.name=omp', '-c', 'commit.gpgsign=false', ...args,
+  ], { cwd: repo, stdio: 'pipe' });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(repo, 'test_sample.py'), 'def test_sample():\n    assert 1\n');
+  git('add', 'test_sample.py');
+  git('commit', '-q', '-m', 'base');
+  process.chdir(repo);
+
+  const pi = makeMockPi();
+  sdlcOmpExtension(pi);
+  const turnEnd = () => pi.call('turn_end', {}, { hasUI: true });
+
+  git('rm', '-q', 'test_sample.py');
+  await turnEnd();
+  await turnEnd();
+  assert.equal(pi.messages.length, 1, 'unchanged advisory must be sent once');
+  assert.match(pi.messages[0], /test_sample\.py/);
+
+  git('checkout', '-q', 'HEAD', '--', 'test_sample.py');
+  await turnEnd();
+  git('rm', '-q', 'test_sample.py');
+  await turnEnd();
+  assert.equal(pi.messages.length, 2, 'advisory must return after a clean turn');
 });
