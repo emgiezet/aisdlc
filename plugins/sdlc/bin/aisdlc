@@ -1377,6 +1377,21 @@ run_verify() {
 
     printf '[%s] verify begin (base %s)\n' "$(ts)" "$base" >> "$log"
 
+    # 0. The commands below run in the worktree, so they see the working tree, not the commit that
+    #    will be pushed. A phase that fixed the code but committed only the test leaves a branch
+    #    whose tests fail and a working tree whose tests pass — seen live, with a QA PASS on top.
+    #    Anything uncommitted and not ignored means the checks would judge something the PR
+    #    does not contain.
+    local dirty
+    dirty="$(git -C "$wt" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- \
+        | grep -vE '^(\.claude/|\.aisdlc-)' | head -10 || true)"
+    if [ -n "$dirty" ]; then
+        rows+=("| committed | **FAIL** | uncommitted: $(printf '%s' "$dirty" | tr '\n' ' ' | cut -c1-200)|")
+        failures+=("uncommitted changes the PR would not contain: $(printf '%s' "$dirty" | tr '\n' ' ' | cut -c1-120)")
+    else
+        rows+=("| committed | PASS | the working tree is the commit being shipped |")
+    fi
+
     # 1. The repository's verification commands.
     local cmds n=0 c rc
     cmds="$(jq -r '.verify // [] | .[]' "$(state_dir "$repo")/config.json" 2>/dev/null || true)"

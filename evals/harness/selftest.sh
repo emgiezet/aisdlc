@@ -824,6 +824,12 @@ verify_case skiptest skiptest ''
 [ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a switched-off test fails verify" \
     || bad "verify" "t.Skip was accepted"
 
+verify_case dirty dirty ''
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "an uncommitted change fails verify — the PR would not contain it" \
+    || bad "verify" "a dirty worktree was verified as the commit"
+grep -q 'pkg/stub.go' "$D/verify-report.md" && ok "the report names the uncommitted file" || bad "verify" "uncommitted file not named"
+[ ! -f "$D/ship.log" ] && ok "ship never ran" || bad "verify" "shipped with the fix left uncommitted"
+
 verify_case deltest deltest ''
 [ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a deleted test file fails verify" \
     || bad "verify" "deleting legacy/old_test.go was accepted"
