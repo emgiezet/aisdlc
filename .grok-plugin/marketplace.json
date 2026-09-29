@@ -21,7 +21,7 @@
         "task-router",
         "testing"
       ],
-      "version": "0.9.0"
+      "version": "0.9.1"
     },
     {
       "name": "slop-guard",
