@@ -15,6 +15,7 @@
 #   nouc      implement's test carries no UC id — verify must fail the UC coverage check
 #   skiptest  implement's test is switched off with t.Skip — verify must see it
 #   deltest   implement deletes the baseline's existing test file — verify must see it
+#   selfretire  deltest, and the branch adds its own .claude/retired-tests entry for it
 #   dirty     implement commits the test but leaves the code change uncommitted
 set -uo pipefail
 printf 'stub-claude args: %s\n' "$*" >&2
@@ -74,7 +75,13 @@ case "$prompt" in
         [ "${AISDLC_STUB:-ok}" = "nouc" ] && name="TestStub_ReturnsSomething"
         [ "${AISDLC_STUB:-ok}" = "skiptest" ] && skip='\tt.Skip("flaky")\n'
         printf "package pkg\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n${skip}\tif Stub() == \"\" {\n\t\tt.Fatal(\"empty\")\n\t}\n}\n" "$name" > "pkg/stub_test.go"
-        [ "${AISDLC_STUB:-ok}" = "deltest" ] && git rm -q legacy/old_test.go
+        case "${AISDLC_STUB:-ok}" in
+            deltest) git rm -q legacy/old_test.go ;;
+            selfretire)
+                git rm -q legacy/old_test.go
+                mkdir -p .claude && printf 'legacy/old_test.go  obsolete, says the agent\n' > .claude/retired-tests
+                ;;
+        esac
         if [ "${AISDLC_STUB:-ok}" = "dirty" ]; then
             git add pkg/stub_test.go >/dev/null 2>&1
             git -c user.name=stub -c user.email=stub@localhost commit -qm "test: UC-1 ($ticket)" >/dev/null 2>&1

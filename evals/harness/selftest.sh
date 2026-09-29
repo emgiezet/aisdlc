@@ -836,6 +836,25 @@ verify_case deltest deltest ''
 grep -q 'legacy/old_test.go' "$D/verify-report.md" && ok "the report names the deleted file" \
     || bad "verify" "deleted file not named"
 
+# A deletion a human retired on the base passes; the same entry written by the branch does not.
+R="$WORK/verify-retired"
+fresh_repo "$R"
+printf 'legacy/old_test.go  TestLegacy covered a removed client\n' > "$R/.claude/retired-tests"
+git -C "$R" add .claude/retired-tests && git -C "$R" commit -q -m "chore: retire legacy test"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+AISDLC_STUB=deltest "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .verify_verdict)" = "PASS" ] && ok "a deletion retired on the base passes verify" \
+    || bad "verify" "verdict is $(task_field "$R" .verify_verdict): $(task_field "$R" .verify_failures)"
+grep -q 'retired via .claude/retired-tests: legacy/old_test.go' "$D/verify-report.md" \
+    && ok "the report still names the retired file" || bad "verify" "retired file not named in verify-report.md"
+
+verify_case selfretire selfretire ''
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a retirement the branch wrote for itself fails verify" \
+    || bad "verify" "the branch approved its own deletion"
+[ ! -f "$D/ship.log" ] && ok "ship never ran" || bad "verify" "shipped a self-retired deletion"
+
 # --------------------------------------------------------------------------- #
 printf '\nthe omp runtime runs the same pipeline\n'
 R="$WORK/omp"

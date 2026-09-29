@@ -78,8 +78,9 @@ Those are enforced by a `Stop` hook rather than by good intentions, because an a
 to produce a green run will otherwise take the shortest path to green.
 
 Obsolete tests are the exception, and a human names them: an entry `<path-or-glob> <reason>` in
-`.claude/retired-tests` lets that deletion through. Unattended runs read the ledger from the
-default branch only, so no agent can approve its own deletion.
+`.claude/retired-tests` lets that deletion through — past the `Stop` hook and the runner's `verify`
+gate alike. Unattended runs read the ledger from the default branch only, so no agent can approve
+its own deletion.
 
 ### A plan may be large; a pull request may not
 

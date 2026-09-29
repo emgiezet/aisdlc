@@ -94,7 +94,8 @@ contradiction to `specs/<TICKET>/BLOCKED.md` and exit non-zero.
 
 A test that is genuinely obsolete — its feature was removed, or a refactor folded it into
 another file — is **retired**, not deleted quietly: add `<path-or-glob> <reason>` to
-`.claude/retired-tests` (committed; `#` comments) and the `Stop` hook lets that deletion through.
+`.claude/retired-tests` (committed; `#` comments) and both the `Stop` hook and the runner's
+`verify` gate let that deletion through.
 An entry without a reason does not count. Unattended runs (`AISDLC_HEADLESS=1`) honour only
 entries already on the default branch, so a human commits them — typically alongside the spec.
 Skipped, focused or weakened tests are never retirable.

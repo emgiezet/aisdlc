@@ -1360,10 +1360,19 @@ cmd_scope_check() {
 #   2. every UC-<n> in the spec's acceptance table appears in at least one test file this branch
 #      added or changed — the traceability dense-testing asks for, checked rather than claimed.
 #   3. no test file deleted, and no .skip/.only/xit/t.Skip-style switch added to a test file.
+#      A deletion listed with a reason in .claude/retired-tests as it stands at the merge base
+#      is a human's retirement, not a weakening — the same ledger, read the same way, as the
+#      guard's Stop hook in a headless run. An entry the branch added itself does not count.
 
 # A path that is a test file, by the conventions of the stacks this plugin supports.
 _is_test_path() {
     printf '%s' "$1" | grep -qE '(^|/)(tests?|__tests__|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.(go|py)$|(^|/)test_[^/]*\.py$'
+}
+
+# _retired_patterns WT REV — path patterns of the retired-tests ledger entries that carry a reason, as of REV.
+# Format as the guard reads it: `<path-or-glob> <reason>` per line, `#` comments.
+_retired_patterns() {
+    git -C "$1" show "$2:.claude/retired-tests" 2>/dev/null | awk '$1 !~ /^#/ && NF >= 2 {print $1}'
 }
 
 # Writes <specs>/<TICKET>/verify-report.md, commits it, records .verify_verdict.
@@ -1452,9 +1461,17 @@ run_verify() {
 
     # 3. Nothing weakened: no deleted test file, no newly skipped or focused test.
     deleted="$(git -C "$wt" diff --name-only --diff-filter=D "${base}...HEAD" 2>/dev/null || true)"
-    local removed=""
+    local removed="" retired="" patterns="" pat fork
+    fork="$(git -C "$wt" merge-base "$base" HEAD 2>/dev/null || true)"
+    [ -z "$fork" ] || patterns="$(_retired_patterns "$wt" "$fork")"
     while IFS= read -r f; do
-        [ -n "$f" ] && _is_test_path "$f" && removed="${removed:+$removed, }$f"
+        if [ -z "$f" ] || ! _is_test_path "$f"; then continue; fi
+        while IFS= read -r pat; do
+            [ -n "$pat" ] || continue
+            # shellcheck disable=SC2254 # unquoted on purpose: the ledger entry is a glob
+            case "$f" in $pat) retired="${retired:+$retired, }$f"; continue 2 ;; esac
+        done <<< "$patterns"
+        removed="${removed:+$removed, }$f"
     done <<< "$deleted"
     local switched=""
     if [ -n "$tests" ]; then
@@ -1467,7 +1484,7 @@ run_verify() {
         rows+=("| tests not weakened | **FAIL** | ${removed:+deleted: $removed }${switched:+switched off: $(printf '%s' "$switched" | tr '\n' ' ' | cut -c1-160)} |")
         failures+=("a test was deleted or switched off")
     else
-        rows+=("| tests not weakened | PASS | no test deleted, skipped or focused |")
+        rows+=("| tests not weakened | PASS | no test deleted, skipped or focused${retired:+; retired via .claude/retired-tests: $retired} |")
     fi
 
     local verdict="PASS"
