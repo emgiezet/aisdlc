@@ -92,6 +92,13 @@ When a test contradicts the spec, **stop and report the contradiction.** One of 
 wrong and deciding which is a human call, not a cleanup task. In an unattended run, write the
 contradiction to `specs/<TICKET>/BLOCKED.md` and exit non-zero.
 
+A test that is genuinely obsolete — its feature was removed, or a refactor folded it into
+another file — is **retired**, not deleted quietly: add `<path-or-glob> <reason>` to
+`.claude/retired-tests` (committed; `#` comments) and the `Stop` hook lets that deletion through.
+An entry without a reason does not count. Unattended runs (`AISDLC_HEADLESS=1`) honour only
+entries already on the default branch, so a human commits them — typically alongside the spec.
+Skipped, focused or weakened tests are never retirable.
+
 A flaky test is a defect in the test or the fixture. Fix the race, the shared state, or the
 clock dependency. Never add a retry wrapper to hide it.
 

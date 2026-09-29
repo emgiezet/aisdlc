@@ -77,6 +77,10 @@ The rules that cannot bend: never delete a test, skip a test, or loosen an asser
 Those are enforced by a `Stop` hook rather than by good intentions, because an agent under pressure
 to produce a green run will otherwise take the shortest path to green.
 
+Obsolete tests are the exception, and a human names them: an entry `<path-or-glob> <reason>` in
+`.claude/retired-tests` lets that deletion through. Unattended runs read the ledger from the
+default branch only, so no agent can approve its own deletion.
+
 ### A plan may be large; a pull request may not
 
 Throughput is worthless if the review at the end is a rubber stamp, and review quality falls off

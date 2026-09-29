@@ -16,6 +16,8 @@ printf 'sdlc hook test suite\n\n'
 
 # shellcheck source=grok_hook_test.sh
 . "${TESTS_DIR}/grok_hook_test.sh"
+# shellcheck source=guard_stop_test.sh
+. "${TESTS_DIR}/guard_stop_test.sh"
 # shellcheck source=omp_adapter_test.sh
 . "${TESTS_DIR}/omp_adapter_test.sh"
 # shellcheck source=size_budget_test.sh
