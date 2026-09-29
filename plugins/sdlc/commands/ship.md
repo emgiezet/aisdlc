@@ -37,6 +37,10 @@ Then refuse, with a one-line reason, if:
 
 - `specs/<TICKET>/qa-report.md` is missing → "run /sdlc:qa first"
 - the QA verdict is `GAPS` and it has a blocking finding → "QA blocking; fix before shipping"
+- `specs/<TICKET>/verify-report.md` exists and its first line is not `PASS` → "verify gate not
+  green". The queue always writes it (a missing report there means verify never ran, and the
+  runner does not reach ship); interactively it may be absent — then run the profile's
+  verification commands yourself and put their output under "How to verify"
 - `specs/<TICKET>/BLOCKED.md` exists → "implementation stopped blocked"
 - the working tree is dirty → commit or explain; never `git add -A` blind at this stage
 - the current branch is `main`, `master`, or `develop` → "refusing to ship from a shared branch"

@@ -59,8 +59,9 @@ Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI (for the queue runner).
 
 ### 🔐 Credentials for the queue runner
 
-`aisdlc run` shells out to `claude -p`. It sets no credentials of its own — whatever authenticates
-your `claude` CLI authenticates the queue. An API key is one option of four, not a requirement:
+`aisdlc run` shells out to `claude -p` — or to `omp -p` for a task queued with `--runtime omp`
+(also `"runtime": "omp"` in `.aisdlc/config.json`, or `AISDLC_RUNTIME`). It sets no credentials
+of its own — whatever authenticates that CLI authenticates the queue. An API key is one option of four, not a requirement:
 
 | Option | How | Billed against |
 |---|---|---|
@@ -169,8 +170,11 @@ flowchart LR
 Every PR-producing command ends with a `PR: #<n> (<url>)` line the next command consumes; every
 command that acts on an issue or PR claims it first (assignee + `in-progress` + a 🤖 comment) so
 two agents never build the same branch. The queue runs the chain phase by phase, each in a fresh
-context: `implement → qa → ship → review`, or `triage → root-cause → implement → qa → ship →
-review` for an issue.
+context: `implement → qa → scope-check → verify → ship → review`, or `triage → root-cause →
+implement → …` for an issue. `scope-check` and `verify` run no model: `verify` runs the
+`.aisdlc/config.json` `verify` commands on the final commit (none configured is a FAIL), checks
+every spec `UC-<n>` is named by a changed test and that no test was deleted or switched off, and
+ship does not run without its PASS.
 
 ### Why it holds together
 
@@ -567,7 +571,7 @@ aisdlc logs <id>                                 # read what it actually did
 
 ```bash
 make validate       # manifests, required files, instruction budgets, shellcheck
-make selftest       # 41 assertions over the queue runner, using a stub claude — no API calls
+make selftest       # 128 assertions over the queue runner, using a stub claude and a stub omp — no API calls
 make eval-dry       # skill trigger sets, structural check only
 make harness-eval MODEL=haiku [SCENARIO=go-endpoint]   # the real thing; costs money
 make tool-integration              # real-binary parser tests; needs pinned toolchain (CI); skips per tool otherwise
