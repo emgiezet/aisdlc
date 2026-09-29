@@ -173,8 +173,8 @@ two agents never build the same branch. The queue runs the chain phase by phase,
 context: `implement → qa → scope-check → verify → ship → review`, or `triage → root-cause →
 implement → …` for an issue. `scope-check` and `verify` run no model: `verify` runs the
 `.aisdlc/config.json` `verify` commands on the final commit (none configured is a FAIL), checks
-every spec `UC-<n>` is named by a changed test and that no test was deleted or switched off, and
-ship does not run without its PASS.
+every spec `UC-<n>` is named by a changed test and that no test was deleted or switched off (a
+deletion retired in `.claude/retired-tests` on the base passes), and ship does not run without its PASS.
 
 ### Why it holds together
 
