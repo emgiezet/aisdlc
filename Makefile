@@ -21,7 +21,7 @@ COMMANDS := init update spec decompose mockup implement qa ship \
             issue triage root-cause fix-issue \
             brainstorm discover synthetic-users backlog ux-shape ux-setup \
             test-env integration-tests verify-map ux-review retro arch-review
-SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review rest-api-design graphql-api-design security-review
+SKILLS := spec-authoring task-router dense-testing harness-eval pipeline-contracts code-review discovery architecture-review rest-api-design graphql-api-design security-review agent-orchestration
 AGENTS := auto-qa code-reviewer
 PLAYBOOKS := api-endpoint db-change ui-feature service infra-change testing graphql-api
 TRACKERS := TEMPLATE github local

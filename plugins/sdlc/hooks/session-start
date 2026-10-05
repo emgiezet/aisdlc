@@ -41,7 +41,8 @@ A spec is the only approval point: /${NAME}:spec <TICKET> → a human flips stat
 aisdlc add <TICKET>. Every other command is listed under /${NAME}: and documented in .claude/sdlc.md.
 
 Skills load by name: spec-authoring, task-router, dense-testing, code-review, security-review,
-pipeline-contracts, discovery, architecture-review, rest-api-design, graphql-api-design, harness-eval.
+pipeline-contracts, discovery, architecture-review, rest-api-design, graphql-api-design, harness-eval,
+agent-orchestration.
 Agents: auto-qa, code-reviewer.
 
 Tracker and browser access go through the descriptors named in .claude/sdlc.md — never call gh or a
@@ -93,6 +94,7 @@ Skills (load with the Skill tool):
 - code-review         — severity scale, verdict rule, review checklist, spec-review lenses
 - security-review     — trust boundaries, the auth/token/takeover lenses, and what counts as a finding
 - architecture-review — availability tiers and what each forces, dependency arithmetic, traffic profile, RPO/RTO
+- agent-orchestration — the seven shapes, the control each needs, budgets, deterministic backbone
 - discovery           — brief format, evidence tags, Definition of Ready
 - rest-api-design     — resource naming, status codes, one error envelope, bounded pagination, breaking changes
 - graphql-api-design  — nullability, mutation input/payload shape, connections, N+1, breaking schema changes

@@ -1,0 +1,12 @@
+[
+  { "query": "Should I split this into subagents or do it in one pass?", "should_trigger": true, "note": "the choosing table is the core" },
+  { "query": "My two agents keep handing the ticket back and forth", "should_trigger": true, "note": "handoff budget and visited-set" },
+  { "query": "How do I run 40 independent migration checks in parallel?", "should_trigger": true, "note": "fan-out, concurrency cap" },
+  { "query": "The coordinator agent's context is full before the workers finish", "should_trigger": true, "note": "worker-return contract" },
+  { "query": "We want agents to argue about the storage engine choice", "should_trigger": true, "note": "debate roles and round cap" },
+  { "query": "Two workers picked up the same task from the board", "should_trigger": true, "note": "swarm claim lock" },
+  { "query": "Write the use-case table for ABC-204", "should_trigger": false, "note": "spec-authoring owns the spec format" },
+  { "query": "How many tests does this endpoint need?", "should_trigger": false, "note": "dense-testing owns density floors" },
+  { "query": "Is 99.99% availability realistic for this design?", "should_trigger": false, "note": "architecture-review owns availability" },
+  { "query": "Review PR #42 and give a verdict", "should_trigger": false, "note": "code-review owns the review verdict" }
+]
