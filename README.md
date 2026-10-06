@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>🧭 discover · 📝 spec · 🔨 implement · ✅ qa · 🚢 ship · 🔍 review · 🤝 merge</b><br/>
-  An AI SDLC harness for Claude Code: 34 commands, 11 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
+  An AI SDLC harness for Claude Code: 34 commands, 12 skills and a queue that turn an approved spec — or a labelled bug — into a reviewed pull request, unattended, on a cheap model.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ The full numbers are in [`docs/ai-sdlc.md`](docs/ai-sdlc.md).
 npx skills add emgiezet/aisdlc --skill '*'
 ```
 
-That installs the eleven knowledge skills — the spec format, the test-density rules, the
+That installs the twelve knowledge skills — the spec format, the test-density rules, the
 architecture-review tier table, the pipeline contracts — so any agent you already use writes
 specs and tests the way this harness expects. Drop `--skill '*'` to cherry-pick.
 
@@ -251,6 +251,7 @@ Installable on their own with `npx skills add emgiezet/aisdlc --skill <name>`.
 | `rest-api-design` | Resource naming, status-code selection, one error envelope per API, bounded pagination, idempotency, and the breaking-change table for an HTTP surface. |
 | `graphql-api-design` | Nullability as a contract, mutation input/payload shape, Relay connections, the N+1 rule, where a domain error belongs, and the breaking-change table for a schema. |
 | `security-review` | The reviewer's lens for security findings: trust boundaries, ten review lenses covering authentication through supply-chain, evidence rules for what counts as a finding, and the auth-change checklist. |
+| `agent-orchestration` | The seven shapes for arranging agents — single, pipeline, fan-out, orchestrator/worker, handoff, debate, swarm — the control each one needs, the budgets, and the deterministic backbone that keeps the decision in code rather than in the model. |
 
 Plus the `auto-qa` and `code-reviewer` agents, the `guard` hook, `bin/aisdlc`, and the shipped
 descriptors: trackers `github` and `local`, browsers `playwright` and `agent-browser`.

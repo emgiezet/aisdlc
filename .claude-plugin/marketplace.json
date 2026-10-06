@@ -15,6 +15,7 @@
       "version": "0.9.1",
       "strict": true,
       "skills": [
+        "./skills/agent-orchestration",
         "./skills/architecture-review",
         "./skills/code-review",
         "./skills/dense-testing",
