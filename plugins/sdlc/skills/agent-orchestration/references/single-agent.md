@@ -39,8 +39,10 @@ and by starting each phase with a fresh context that reads the artefacts, not th
 ## Budget
 
 - Concurrency: 1.
-- Stop condition: the task's dollar cap — `BUILTIN_BUDGET="5"` in `plugins/sdlc/bin/aisdlc`,
-  overridden per task with `aisdlc add <TICKET> --budget <usd>`.
+- Stop condition: for Claude with API billing, a dollar cap per phase —
+  `BUILTIN_BUDGET="5"` in `plugins/sdlc/bin/aisdlc`, configured per task with
+  `aisdlc add <TICKET> --budget <usd>`. This is not a total-task cap: each phase receives the
+  configured limit separately. OMP and subscription billing do not enforce this spend cap.
 - Escalation: to a human on the second failed verification. A third attempt with the same
   context is the same attempt.
 

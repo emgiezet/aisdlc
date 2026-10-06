@@ -44,8 +44,9 @@ verdict token and the claim before calling the effector, and the proposal itself
 
 ## In this harness
 
-- `plugins/sdlc/hooks/guard` — denies force pushes, `--no-verify` and test deletion before the
-  command runs.
+- `plugins/sdlc/hooks/guard` — denies force pushes and `--no-verify` before the command runs.
+  Test deletion and skipping are checked at `Stop`, after changes have been made; this is not
+  a pre-execution guard against deleting tests.
 - slop-guard `hooks/pre-bash` and `hooks/pre-write` — return deny / ask / allow per policy before a
   command or a write lands; headless, ask becomes deny.
 - `pipeline-contracts` — the named operations (`claim`, `release`, `review-pr`, …) a command uses
