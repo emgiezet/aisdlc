@@ -31,7 +31,7 @@ Three consequences shape everything below:
 | `/sdlc:spec <TICKET>` | agent drafts, human corrects | `specs/<TICKET>/spec.md`, `status: draft` |
 | `/sdlc:mockup <TICKET>` | agent builds, business reacts | `specs/<TICKET>/mockup/index.html` |
 | **Approve** | **human only** | `status: approved`, committed — or, for a bug, the `bug` label on the issue |
-| `aisdlc add` / `run` | queue | worktree + branch per task |
+| `aisdlc add` / `run` — or `aisdlc pull` / `loop`, which take the oldest `bug`-labelled issue nobody holds | queue | worktree + branch per task |
 | `/sdlc:triage`, `/sdlc:root-cause` (issue route) | agent, read-only | `specs/GH-<n>/spec.md` with `kind: bugfix`, root cause in Context |
 | `/sdlc:implement` | agent, unattended | commits per UC, or `BLOCKED.md` |
 | `/sdlc:qa` | agent, unattended | `specs/<TICKET>/qa-report.md`, PASS/GAPS, screenshots for UI UCs |
@@ -205,6 +205,8 @@ Precedence for every setting: CLI flag > `.aisdlc/config.json` > environment var
 | specs dir | `specs_dir` | `AISDLC_SPECS_DIR` | `specs` | Root for spec files |
 | billing | `billing` | `AISDLC_BILLING` | `api` | `api` or `subscription` — see below |
 | model roles | `model_roles` | — | *(absent)* | Maps `smol`/`default`/`slow` roles to model names; see below. Absent = today's behaviour |
+| pull label | `pull_label` | `AISDLC_PULL_LABEL` | `bug` | The approval label `aisdlc pull` selects on |
+| loop interval | `loop_interval` | `AISDLC_LOOP_INTERVAL` | `900` | Seconds between `aisdlc loop` ticks |
 
 ### billing = subscription
 
