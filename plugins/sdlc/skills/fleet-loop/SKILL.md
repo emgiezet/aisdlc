@@ -74,6 +74,15 @@ and `"$AISDLC" inbox` and report one line per task that changed state. Task logs
 - the same task fails twice for the same reason (read `aisdlc logs <id>` first)
 - three consecutive ticks pull nothing: there is no work, stop polling
 
+## Overlays
+
+An organisation's plugin that changes the selection rule — its own labels, its own queue, extra
+steps around `deliver` — ships a **second** skill named `<org>-fleet-loop` that opens with
+`read skill://fleet-loop` and lists only what differs. It must not reuse this name: under omp
+both plugins load side by side, and a same-named overlay pushes this copy under a namespace
+that differs per host, so neither can address the other reliably. Its runner may be its own;
+the binary rule above still applies — resolve it from the overlay's skill directory.
+
 ## Related
 
 - `pipeline-contracts` — the claim lock, labels, verdict tokens, the bugfix approval rule
