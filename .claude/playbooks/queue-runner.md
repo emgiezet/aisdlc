@@ -6,8 +6,12 @@ A bug here ships untested code or spends a budget nobody watched.
 
 ## Map
 
-- Subcommands are `cmd_<name>()` (`add`, `run`, `status`, `inbox`, `logs`, `retry`, `cancel`,
-  `clean`, `scope_check`); dispatch is at the bottom of the file.
+- Subcommands are `cmd_<name>()` (`add`, `pull`, `loop`, `run`, `status`, `inbox`, `logs`,
+  `retry`, `cancel`, `clean`, `scope_check`, `version`); dispatch is at the bottom of the file.
+- `pull` picks the oldest open, unclaimed, unbuilt issue carrying `pull_label` (github or local
+  tracker only) and hands it to `cmd_add --issue`; a lost claim tries the next candidate.
+  `loop` runs `pull` then `run --once` every `loop_interval` seconds, each in a subshell so a
+  `die` ends the tick, not the loop. Skill: `plugins/sdlc/skills/fleet-loop/`.
 - Phases: `ALL_PHASES` (spec tasks) and `ISSUE_PHASES` (bug issues). Each phase is a fresh
   headless run in its own worktree; phases hand over through files in `specs/<TICKET>/`.
 - `run_verify` is the deterministic gate before ship: repo `verify` commands, UC traceability,

@@ -18,12 +18,13 @@ will need for the code.
 | Add or change a knowledge skill under `plugins/sdlc/skills/` | `.claude/playbooks/sdlc-skill.md` |
 | Add or change a slop-guard rule, anti-pattern catalogue or linter config | `.claude/playbooks/slopguard-rule.md` |
 | Change what a hook allows, asks or denies (guard, slop-guard pre-/stop/session-start, policies) | `.claude/playbooks/hook.md` |
-| Change the queue runner `bin/aisdlc` or the eval harness under `evals/` | `.claude/playbooks/queue-runner.md` |
+| Change the queue runner `bin/aisdlc` (including `pull`/`loop`) or the eval harness under `evals/` | `.claude/playbooks/queue-runner.md` |
 | Release, versioning, plugin manifests, CI workflows | `.claude/playbooks/release-ci.md` |
 | Write or fix tests | `.claude/playbooks/testing.md` |
 | Deliver an approved spec end-to-end | run `/sdlc:implement <TICKET>` |
 | Turn a ticket into a spec (it calls `/sdlc:decompose` when over budget) | run `/sdlc:spec <TICKET>` |
 | Review a pull request | run `/sdlc:review <pr#>` |
+| Finish a stalled or unreviewed PR | run `/sdlc:autopilot <pr#>` |
 | Anything else | this file plus the `.claude/rules/` file for the paths you touch |
 
 `.claude/rules/*.md` are **path-scoped** — they attach automatically to the files you edit, so
