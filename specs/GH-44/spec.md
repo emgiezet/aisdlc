@@ -1,0 +1,102 @@
+---
+ticket: GH-44
+title: scope-check reports structural erosion on changed files (SlopCodeBench metric)
+status: approved
+stacks: [bash, instructions]
+---
+
+# GH-44 — scope-check reports structural erosion on changed files
+
+Source: https://github.com/emgiezet/aisdlc/issues/44
+
+## Problem
+
+The queue's gates catch failing tests, scope drift, change size and line-level slop, but not code
+that keeps passing tests while each change makes it structurally worse. SlopCodeBench
+(arXiv 2603.24755 v2) measures exactly that: erosion rises in 77% of agent trajectories, agent code
+erodes 5.0x faster per checkpoint than human repositories, and an anti-slop prompt lowers initial
+erosion without slowing the degradation. Today two specs can each grow the same handler, both pass
+`scope-check` and review, and nothing reports that the handler is now one function with CC > 25.
+
+## Scope
+
+In:
+- `scope-check` measures the changed code files before (merge base) and after (`HEAD`) with
+  `lizard --csv` and appends a `## Structure` section to `specs/<T>/scope-report.md`: erosion before
+  and after, every function newly crossing CC > 10 (name, CC before -> after, SLOC), and the largest
+  per-function CC increase.
+- Erosion per SlopCodeBench v2 §2.3: `mass(f) = CC(f) * sqrt(SLOC(f))`, SLOC = lizard `NLOC`;
+  `erosion = sum(mass, CC > 10) / sum(mass)`; `0` when `sum(mass) = 0`.
+- Code files: changed files (`git diff --diff-filter=AMR <base>...HEAD`) whose extension is one of
+  `py js jsx mjs cjs ts tsx mts cts go php java kt kts cs rb rs`, minus the specs directory and
+  `_SIZE_EXCLUDE`. The "before" side is the same path at the merge base; absent there = no functions.
+- Thresholds from the profile's `## Change budget`, with built-in defaults:
+  `- **Erosion delta max:** 0.05` and `- **New hotspots max:** 0` (the issue's `erosion_delta_max`
+  and `cc_new_hotspot_max`), added to `plugins/sdlc/templates/sdlc.md`.
+- Findings: erosion grew by more than the max -> `erosion` finding; more newly crossing functions
+  than the max -> one `new hotspot` finding per such function; any function newly above CC 25 ->
+  `hotspot over 25` finding regardless of the max. Any structure finding makes a `PASS` verdict
+  `GAPS`; structure never makes it `BLOCKED`.
+- `/sdlc:review` imports `## Structure` findings: `erosion` and `new hotspot` -> `[major]`,
+  `hotspot over 25` -> `[blocker]`; remedy is splitting the function or `/sdlc:decompose`.
+- Docs: the gate and its thresholds in `docs/ai-sdlc.md` and the README queue paragraph.
+
+Out:
+- Installing, pinning or version-checking lizard (`install.sh`, `slopguard doctor`,
+  `tools.lock.json`): the runner uses whatever `lizard` is on `PATH`.
+- Running real lizard in CI (`make tool-integration`, `.github/workflows/`); a follow-up issue.
+- New files under `evals/harness/` — a lizard stub, if used, is generated inside `selftest.sh`.
+- Verbosity, clone detection, SlopCodeBench itself, whole-repo erosion trends.
+- Function-rename and file-rename tracking: a renamed function or file counts as new.
+- Bash/shell files: lizard has no shell parser, so this repo's own scripts are not measured.
+- A spec-level override of the two thresholds (the `Change budget:` line keeps its three units).
+- `_size_stats`, `_size_eval`, the `## Size` section, verdict rules for scope/size, phase order.
+- `plugins/slop-guard/**`, including decision D33.
+- This repo's own `.claude/sdlc.md`; `/sdlc:update` proposes the new profile fields.
+
+Change budget: 380 added lines, 9 files, 4 modules
+
+## Context
+
+- `plugins/sdlc/bin/aisdlc` — `run_scope_check` (verdict assembly after `_size_eval`, report
+  written by `_write_scope_report` + `_write_size_section`); `_SIZE_EXCLUDE`; `_budget_profile`
+  (integer-only: `match($0, /[0-9]+/)`); `BUILTIN_BUDGET_*` constants.
+- `lizard --csv` row format (1.24.1): `NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end`.
+  Functions match before/after by file path + `long_name`.
+- `plugins/sdlc/tests/size_budget_test.sh` — sources `bin/aisdlc`, registered in `tests/run-tests`;
+  the pattern for the new `plugins/sdlc/tests/structure_test.sh`.
+- `evals/harness/selftest.sh` — `fresh_repo_scope` (scope fixtures), the `NO_OMP` restricted-`PATH`
+  case (lizard absent), `STUB_DIR` on `PATH`.
+- `plugins/sdlc/commands/review.md` — the `scope-report.md` import list (`## Size` bullet).
+- `plugins/sdlc/skills/code-review/SKILL.md` — `### Size rule`.
+- `plugins/sdlc/templates/sdlc.md` — `## Change budget`; `commands/update.md` diffs profile fields
+  against the template, so no update.md change is needed.
+- `docs/ai-sdlc.md` — "A plan may be large; a pull request may not" (budget numbers, GAPS vs BLOCKED).
+- Vocabulary: `pipeline-contracts`.
+
+## Acceptance criteria
+
+| id | actor | action | expected observable result | test |
+|----|-------|--------|----------------------------|------|
+| UC-1 | queue | scope-check on a branch that raises one Go function from CC 8 to CC 14, default profile | `## Structure` lists that function with `8 -> 14` and its SLOC, names it as the largest CC increase, has a `new hotspot` finding; verdict `GAPS` | selftest |
+| UC-2 | queue | scope-check computes erosion from a captured lizard CSV with known CC/NLOC values | before and after erosion equal the formula's value to 2 decimals; a rise above 0.05 yields one `erosion` finding naming both values | unit |
+| UC-3 | queue | scope-check when lizard is not on `PATH` and a `.go` file changed | `## Structure` says `skipped: lizard not installed`; no structure finding; phase returns 0 *(inferred: verdict otherwise unchanged)* | selftest |
+| UC-4 | queue | scope-check on a change that touches only `.md` files | no `## Structure` section in `scope-report.md` | selftest |
+| UC-5 | queue | a function absent at the merge base appears with CC 27 | one `hotspot over 25` finding and one `new hotspot` finding for it *(inferred: new functions count as newly crossing)* | unit |
+| UC-6 | queue | a function at CC 30 before and CC 30 after, nothing else over 10 *(inferred negative)* | no `new hotspot` or `hotspot over 25` finding | unit |
+| UC-7 | queue | profile sets `Erosion delta max: 0.5` and `New hotspots max: 1`; one function goes 8 -> 14 | no structure finding; the section still lists the function | unit |
+| UC-8 | reviewer agent | `/sdlc:review` on a PR whose `scope-report.md` has `new hotspot` and `hotspot over 25` findings | review output has `[major]` for the first and `[blocker]` for the second, each naming split-the-function or `/sdlc:decompose` | live run (sandbox) |
+
+## Non-functional
+
+- scope-check stays model-free; lizard runs at most twice per scope-check (before, after), on the
+  code files only.
+- lizard present but exiting non-zero or printing unparseable output -> `skipped: lizard failed`
+  with its exit code, phase continues *(inferred: a measurement gap is reported, never a stopped run)*.
+- Finding text is ASCII (`->`, not `→`), as for `## Size`.
+- `CI= make validate`, `plugins/sdlc/tests/run-tests` and `make selftest` pass; the tests need no
+  real lizard.
+
+## Open questions
+
+none
