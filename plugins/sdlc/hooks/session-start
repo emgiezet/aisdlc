@@ -76,7 +76,8 @@ The pipeline. A spec is the only approval point; everything after it runs unatte
 Before the spec:  /${NAME}:brainstorm, /${NAME}:discover, /${NAME}:synthetic-users, /${NAME}:backlog,
                   /${NAME}:ux-shape, /${NAME}:ux-setup → briefs under specs/briefs/
 From an issue:    /${NAME}:issue (file/normalize) · /${NAME}:triage · /${NAME}:root-cause · /${NAME}:fix-issue <n>
-                  (a human-labelled bug is the approval; aisdlc add --issue <n> queues the chain)
+                  (a human-labelled bug is the approval; aisdlc add --issue <n> queues the chain,
+                   aisdlc loop pulls the oldest unclaimed one on a timer — the fleet-loop skill)
 After the PR:     /${NAME}:continue · /${NAME}:fix-pr · /${NAME}:autopilot · /${NAME}:review-prs ·
                   /${NAME}:merge-buddy · /${NAME}:merge (interactive only) · /${NAME}:followup ·
                   /${NAME}:close-fixed · /${NAME}:changelog

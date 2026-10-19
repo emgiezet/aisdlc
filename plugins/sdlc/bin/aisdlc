@@ -672,6 +672,147 @@ cmd_add() {
 }
 
 # --------------------------------------------------------------------------- #
+# pull / loop — the tracker as the work queue
+# --------------------------------------------------------------------------- #
+#
+# `add --issue <n>` needs a human to pick the number. `pull` picks it: the oldest open issue
+# carrying the approval label (`bug` — the label *is* the approval, see check_spec) that nobody
+# holds and this repo has not already built. `loop` is pull + run --once on a timer, for a
+# session or a scheduler. Selection stays label-first and in code; the model never chooses.
+
+BUILTIN_PULL_LABEL="bug"
+BUILTIN_LOOP_INTERVAL="900"
+
+# Open issue numbers carrying <label>, oldest first, one per line. Local reads the tracker files;
+# github asks `gh issue list`. Assigned or in-progress issues are someone's and are left alone.
+tracker_list_open() {
+    local repo="$1" kind="$2" label="$3"
+    case "$kind" in
+        local)
+            local f
+            for f in "$repo"/.aisdlc/tracker/issues/*.md; do
+                [ -f "$f" ] || continue
+                grep -qE '^state:[[:space:]]*open' "$f" || continue
+                grep -E '^labels:' "$f" | grep -qw "$label" || continue
+                grep -qE '^labels:.*\bin-progress\b' "$f" && continue
+                [ -z "$(_local_assignees "$f")" ] || continue
+                grep -m1 '^number:' "$f" | tr -dc '0-9'; printf '\n'
+            done | sed '/^$/d' | sort -n
+            ;;
+        github)
+            gh issue list --repo "$(gh_repo_slug "$repo")" --state open --label "$label" \
+                --limit 100 --json number,labels,assignees 2>/dev/null \
+            | jq -r 'map(select((.assignees | length) == 0
+                              and ((.labels | map(.name) | index("in-progress")) | not)))
+                     | sort_by(.number) | .[].number'
+            ;;
+    esac
+}
+
+# An issue this repo already turned into a task — any status, failed included — or that has a
+# branch is not pulled again: a second task would open a second PR for the same bug. A failed
+# one is `aisdlc retry`'s business, deliberately.
+issue_already_built() {
+    local repo="$1" n="$2" f
+    for f in "$(state_dir "$repo")"/tasks/*/task.json; do
+        [ -f "$f" ] || continue
+        [ "$(jq -r '.ticket' "$f" 2>/dev/null)" = "GH-$n" ] && return 0
+    done
+    [ -n "$(git -C "$repo" branch --all --list "ai/GH-$n-*" --list "*/ai/GH-$n-*" 2>/dev/null)" ]
+}
+
+# Candidates after the local exclusions, oldest first.
+pull_candidates() {
+    local repo="$1" kind="$2" label="$3" n
+    while read -r n; do
+        [ -n "$n" ] || continue
+        issue_already_built "$repo" "$n" || printf '%s\n' "$n"
+    done < <(tracker_list_open "$repo" "$kind" "$label")
+}
+
+cmd_pull() {
+    local repo="." want="" label="" dry=0
+    local -a pass=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --repo)    repo="$2"; shift 2 ;;
+            --label)   label="$2"; shift 2 ;;
+            --dry-run) dry=1; shift ;;
+            --no-pr|--plugin-dir|--force) pass+=("$1"); shift ;;
+            --model|--budget|--base|--phase|--phases|--billing|--runtime) pass+=("$1" "$2"); shift 2 ;;
+            -*)        die "unknown flag for pull: $1" ;;
+            *)         want="$1"; shift ;;
+        esac
+    done
+    repo="$(resolve_repo "$repo")"
+    init_state "$repo"
+    label="$(resolve_default "$repo" pull_label "$label" "${AISDLC_PULL_LABEL:-}" "$BUILTIN_PULL_LABEL")"
+    local kind; kind="$(tracker_kind "$repo")"
+    case "$kind" in local|github) ;; *) die "pull needs a local or github tracker (got '$kind')" ;; esac
+
+    local -a candidates=()
+    if [ -n "$want" ]; then
+        candidates=("$want")
+    else
+        mapfile -t candidates < <(pull_candidates "$repo" "$kind" "$label")
+    fi
+    if [ "${#candidates[@]}" -eq 0 ]; then
+        say "nothing to pull: no open, unclaimed, unbuilt issue labelled '$label'"
+        return 1
+    fi
+    if [ "$dry" -eq 1 ]; then
+        say "would pull #${candidates[0]} (candidates: ${candidates[*]})"
+        return 0
+    fi
+
+    # add dies on a lost claim; the next candidate is the answer to that, not a failed pull.
+    local n
+    for n in "${candidates[@]}"; do
+        if ( cmd_add --issue "$n" --repo "$repo" "${pass[@]}" ); then
+            return 0
+        fi
+        say "pull: #$n not taken — trying the next candidate"
+    done
+    say "nothing pulled: every candidate was claimed before this run could take it"
+    return 1
+}
+
+cmd_loop() {
+    local repo="." interval="" once=0 dry=0
+    local -a pull_args=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --repo)     repo="$2"; shift 2 ;;
+            --interval) interval="$2"; shift 2 ;;
+            --once)     once=1; shift ;;
+            --dry-run)  dry=1; shift ;;
+            --no-pr|--plugin-dir|--force) pull_args+=("$1"); shift ;;
+            --label|--model|--budget|--base|--phase|--phases|--billing|--runtime) pull_args+=("$1" "$2"); shift 2 ;;
+            -*)         die "unknown flag for loop: $1" ;;
+            *)          die "loop takes no positional arguments" ;;
+        esac
+    done
+    repo="$(resolve_repo "$repo")"
+    init_state "$repo"
+    interval="$(resolve_default "$repo" loop_interval "$interval" "${AISDLC_LOOP_INTERVAL:-}" "$BUILTIN_LOOP_INTERVAL")"
+    case "$interval" in ''|*[!0-9]*) die "interval must be a number of seconds (got '$interval')" ;; esac
+
+    local -a dryf=(); [ "$dry" -eq 1 ] && dryf=(--dry-run)
+    local tick=0
+    while :; do
+        tick=$((tick + 1))
+        say "── tick $tick $(ts)"
+        # Each step in its own subshell: die ends the step, not the loop. run goes regardless
+        # of what pull found — a task queued by hand or by an earlier tick is still work.
+        ( cmd_pull --repo "$repo" "${dryf[@]}" "${pull_args[@]}" ) || true
+        [ "$dry" -eq 1 ] || ( cmd_run --repo "$repo" --once ) || true
+        [ "$once" -eq 1 ] && break
+        say "── sleeping ${interval}s"
+        sleep "$interval"
+    done
+}
+
+# --------------------------------------------------------------------------- #
 # run
 # --------------------------------------------------------------------------- #
 
@@ -2060,6 +2201,17 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
       --plugin-dir      load the plugin from this checkout (repos without it installed)
       --force           queue despite a draft spec or open questions (not recommended)
 
+  aisdlc pull [N] [flags]       claim the oldest open issue labelled \`$BUILTIN_PULL_LABEL\` (or N) and queue it
+      --label <name>    the approval label to select on (default: $BUILTIN_PULL_LABEL)
+      --dry-run         print the candidates, claim nothing
+      plus any \`add\` flag; issues already built or claimed by anyone are skipped
+
+  aisdlc loop [flags]           pull + run --once, repeated: the tracker as the work queue
+      --interval <s>    seconds between ticks (default: $BUILTIN_LOOP_INTERVAL)
+      --once            one tick, then exit — the shape a scheduler calls
+      --dry-run         show what each tick would take
+      plus any \`pull\` flag
+
   aisdlc run [flags]            execute the queue
       --workers <n>     concurrent tasks (default: $BUILTIN_WORKERS)
       --once            run a single task, then exit
@@ -2108,7 +2260,8 @@ Optional: add model_roles to route cheap phases to a smaller model:
   to claude --model; any name the host understands is valid.
 
 Environment overrides: AISDLC_MODEL, AISDLC_BUDGET, AISDLC_BASE, AISDLC_WORKERS,
-AISDLC_LABEL, AISDLC_SPECS_DIR.
+AISDLC_LABEL, AISDLC_SPECS_DIR, AISDLC_PULL_LABEL, AISDLC_LOOP_INTERVAL (config keys
+pull_label and loop_interval).
 
 .aisdlc/settings.json is the permission set each headless phase runs under: editing files
 and using git are allowed because that is the job, force pushes and secrets are denied,
@@ -2130,6 +2283,8 @@ need git; need jq; need flock
 
 case "${1:-help}" in
     add)            shift; cmd_add "$@" ;;
+    pull)           shift; cmd_pull "$@" ;;
+    loop)           shift; cmd_loop "$@" ;;
     run)            shift; cmd_run "$@" ;;
     status|ls)      shift; cmd_status "$@" ;;
     inbox)          shift; cmd_inbox "$@" ;;

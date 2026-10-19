@@ -48,6 +48,11 @@ case "$sub" in
         printf 'https://github.com/acme/widget/pull/7#issuecomment-1\n'
         exit 0
         ;;
+    "issue list")
+        # The open issues `pull` selects from, as $STUB_GH_ISSUES would come back from --json.
+        [ -n "${STUB_GH_ISSUES:-}" ] && [ -f "$STUB_GH_ISSUES" ] && cat "$STUB_GH_ISSUES" || printf '[]\n'
+        exit 0
+        ;;
     "pr view"|"issue view")
         jq -c '{labels: (.labels | map({name: .})), assignees: (.assignees | map({login: .}))}' "$STATE"
         exit 0

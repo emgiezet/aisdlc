@@ -473,6 +473,59 @@ grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/42.md" \
     || bad "retry claim" "no in-progress after retry"
 
 # --------------------------------------------------------------------------- #
+printf '\npull picks the oldest approved issue nobody holds and this repo has not built\n'
+R="$WORK/pull-select"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues" "$R/.claude"
+printf -- '- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
+local_issue() {   # number state labels assignees
+    printf -- '---\nnumber: %s\ntitle: selftest\nstate: %s\nlabels: [%s]\nassignees: [%s]\nauthor: selftest\ncreated: 2026-09-22T00:00:00Z\n---\nBody.\n\n## Comments\n' \
+        "$1" "$2" "$3" "$4" > "$R/.aisdlc/tracker/issues/$1.md"
+}
+local_issue 3 closed bug ""                      # closed: not work
+local_issue 5 open "bug, in-progress" "someone"  # someone else's
+local_issue 7 open bug ""                        # the one
+local_issue 8 open bug ""                        # already has a branch
+local_issue 9 open feature ""                    # not approved: no bug label
+git -C "$R" branch ai/GH-8-20260101 >/dev/null 2>&1
+out="$("$AISDLC" pull --repo "$R" --dry-run 2>&1)"
+[ "$out" = "would pull #7 (candidates: 7)" ] \
+    && ok "pull --dry-run selects #7 and only #7" \
+    || bad "pull selection" "$out"
+[ -z "$(ls -A "$R/.aisdlc/tasks" 2>/dev/null)" ] \
+    && ok "pull --dry-run queued nothing" \
+    || bad "pull dry-run" "a task was created"
+"$AISDLC" pull --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "pull queued #7" \
+    || bad "pull" "pull returned non-zero"
+[ "$(task_field "$R" .ticket)" = "GH-7" ] && [ "$(task_field "$R" .is_issue)" = "true" ] \
+    && ok "pull created a GH-7 issue task" \
+    || bad "pull task" "ticket $(task_field "$R" .ticket) is_issue $(task_field "$R" .is_issue)"
+grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/7.md" \
+    && ok "pull claimed #7" \
+    || bad "pull claim" "no in-progress on #7"
+"$AISDLC" pull --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "pull twice" "second pull should find nothing: #7 is built, #8 has a branch" \
+    || ok "second pull finds nothing — a built issue is never pulled again"
+task_count="$(find "$R/.aisdlc/tasks" -name 'task.json' | wc -l | tr -d ' ')"
+[ "$task_count" -eq 1 ] \
+    && ok "still one task after the second pull" \
+    || bad "pull duplicate" "$task_count tasks"
+
+# --------------------------------------------------------------------------- #
+printf '\nloop --once drains the queue even when pull finds nothing\n'
+"$AISDLC" loop --repo "$R" --once --no-pr >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "loop --once ran the queued GH-7 task to done" \
+    || bad "loop drain" "status $(task_field "$R" .status)"
+grep -q 'Lock released' "$R/.aisdlc/tracker/issues/7.md" \
+    && ok "loop released the issue after the run" \
+    || bad "loop release" "no release comment on #7"
+"$AISDLC" loop --repo "$R" --once --interval abc >/dev/null 2>&1 \
+    && bad "loop interval" "non-numeric --interval accepted" \
+    || ok "loop refuses a non-numeric --interval"
+
+# --------------------------------------------------------------------------- #
 # scope-check tests — use the existing stub (ok mode) so implement and qa run
 # normally; scope verdict depends solely on the spec's In:/Out: and .claude/sdlc.md
 # --------------------------------------------------------------------------- #
@@ -786,6 +839,23 @@ printf '{"labels":["ai-sdlc","in-progress"],"assignees":["selftest-user"]}\n' > 
 jq -e '(.labels | index("in-progress")) | not' "$STUB_GH_STATE" >/dev/null \
     && ok "release removed the in-progress label" \
     || bad "pr release" "label still set: $(cat "$STUB_GH_STATE")"
+
+# pull over github: the selector filters assignees and in-progress on the runner side, from
+# the one `gh issue list` call, and asks for the approval label on the wire.
+export STUB_GH_ISSUES="$WORK/gh-issues.json"
+printf '[{"number":12,"labels":[{"name":"bug"}],"assignees":[]},
+         {"number":4,"labels":[{"name":"bug"},{"name":"in-progress"}],"assignees":[{"login":"other"}]},
+         {"number":6,"labels":[{"name":"bug"}],"assignees":[{"login":"other"}]},
+         {"number":9,"labels":[{"name":"bug"}],"assignees":[]}]\n' > "$STUB_GH_ISSUES"
+printf -- '- **Tracker descriptor:** `.claude/trackers/github.md`\n' > "$R/.claude/sdlc.md"
+out="$("$AISDLC" pull --repo "$R" --dry-run 2>&1)"
+[ "$out" = "would pull #9 (candidates: 9 12)" ] \
+    && ok "pull over github: oldest unassigned, not in-progress, first" \
+    || bad "pull github selection" "$out"
+grep -q 'gh issue list .*--label bug' "$STUB_GH_LOG" \
+    && ok "pull over github asks for the approval label on the wire" \
+    || bad "pull github wire" "$(grep 'issue list' "$STUB_GH_LOG" || echo 'no issue list call')"
+unset STUB_GH_ISSUES
 unset STUB_GH_STATE STUB_GH_LOG STUB_GH_USER
 rm -f "$STUB_DIR/gh"
 
