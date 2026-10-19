@@ -42,6 +42,11 @@ pipeline in its own vocabulary?** Where the answer is no, the value is a hole to
 - Its own rule files, in whatever tiers it needs, and the tooling that materialises them into a
   consumer repository.
 - Its own router entries, docs and manifests.
+- A skill that extends one of this repository's skills takes a **prefixed name**
+  (`<org>-fleet-loop`, never `fleet-loop`) and opens by reading the upstream one. The hosts
+  resolve same-name collisions differently — omp namespaces the lower-precedence copy, Claude
+  Code namespaces by plugin — so a shared name leaves neither side able to address the other
+  with one URL.
 - Nothing else. An overlay that carries a copy of a command from here is a fork again.
 
 ## How the two compose

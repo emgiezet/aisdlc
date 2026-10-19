@@ -20,6 +20,7 @@
         "./skills/code-review",
         "./skills/dense-testing",
         "./skills/discovery",
+        "./skills/fleet-loop",
         "./skills/graphql-api-design",
         "./skills/harness-eval",
         "./skills/pipeline-contracts",

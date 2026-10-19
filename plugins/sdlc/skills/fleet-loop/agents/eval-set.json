@@ -1,0 +1,23 @@
+[
+  { "query": "Run a loop that takes open issues from GitHub and ships PRs on its own, keeping every pipeline step",
+    "should_trigger": true,
+    "note": "The exact ask: unattended issue → PR, aisdlc loop." },
+  { "query": "Keep aisdlc loop ticking from this session with the phases on omp",
+    "should_trigger": true,
+    "note": "Continuous ticks, --runtime omp, long-lived job." },
+  { "query": "aisdlc pull says nothing to pull but there are open bugs — why?",
+    "should_trigger": true,
+    "note": "The selection rule: label, assignee, in-progress, already built." },
+  { "query": "Can the loop retry the GH-42 task that failed on verify?",
+    "should_trigger": true,
+    "note": "A built issue is never pulled twice; retry is explicit." },
+  { "query": "Queue ABC-123 from its approved spec",
+    "should_trigger": false,
+    "note": "A single spec ticket — aisdlc add." },
+  { "query": "Fix issue 42 end to end",
+    "should_trigger": false,
+    "note": "One issue by number — /sdlc:fix-issue or aisdlc add --issue." },
+  { "query": "Set up a cron job that rotates the application logs",
+    "should_trigger": false,
+    "note": "A scheduler, but not this one." }
+]
