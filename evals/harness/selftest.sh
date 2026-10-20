@@ -9,8 +9,18 @@ set -uo pipefail
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "${HARNESS_DIR}/../.." && pwd)"
 AISDLC="${REPO_ROOT}/plugins/sdlc/bin/aisdlc"
-WORK="${TMPDIR:-/tmp}/aisdlc-selftest"
+WORK="${AISDLC_SELFTEST_WORK:-$(mktemp -d "${TMPDIR:-/tmp}/aisdlc-selftest.XXXXXX")}"
 STUB_DIR="$WORK/bin"
+
+_selftest_cleanup() {
+    local rc=$?
+    if [ "$rc" -eq 0 ]; then
+        rm -rf "$WORK"
+    else
+        printf '\nscratch dir kept for inspection: %s\n' "$WORK" >&2
+    fi
+}
+trap _selftest_cleanup EXIT
 
 PASS=0
 FAIL=0
@@ -56,7 +66,9 @@ task_field() {
     [ -n "$f" ] && jq -r "$field // empty" "$f"
 }
 
-rm -rf "$WORK"
+if [ -n "${AISDLC_SELFTEST_WORK:-}" ]; then
+    rm -rf "$WORK"
+fi
 mkdir -p "$STUB_DIR"
 ln -sf "$HARNESS_DIR/stub-claude" "$STUB_DIR/claude"
 ln -sf "$HARNESS_DIR/stub-omp" "$STUB_DIR/omp"
@@ -1098,4 +1110,3 @@ TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
-rm -rf "$WORK"
