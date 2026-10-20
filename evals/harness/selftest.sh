@@ -1249,5 +1249,20 @@ _arc13_lines="$(jq -s --arg id "$_ARC9_ID" '[.[] | select(.id == $id)] | length'
 [ "${_arc13_lines:-0}" -ge 2 ] \
     && ok "UC-13: two index.jsonl entries for the id" || bad "UC-13 index" "$_arc13_lines entries"
 
+printf '\narchive: unwritable root is non-fatal — task still reaches done\n'
+R="$WORK/arc-nonfatal"; fresh_repo "$R"
+_ARC_CONFLICT="$WORK/arc-conflict-file"
+printf 'not-a-dir\n' > "$_ARC_CONFLICT"   # file at archive root blocks mkdir
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$_ARC_CONFLICT" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "non-fatal archive: task done despite unwritable archive root" \
+    || bad "non-fatal archive" "status $(task_field "$R" .status)"
+_nf_id="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+grep -q 'archive failed' "$R/.aisdlc/tasks/$_nf_id/run.log" 2>/dev/null \
+    && ok "non-fatal archive: failure logged to run.log" \
+    || bad "non-fatal archive log" "no 'archive failed' in run.log"
+unset _ARC_CONFLICT _nf_id
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
