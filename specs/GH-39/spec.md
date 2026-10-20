@@ -67,7 +67,7 @@ Change budget: 75 added lines, 5 files, 2 modules
 | UC-5 | adversarial `code-reviewer` | receives its independent dispatch | execution trace reads commit-by-commit history before aggregate diff; dispatch does not expose the other reviewer's findings or verdict | e2e |
 | UC-6 | reviewer | runs `/sdlc:review <n>` without `--adversarial` and without profile key set | Phase 9 report has no `Pass N:` lines; format is identical to a pre-feature run on the same PR | e2e |
 | UC-7 | repo maintainer | sets the literal profile bullet ``- **review-adversarial:** `true` ``, then runs `/sdlc:review <n>` without flags | behaves like UC-1/UC-2; Phase 9 includes per-pass counts | e2e |
-| UC-8 | reviewer | runs `/sdlc:review <n> --adversarial` on a spec-only PR (all changed files under `specs/`) | [INFERENCE] spec-only review path is taken; `--adversarial` has no effect; Phase 9 format unchanged — **confirm with issue author before approving** | e2e |
+| UC-8 | reviewer | runs `/sdlc:review <n> --adversarial` on a spec-only PR (all changed files under `specs/`) | spec-only review path is taken; adversarial pass is skipped; Phase 9 format remains unchanged | e2e |
 
 ## Non-functional
 

@@ -126,3 +126,9 @@ merging the new main into their history. No unrelated ref or user worktree is re
 The coordinator remains the sole integration owner; each remaining issue receives an
 isolated implementation agent, and overlapping runner/command edits are combined centrally.
 
+The combined prerequisite baseline passed 282 runner checks, 721 slop-guard checks and
+75 SDLC checks (`make selftest`, `CI= make validate`). Two new regression assertions first
+failed for missing archives on empty implementations and local-tracker link failures.
+Both now pass. Separate CLI retry/run smokes also observed failed task records, retained
+worktrees, and corresponding failed archive manifests/index entries for both paths.
+
