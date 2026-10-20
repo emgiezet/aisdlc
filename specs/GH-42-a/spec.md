@@ -20,19 +20,24 @@ records which of its rules slop-guard adopts.
 ## Scope
 
 In:
-- `docs/decisions.md`: decision **D36** in the decisions table, plus a subsection with one row per
+- `plugins/slop-guard/docs/decisions.md`: decision **D36** in the decisions table, plus a subsection with one row per
   anti-slop rule at upstream commit `c44ef22` (the commit `@spacemansh/anti-slop` 0.3.0 tracks):
   23 rows, each exactly one of `covered by <AP id>`, `added as <AP id> (<slice>)`,
   `rejected: <reason>`. The rows are the table under **Mapping** below, verbatim in meaning.
-- `tools/node/package.json` + `package-lock.json`: `"@spacemansh/anti-slop": "0.3.0"`, exact.
-- `configs/baseline/eslint.config.mjs`: import the plugin from `@spacemansh/anti-slop/eslint`,
+- `plugins/slop-guard/tools/node/package.json` + `plugins/slop-guard/tools/node/package-lock.json`: `"@spacemansh/anti-slop": "0.3.0"`, exact.
+- `plugins/slop-guard/configs/baseline/eslint.config.mjs`: import the plugin from `@spacemansh/anti-slop/eslint`,
   register it once in the TypeScript block, enable the four rules of this slice at `warn`.
-- `rules/catalog.yaml`: `AP-TS-MAINT-005` and `AP-TS-MAINT-006` (severity `warn`, category
-  `maintainability`, `cwe: []`, original text, own `bad`/`good`); `rules/mapping/eslint.yaml`
-  entries for their four rule ids; regenerated `skills/ts-react-antipatterns/`.
-- Fixtures `tests/fixtures/ts/{bad,good}/AP-TS-MAINT-00{5,6}.ts` and their cases in
-  `tests/integration/fast.sh`; the D36-table invariant in `tests/catalog_test.sh`.
-- `CHANGELOG.md` `## Unreleased` entry with a **Why** paragraph.
+- `plugins/slop-guard/rules/catalog.yaml`: `AP-TS-MAINT-005` and `AP-TS-MAINT-006` (severity `warn`, category
+  `maintainability`, `cwe: []`, original text, own `bad`/`good`).
+- `plugins/slop-guard/rules/mapping/eslint.yaml`: entries for the four rule ids of this slice.
+- `plugins/slop-guard/skills/ts-react-antipatterns/`: regenerated.
+- `plugins/slop-guard/tests/fixtures/ts/` bad and good fixtures: `AP-TS-MAINT-005.ts` and
+  `AP-TS-MAINT-006.ts` in each of `bad/` and `good/`.
+- `plugins/slop-guard/tests/integration/fast.sh`: fixture cases for `AP-TS-MAINT-005` and `AP-TS-MAINT-006`.
+- `plugins/slop-guard/tests/catalog_test.sh`: the D36-table invariant.
+- `plugins/slop-guard/CHANGELOG.md` `## Unreleased` entry with a **Why** paragraph.
+- `.gitignore`: ignore runtime artefacts the hooks and the ESLint dispatcher write into the tree
+  (`plugins/slop-guard/sessions/`, `plugins/slop-guard/tools/node/eslint.config.mjs`).
 
 **Mapping** (D36):
 
@@ -72,7 +77,7 @@ Out:
 - The vendored copy in `trasti-sdlc` — another repository.
 - Hand edits under `skills/ts-react-antipatterns/` — regenerate only.
 
-Change budget: 260 added lines, 15 files, 1 modules
+Change budget: 420 added lines, 17 files, 2 modules
 
 ## Context
 
