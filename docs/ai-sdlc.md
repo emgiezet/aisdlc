@@ -189,6 +189,19 @@ failure mode to fear is a confident PR that quietly does the wrong thing.
 Watch the ratio between generated and merged. A rising generated count with a flat merged count
 means the harness is producing work that reviewers reject — noise dressed as throughput.
 
+## Session recording
+
+Each phase that invokes a runtime appends one entry to `sessions` in `task.json`:
+`{phase, runtime, session_id, transcript, started, ended}`.
+Phases that run natively (`scope-check`, `verify`) add no entry.
+
+| Field | claude | omp |
+|-------|--------|-----|
+| `session_id` | `.session_id` from `<phase>.json`; `null` if absent | UUID after `_` in `<ts>_<uuid>.jsonl` under `sessions/` |
+| `transcript` | `$HOME/.claude/projects/<enc>/<sid>.jsonl` — `<enc>` = worktree path with `/` `.` → `-` | absolute path of that file |
+
+`runtime_version` records the first line of `<runtime> --version`, set once per task.
+
 ## Queue configuration
 
 The queue runner reads per-repo defaults from `.aisdlc/config.json`, written by `/sdlc:init`.

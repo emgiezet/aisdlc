@@ -1031,6 +1031,71 @@ PATH="$NO_OMP" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1 \
 [ "$(task_field "$R" .status)" = "queued" ] && ok "the task stays queued" \
     || bad "runtime" "status is $(task_field "$R" .status)"
 
+printf '\nsessions: claude records phase sessions (UC-1)\n'
+R="$WORK/sessions-uc1"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"; TF="$D/task.json"
+[ "$(jq -r '.sessions | length' "$TF")" -ge 2 ] && ok "UC-1: two entries" || bad "UC-1 len" "$(jq '.sessions|length' "$TF")"
+[ "$(jq -r '.sessions[0].phase,.sessions[0].runtime' "$TF")" = "implement
+claude" ] && ok "UC-1: phase and runtime" || bad "UC-1 fields" "$(jq -r '.sessions[0]' "$TF")"
+[ "$(jq -r '.sessions[0].session_id' "$TF")" = "$(jq -r '.session_id // empty' "$D/implement.json")" ] \
+    && ok "UC-1: session_id from implement.json" || bad "UC-1 sid" "mismatch"
+jq -r '.sessions[0].started' "$TF" | grep -qE '^[0-9]{4}-' && ok "UC-1: ISO started" || bad "UC-1 ts" "$(jq -r '.sessions[0].started' "$TF")"
+jq -r '.sessions[0].ended' "$TF" | grep -qE '^[0-9]{4}-' && ok "UC-1: ISO ended" || bad "UC-1 ended" "$(jq -r '.sessions[0].ended' "$TF")"
+[ "$(jq -r '.sessions[1].session_id' "$TF")" = "$(jq -r '.session_id // empty' "$D/qa.json")" ] \
+    && ok "UC-1: qa session_id" || bad "UC-1 qa" "mismatch"
+[ "$(jq -r '.sessions[1].phase,.sessions[1].runtime' "$TF")" = "qa
+claude" ] && ok "UC-1: qa phase and runtime" || bad "UC-1 qa fields" "$(jq -r '.sessions[1]' "$TF")"
+printf '\nsessions: transcript encodes worktree path (UC-2)\n'
+R="$WORK/sessions-uc2"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --phase implement >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"; TF="$D/task.json"
+_WT="$(jq -r '.worktree' "$TF")"; _SID="$(jq -r '.sessions[0].session_id' "$TF")"
+[ "$(jq -r '.sessions[0].transcript' "$TF")" = "$HOME/.claude/projects/$(printf '%s' "$_WT"|tr '/.' '-')/${_SID}.jsonl" ] \
+    && ok "UC-2: transcript encodes /. to -" || bad "UC-2" "$(jq -r '.sessions[0].transcript' "$TF")"
+unset _WT _SID
+printf '\nsessions: omp records session from sessions/ (UC-3)\n'
+R="$WORK/sessions-uc3"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp --phase implement >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"; TF="$D/task.json"
+_JF="$(ls "${D%/}/sessions/"*.jsonl 2>/dev/null | head -1 || true)"
+[ -n "$_JF" ] && ok "UC-3: session .jsonl written" || bad "UC-3" "none in ${D%/}/sessions/"
+_UUID="$(basename "${_JF:-x}" .jsonl | sed 's/^[^_]*_//')"
+[ "$(jq -r '.sessions[0].session_id' "$TF")" = "$_UUID" ] && [ "$(jq -r '.sessions[0].transcript' "$TF")" = "$_JF" ] \
+    && ok "UC-3: session_id and transcript" || bad "UC-3" "$(jq '.sessions[0]' "$TF")"
+[ "$(jq -r '.sessions[0].runtime' "$TF")" = "omp" ] && ok "UC-3: runtime is omp" || bad "UC-3 rt" "$(jq -r '.sessions[0].runtime' "$TF")"
+unset _JF _UUID
+printf '\nsessions: runtime_version from --version (UC-4)\n'
+R="$WORK/sessions-uc4"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)"
+[ "$(jq -r '.runtime_version' "$TF")" = "$(claude --version 2>/dev/null | head -1)" ] \
+    && ok "UC-4: runtime_version correct" || bad "UC-4" "$(jq -r '.runtime_version' "$TF")"
+_CF="$WORK/vc4"; printf '0' > "$_CF"
+_SD="$(mktemp -d)"; _REAL="$STUB_DIR/claude"
+printf '#!/bin/sh\n[ "${1:-}" = "--version" ] && { c=$(cat "%s"); printf "%%d" "$((c+1))" > "%s"; }\nexec "%s" "$@"\n' \
+    "$_CF" "$_CF" "$_REAL" > "$_SD/claude"
+chmod +x "$_SD/claude"
+R="$WORK/sessions-uc4b"; fresh_repo "$R"
+PATH="$_SD:$PATH" "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+PATH="$_SD:$PATH" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(cat "$_CF")" -eq 1 ] && ok "UC-4: --version called once for two-phase task" \
+    || bad "UC-4 once" "--version called $(cat "$_CF") times, expected 1"
+rm -rf "$_SD"; unset _CF _SD _REAL
+printf '\nsessions: missing session_id records null (UC-5)\n'
+R="$WORK/sessions-uc5"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --phase implement >/dev/null 2>&1
+AISDLC_STUB=nosid "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)"
+[ "$(jq -r '.sessions[0].session_id' "$TF")" = "null" ] && [ "$(jq -r '.sessions[0].transcript' "$TF")" = "null" ] \
+    && ok "UC-5: null session_id and transcript" || bad "UC-5 nulls" "$(jq '.sessions[0]' "$TF")"
+[ "$(jq '.sessions | length' "$TF")" -ge 1 ] && ok "UC-5: entry present" || bad "UC-5" "no entry"
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-5: outcome unchanged" || bad "UC-5 status" "$(task_field "$R" .status)"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
 rm -rf "$WORK"
