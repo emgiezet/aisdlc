@@ -592,6 +592,9 @@ Releases are not hand-made. When `Validate` goes green on `main`,
 tag — `feat!`/`BREAKING CHANGE` → major, `feat` → minor, anything else → patch — runs the matching
 `make bump-*`, bumps `slop-guard` by the same step only when `plugins/slop-guard/` changed, then
 commits `chore(release): vX.Y.Z`, tags it and publishes the GitHub release with generated notes.
+Superseded validation runs skip the release when their commit is no longer the tip of `main`.
+The bump commit and its tag are pushed atomically: if `main` advances after that check, neither
+ref is published, leaving the newer validation run to release.
 Run it by hand with a forced level from the Actions tab (`workflow_dispatch`, `level:`); the manual
 path is still `make bump-patch|bump-minor|bump-major` and `make bump-slopguard`.
 
