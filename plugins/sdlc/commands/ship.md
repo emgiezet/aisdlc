@@ -77,9 +77,49 @@ that is where an unattended run is most likely to have overstepped.
 
 ### Not covered
 <anything from the QA report's "Not verified" section, or "nothing">
+
+### Change map
+<mermaid flowchart — modules from diff + edges from spec Context; omit this section for docs-only diffs>
+
+| UC id | Before | After |
+|-------|--------|-------|
+<one row per UC from spec's Acceptance criteria: id | prior observable behaviour | new behaviour>
 ```
 
    A `--docs` body is shorter: title, what changed and why, the `git log --oneline <base>..HEAD`.
+
+   **Change map.** Skip this section entirely when `--docs` is passed or all diff paths match
+   `*.md`, `docs/**`, `specs/**`, or `CHANGELOG*`. Otherwise build the `### Change map`
+   section (appended after `### Not covered`) as follows:
+
+   a. Map each path in `git diff --name-only <base>..HEAD` to a logical module name: drop
+      the filename, keep meaningful directory levels (e.g.
+      `plugins/sdlc/commands/ship.md` → `commands/ship`).
+   b. Use `## Context` in the spec to derive directed call/data edges between modules.
+   c. If the module count exceeds 12, repeatedly collapse sibling modules into their
+      common parent directory until the count reaches ≤ 12. If more than 12 top-level
+      groups remain after collapsing, keep 11 in lexical order and collect the rest as
+      `Other (N more)`. Every touched module stays represented; any aggregate that contains
+      an out-of-scope module inherits the warning style.
+   d. Mark each module absent from the spec's `In:` scope with
+      `style NodeId fill:#ffa,stroke:#f90`; in-scope nodes carry no style.
+   e. Emit a fenced `mermaid` block, then a before/after UC table. Rendered example:
+
+```mermaid
+flowchart LR
+  ShipCmd["commands/ship"]
+  PRBody["pr-body.md"]
+  Tracker["trackers/github"]
+  ShipCmd --> PRBody
+  ShipCmd --> Tracker
+  style Tracker fill:#ffa,stroke:#f90
+```
+
+| UC id | Before | After |
+|-------|--------|-------|
+| UC-1  | no visual summary in PR body | mermaid module graph + UC table appended |
+
+   *(Populate from the spec's `## Acceptance criteria`; never fabricate rows or derive from the diff.)*
 
 3. **create-pr** with title `type(scope): <summary> (<TICKET>)`, the body file, the profile's
    default base, `draft` set, and the QA verdict (`PASS`/`GAPS`; `null` under `--docs`). Always a

@@ -212,7 +212,7 @@ never ask, and end with a verdict and a chain marker.
 |---|---|
 | `/sdlc:implement <T>` | Refuses anything not `approved`; one playbook; a test carrying each `UC-<n>` before its code; full CI matrix; `BLOCKED.md` rather than a broken finish. |
 | `/sdlc:qa <T>` | Independent verification: use cases re-derived from the spec, gaps closed, a browser pass with screenshots for UI use cases when a browser is configured, `qa-report.md` with `PASS`/`GAPS`. |
-| `/sdlc:ship <T> [--docs]` | Draft PR with the verdict and the riskiest changes up front, QA report as a comment, label `review`. `--docs` ships a documentation-only branch without a spec. |
+| `/sdlc:ship <T> [--docs]` | Draft PR with the verdict and riskiest changes up front, a visual Change map (mermaid module graph + before/after UC table), QA report as a comment, label `review`. `--docs` ships a documentation-only branch without a spec. |
 | `/sdlc:review <pr#> [--autofix]` | Spec-first review in an isolated worktree: blocker/major/minor/nit, `APPROVED` or `CHANGES_REQUESTED`, pipeline label. On its own PRs an autofix loop — conflicts, then findings, then CI — with new commits only. |
 | `/sdlc:fix-pr <pr#> [--ci-only]` | Drives one PR to `merge-ready`: base merge, review + autofix, CI stabilisation that classifies each red check (`real-bug` / `test-bug` / `flake` / `infra`) and never weakens one. |
 | `/sdlc:continue <T\|pr#>` | Resumes a `BLOCKED.md`, a `changes-requested` review, or a PR with no plan, then re-runs implement → qa. |
