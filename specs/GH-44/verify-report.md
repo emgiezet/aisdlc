@@ -3,8 +3,8 @@ PASS
 # Verify — GH-44
 
 Base: `origin/main`  
-Head: `af223d2`  
-Checked: 2026-10-20T10:01:58Z
+Head: `f495da5`  
+Checked: 2026-10-20T10:38:12Z
 
 | check | result | detail |
 |---|---|---|
