@@ -71,6 +71,13 @@ Deleted lines, generated output, vendored trees, lock files and the specs direct
 - **Hard ceiling:** 3000
   <!-- past this scope-check returns BLOCKED and the queue stops before ship: nobody reviews
        a diff this wide, so it goes back through /sdlc:decompose -->
+- **Erosion delta max:** 0.05
+  <!-- SlopCodeBench erosion delta above this triggers an `erosion` finding in scope-report.md;
+       0.05 is the default (matches the built-in). Raise it only for a large mechanical refactor. -->
+- **New hotspots max:** 0
+  <!-- functions newly crossing CC > 10 that are tolerated before a `new hotspot` finding is
+       emitted. 0 means any new hotspot is reported. A function newly above CC 25 always generates
+       a `hotspot over 25` finding regardless of this setting. -->
 
 ## Contracts and decisions
 
