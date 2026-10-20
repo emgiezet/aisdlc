@@ -1139,6 +1139,13 @@ while IFS= read -r _ent; do
 done < <(jq -c '.files | to_entries[]' "$_ARC6_DIR/manifest.json" 2>/dev/null)
 [ "$_arc6_hash_ok" -eq 1 ] && ok "UC-6: sha256sum of every file matches manifest.files" \
     || bad "UC-6 sha256" "mismatch on $_arc6_bad"
+# Verify individual manifest fields required by spec are present.
+jq -e 'has("policy_fingerprint") and has("aisdlc_version") and has("archived_at") and
+        has("runtime_version") and has("sessions") and has("attempts")' \
+    "$_ARC6_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-6: manifest has required fields (policy_fingerprint, aisdlc_version, archived_at, runtime_version, sessions, attempts)" \
+    || bad "UC-6 manifest-fields" "$(jq 'keys' "$_ARC6_DIR/manifest.json" 2>/dev/null)"
+
 
 printf '\narchive: index.jsonl gains exactly one line with id, status, path (UC-7)\n'
 [ -f "$ARC6/index.jsonl" ] && ok "UC-7: index.jsonl created" || bad "UC-7 index" "missing"
@@ -1181,6 +1188,10 @@ jq -e '.status == "failed"' "$_ARC9_DIR/manifest.json" >/dev/null 2>&1 \
     && ok "UC-9: manifest status is failed" || bad "UC-9 status" "$(jq -r '.status' "$_ARC9_DIR/manifest.json" 2>/dev/null)"
 [ -f "$_ARC9_DIR/spec/BLOCKED.md" ] \
     && ok "UC-9: spec/BLOCKED.md in archive" || bad "UC-9 BLOCKED.md" "missing"
+[ -f "$_ARC9_DIR/spec/spec.md" ] \
+    && ok "UC-9: spec/spec.md in archive (worktree spec/ reports present)" \
+    || bad "UC-9 spec.md" "spec/spec.md missing from archive"
+
 
 printf '\narchive: refused task archives BLOCKED.md before worktree removal (UC-10)\n'
 R="$WORK/arc-uc10"; ARC10="$WORK/arc-uc10-root"
@@ -1229,7 +1240,11 @@ _ARC12_DEFAULT="${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive"
 [ ! -d "$_ARC12_DEFAULT/$_ARC12_SLUG" ] \
     && ok "UC-12: no archive dir created with AISDLC_ARCHIVE=off" \
     || bad "UC-12 dir" "archive created at default root"
-unset _ARC12_SLUG _ARC12_DEFAULT
+_ARC12_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+! grep -q "\"id\":\"$_ARC12_ID\"" "$_ARC12_DEFAULT/index.jsonl" 2>/dev/null \
+    && ok "UC-12: no index.jsonl entry for task with AISDLC_ARCHIVE=off" \
+    || bad "UC-12 index-entry" "index.jsonl contains task $_ARC12_ID despite AISDLC_ARCHIVE=off"
+unset _ARC12_SLUG _ARC12_DEFAULT _ARC12_ID
 
 printf '\narchive: retry creates <id>.<attempts> dir; first archive unchanged (UC-13)\n'
 # Reuse UC-9 repo (failed task, worktree kept) — retry it so it reaches done.
@@ -1263,6 +1278,29 @@ grep -q 'archive failed' "$R/.aisdlc/tasks/$_nf_id/run.log" 2>/dev/null \
     && ok "non-fatal archive: failure logged to run.log" \
     || bad "non-fatal archive log" "no 'archive failed' in run.log"
 unset _ARC_CONFLICT _nf_id
+printf '\narchive: cancelled task creates archive dir and index entry (non-functional)\n'
+R_CANCEL="$WORK/arc-cancel"; ARC_CANCEL="$WORK/arc-cancel-root"
+fresh_repo "$R_CANCEL"
+"$AISDLC" add SBX-1 --repo "$R_CANCEL" --no-pr >/dev/null 2>&1
+_CANCEL_ID="$(ls -1 "$R_CANCEL/.aisdlc/tasks" | head -1)"
+AISDLC_ARCHIVE="$ARC_CANCEL" "$AISDLC" cancel "$_CANCEL_ID" --repo "$R_CANCEL" >/dev/null 2>&1
+[ "$(task_field "$R_CANCEL" .status)" = "cancelled" ] \
+    && ok "archive/cancel: task status is cancelled" \
+    || bad "archive/cancel status" "$(task_field "$R_CANCEL" .status)"
+_CANCEL_SLUG="$(arc_slug "$R_CANCEL")"
+_CANCEL_DIR="$ARC_CANCEL/$_CANCEL_SLUG/$(date -u +%Y-%m)/$_CANCEL_ID"
+[ -d "$_CANCEL_DIR" ] \
+    && ok "archive/cancel: archive dir created for cancelled task" \
+    || bad "archive/cancel dir" "not found: $_CANCEL_DIR"
+jq -e '.status == "cancelled"' "$_CANCEL_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "archive/cancel: manifest status is cancelled" \
+    || bad "archive/cancel manifest" "$(jq -r '.status' "$_CANCEL_DIR/manifest.json" 2>/dev/null)"
+jq -e --arg id "$_CANCEL_ID" 'select(.id == $id and .status == "cancelled")' \
+    "$ARC_CANCEL/index.jsonl" >/dev/null 2>&1 \
+    && ok "archive/cancel: index.jsonl entry with status cancelled" \
+    || bad "archive/cancel index" "$(cat "$ARC_CANCEL/index.jsonl" 2>/dev/null)"
+unset R_CANCEL ARC_CANCEL _CANCEL_ID _CANCEL_SLUG _CANCEL_DIR
+
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
