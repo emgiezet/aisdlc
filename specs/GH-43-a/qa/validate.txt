@@ -1,0 +1,1018 @@
+  ✓ slopguard plugin.json
+  ✓ slopguard hooks.json
+  ✓ slopguard tools.lock.json
+  ✓ slopguard stacks.json
+  ✓ stacks.json: all tiers valid (1 or 2)
+  ✓ stacks.json: all entries have non-empty anchors
+  ✓ stacks.json: requires refs are valid
+  ✓ stacks.json: implies refs are valid
+  ✓ stacks.json: context7 values are non-empty strings
+  ✓ stacks.json: every entry declares a tools array
+  ✓ stacks.json: tools refs are pinned in tools.lock.json
+  ✓ stacks.json: every pinned tool is reachable from a stack or the core set
+  ✓ slopguard registries.json
+  ✓ registries.json: all entries have non-empty url
+  ✓ registries.json: all entries have non-empty latest_jq
+  ✓ registries.json: all entries have non-empty published_jq
+  ✓ registries.json: all entries have non-empty manifests
+  ✓ registries.json: all urls contain {package}
+  ✓ slopguard version consistent
+  ✓ plugins/slop-guard/plugin.json (portable)
+  ✓ slopguard portable version consistent
+  ✓ slopguard shell syntax
+  – shellcheck not installed, skipped
+slop-guard test suite
+
+
+installer: jq bootstraps from its lock entry without jq parsing
+  ok    jq bootstrap installs and returns the pinned binary
+installer: good hash installs and points current at the version dir
+  ok    exits zero on good hash
+  ok    version dir created
+  ok    current is a symlink
+  ok    binary is executable
+  ok    current points at version dir
+
+installer: bad hash leaves no version dir, removes download, exits non-zero
+  ok    exits non-zero on bad hash
+  ok    no version dir on hash mismatch
+  ok    no leftover download in tmpdir
+
+installer: upgrade atomically repoints current to the new version dir
+  ok    upgrade exits zero
+  ok    10.0.0 version dir created
+  ok    current points at 10.0.0 dir
+  ok    no stray symlink left inside old version dir
+
+resolver: project binary wins over plugin-installed binary (project-first)
+  ok    project-first: project binary wins over plugin
+
+resolver: plugin-only mode ignores project binary
+  ok    plugin-only: returns plugin binary
+
+resolver: project-only mode ignores plugin binary
+  ok    project-only: plugin binary ignored when project has none
+
+resolver: plugin binary with wrong version is not accepted; install repairs it
+  ok    mismatched plugin binary not accepted
+  ok    resolve_tool finds 9.9.9 after repair install
+
+installer: mv failure on same-version reinstall preserves live install
+  ok    mv-failure reinstall: install_tool returns non-zero
+  ok    mv-failure reinstall: current still resolves to live version dir
+  ok    mv-failure reinstall: binary still executable
+
+installer: zip with hidden top-level sibling is not silently discarded
+  ok    zip-dotfile: install exits zero
+  ok    zip-dotfile: .config survives in version dir
+
+resolver: changed Node lockfiles invalidate the managed bundle
+  ok    Node bundle is rejected when the plugin lockfile changes
+
+doctor: empty-resolution after install does not blame precedence
+  ok    project-only: empty-resolution does not blame precedence
+  ok    hook_input: reads stdin into _HOOK_INPUT
+  ok    bash: .session_id
+  ok    bash: .cwd
+  ok    bash: .hook_event_name
+  ok    bash: .tool_name
+  ok    bash: .tool_use_id
+  ok    bash: .tool_input.file_path → empty (no path)
+  ok    bash: .agent_id null → empty
+  ok    write: .tool_name
+  ok    write: .tool_input.file_path
+  ok    edit: .tool_name
+  ok    edit: .tool_input.file_path
+  ok    edit: .agent_id (subagent)
+  ok    edit: .agent_type
+  ok    stop: .hook_event_name
+  ok    stop: .stop_hook_active = true
+  ok    stop: .tool_name null → empty
+  ok    hook_deny: permissionDecision=deny JSON
+  ok    hook_ask: permissionDecision=ask JSON
+  ok    hook_allow: permissionDecision=allow JSON
+  ok    hook_context: additionalContext JSON
+  ok    hook_message: systemMessage JSON
+  ok    hook_deny: double-quote + dollar survive round-trip
+  ok    hook_ask: double-quote + dollar survive round-trip
+  ok    hook_context: double-quote + dollar survive round-trip
+  ok    hook_ask: headless session denies with reason
+  ok    hook_deny: advisory emits context
+  ok    hook_ask: advisory emits context
+  ok    hook_secret_deny: advisory still denies
+  ok    grok: camelCase sessionId → .session_id after hook_input
+  ok    grok: camelCase toolName → .tool_name after hook_input
+  ok    grok: camelCase hookEventName → .hook_event_name after hook_input
+  ok    grok: camelCase toolInput → .tool_input.command after hook_input
+  ok    grok: write fixture toolName → .tool_name
+  ok    grok: write fixture toolInput.file_path accessible after normalization
+  ok    grok: hook_deny emits Grok {"decision":"deny"} envelope
+  ok    grok: hook_secret_deny emits Grok {"decision":"deny"} envelope
+  ok    grok: hook_ask becomes deny (fail-closed, no interactive ask)
+  ok    grok: hook_allow produces no output (exit 0 = allow signal)
+  ok    grok: hook_context writes nothing to stdout
+  ok    grok: hook_context writes advisory text to stderr
+  ok    grok: hook_message writes nothing to stdout
+  ok    grok: stale GROK_PLUGIN_ROOT + different CLAUDE_PLUGIN_ROOT → Claude envelope
+  ok    state_dir: no agent
+  ok    state_dir: with agent_id
+  ok    state_dir: '--' treated as no agent
+  ok    state_init: directory created
+  ok    state_init: profile.json
+  ok    state_init: touched.json
+  ok    state_init: findings.json
+  ok    state_init: stop-iterations
+  ok    state_init: findings.json is []
+  ok    state_init: stop-iterations is 0
+  ok    state_init: agent subdirectory created
+  ok    lock: acquire succeeds
+  ok    lock: .lock directory exists while held
+  ok    lock: .lock removed after release
+  ok    stale lock: acquisition succeeds after stale removal
+  ok    finding_add: single finding appended
+  ok    finding_add: ap_id stored
+  ok    finding_add: tool stored
+  ok    finding_add: severity stored
+  ok    finding_add: cwe[0] stored
+  ok    finding_add: fingerprint matches sha256(tool|rule|file|snippet)
+  ok    finding_add: snippet not stored in record
+  ok    concurrent: all 8 findings survived with mkdir locking
+  ok    sabotage: unlocked appenders lost findings (1/8 kept — lock is load-bearing)
+  ok    state_prune: session older than 7 days removed
+  ok    state_prune: fresh session kept
+  ok    pre-bash: absolute shell sink denied
+  ok    pre-bash: path-prefixed pipe endpoints denied
+  ok    pre-bash: pipe to shell denied
+  ok    pre-bash: compound pipe to shell denied
+  ok    pre-bash: newline-separated pipe to shell denied
+  ok    pre-bash: quoted operator ignored
+  ok    pre-bash: command substitution inspected
+  ok    pre-bash: backtick substitution inspected
+  ok    pre-bash: node install with flags is not gated
+  ok    pre-bash: python install with flags is not gated
+  ok    pre-bash: dependency prompt includes local typosquat signal
+  ok    pre-bash: routine dependency add is not gated
+  ok    pre-bash: lockfile install allowed
+  ok    pre-bash: lockfile deletion denied
+  ok    pre-bash: deny flag outranks allowed install
+  ok    pre-bash: global install denied over ask
+  ok    pre-bash: secret file read denied
+  ok    pre-bash: path-prefixed secret reader denied
+  ok    pre-bash: headless ask becomes reasoned deny
+  ok    pre-bash: npm install note mentions slopguard deps-check
+  ok    pre-bash: pip install note mentions slopguard deps-check
+  ok    pre-bash: composer require note mentions slopguard deps-check
+  ok    pre-bash: unpinned go install still asks
+  ok    pre-bash: infrastructure change still asks
+  ok    pre-write: suppression without reason denied
+  ok    pre-write: suppression with configured reason allowed
+  ok    pre-write: unchanged suppression remains editable
+  ok    pre-write: existing suppression survives line edit
+  ok    pre-write: obvious secret denied
+  ok    pre-write: GitHub token denied
+  ok    pre-write: managed secret scanner blocks with redacted location
+  ok    pre-write: NotebookEdit new_source is scanned
+  ok    pre-write: lint baseline edit is not gated
+  ok    pre-write: removing a ruff section is not gated
+  ok    pre-write: removing strict TypeScript config is not gated
+  ok    pre-write: lowering a phpstan level is recorded as context
+  ok    pre-write: lowering a coverage threshold asks
+  ok    pre-write: raising a coverage threshold is not gated
+  ok    pre-write: lowering a jest coverage threshold asks
+  ok    pre-write: deleting a coverage threshold asks
+  ok    pre-write: removing the CI test step asks
+  ok    pre-write: letting the CI test step fail open asks
+  ok    pre-write: removing a CI lint step is not gated
+  ok    pre-write: .slopguard.json write asks
+  ok    pre-write: .slopguard/tools/*.yaml write asks
+  ok    pre-write: .slopguard/mapping/*.yaml write asks
+  ok    pre-write: similarly-named path outside .slopguard/ tree is not blocked
+  ok    pre-write: package.json write is not blocked
+  ok    pre-write: language blocker context appears once
+  ok    pre-write: headless test-gate edit becomes reasoned deny
+  ok    pre-write: laravel version and Context7 call appear in first PHP edit
+  ok    pre-write: second PHP edit in same session omits framework context
+  ok    pre-write: REQUIRE_DOCS_LOOKUP=false suppresses framework sentence while keeping blockers
+  ok    pre-write: in-session docs_seen suppresses framework sentence, blockers remain
+  ok    pre-write: cross-session docs_recall suppresses framework sentence, blockers remain
+  ok    detect: laravel
+  ok    detect: symfony
+  ok    detect: go
+  ok    detect: python
+  ok    detect: react
+  ok    detect: express
+  ok    detect: helm
+  ok    detect: terraform
+  ok    detect: java
+  ok    detect: kotlin
+  ok    detect: csharp
+  ok    detect: ruby
+  ok    detect: rust
+  ok    detect: requires-gate typescript
+  ok    detect: requires-gate laravel
+  ok    stack_tier: go is tier 1
+  ok    stack_tier: ruby is tier 2
+  ok    stack_known: go is known
+  ok    stack_known: notastack rejected
+  ok    stacks_all: contains java
+  ok    stacks_all: contains kotlin
+  ok    stacks_all: contains csharp
+  ok    stacks_all: contains ruby
+  ok    stacks_all: contains rust
+  ok    config: absent .slopguard.json → source=auto
+  ok    config: absent .slopguard.json → no warnings
+  ok    config: {} → source=auto
+  ok    config: {} → no warnings
+  ok    config: unparseable JSON → source=auto
+  ok    config: unparseable JSON → warning emitted
+  ok    config: explicit stacks → source=file
+  ok    config: explicit stacks → docker present
+  ok    config: explicit stacks → go absent (autodetect ignored)
+  ok    config: paths only → source=file-paths
+  ok    config: paths only → declared tag applied
+  ok    config: paths only → subtree autodetection not consulted
+  ok    config: paths → stacks declared for a manifest-free subtree
+  ok    config: paths → non-array value warned and skipped
+  ok    config: stacks+paths → source=file
+  ok    config: stacks+paths → docker present (from stacks)
+  ok    config: stacks+paths → go present (from paths)
+  ok    config: unknown tag → good tag survives
+  ok    config: unknown tag → bad tag dropped
+  ok    config: unknown tag → warning names the bad tag
+  ok    config: unknown tag → warning lists valid tags
+  ok    config: nonexistent path → source=file-paths
+  ok    config: nonexistent path → warning emitted
+  ok    config: stacks:[] → source=file
+  ok    config: stacks:[] → zero stacks (autodetect not called)
+  ok    config: stacks:[] → no-language-layer warning
+  ok    config: implies: helm in explicit list
+  ok    config: implies: helm → kubernetes implied
+  ok    config: requires not applied: explicit typescript survives without package.json
+  ok    docs_seen: noted library is seen
+  ok    docs_seen: unrelated library is not seen
+  ok    docs_seen: needle in hay (/laravel/laravel vs laravel)
+  ok    docs_seen: hay in needle (laravel vs /laravel/laravel)
+  ok    docs_seen: case-insensitive (React vs react)
+  ok    docs_seen: case-insensitive (React vs REACT)
+  ok    docs_note: no duplicate on repeated note
+  ok    docs_note: corrupt file does not fail docs_note
+  ok    docs_seen: entry recovered after corrupt file
+  ok    docs_recall: hit for same major.minor (10.3)
+  ok    docs_recall: hit for same major.minor different patch (10.3)
+  ok    docs_recall: miss after minor bump (10.3 → 10.4)
+  ok    docs_recall: miss after major bump (10.3 → 11.0)
+  ok    docs_remember: '/' in library produces valid filename (-laravel-laravel@10.3)
+  ok    docs_key: sanitised key has no /
+  ok    slopguard note-docs: exits 0
+  ok    slopguard note-docs: no stdout
+  ok    slopguard note-docs: docs-lookups.json created
+  ok    slopguard note-docs: library recorded correctly
+  ok    slopguard note-docs: exactly one entry in docs-lookups.json
+docs-lookups.json content after note-docs:
+[
+  {
+    "library": "/laravel/laravel",
+    "ts": "2026-10-20T09:02:41Z"
+  }
+]
+  ok    note-docs→docs_remember: memory file created (laravel@12.4)
+  ok    note-docs→docs_recall: hit for same major.minor after note-docs
+  ok    note-docs→docs_remember: unrelated library (django) writes no memory file
+  ok    note-docs→docs_recall: miss after minor bump (v12.4 → v12.5)
+  ok    version_cmp: 1.2.3 vs 1.2.3 → 0
+  ok    version_cmp: 1.2.0 vs 1.2.3 → -1
+  ok    version_cmp: 2.0.0 vs 1.9.9 → 1
+  ok    version_cmp: v1.2.3 vs 1.2.3 → 0
+  ok    version_cmp: ^1.2.3 vs 1.2.3 → 0
+  ok    version_cmp: 1.2 vs 1.2.0 → 0
+  ok    version_cmp: 1.0.0-rc1 vs 1.0.0 → -1
+  ok    version_cmp: 1.0.0 vs 1.0.0-beta.2 → 1
+  ok    deps_age_days: 2020-01-01 returns > 1000 days
+  ok    deps_age_days: invalid input → -1
+  ok    verdict: 18.3.1 vs 18.3.1 (age=100, cool=3) → ok
+  ok    verdict: 18.2.0 vs 18.3.1 (age=100, cool=3) → minor-behind
+  ok    verdict: 0.21.1 vs 1.7.2 (age=400, cool=3) → major-behind
+  ok    verdict: 0.21.1 vs 1.7.2 (age=1, cool=3) → too-fresh
+  ok    verdict: 2.0.0 vs 2.0.0 (age=0, cool=3) → too-fresh
+  ok    verdict: * vs 1.0.0 (age=100, cool=3) → unknown
+  ok    verdict: 1.0.0 vs @latest (age=100, cool=3) → unknown
+  ok    network gate: no fetch when ALLOW_NETWORK unset
+  ok    network gate: exits 0 when network disabled
+  ok    error mode: major-behind → exit 1
+  ok    error mode: --json → exit 1
+  ok    warn mode: major-behind → exit 0
+  ok    json: valid JSON array with 5 entries
+  ok    json: all entries have the six required fields
+  ok    json: react verdict is ok
+  ok    json: axios verdict is major-behind
+  ok    json: fresh-pkg verdict is too-fresh
+  ok    fetch failure: fail-pkg gets unknown verdict
+  ok    fetch failure: run continues; 2 ok package(s) processed
+  ok    cargo parser: simple string dep extracted
+  ok    cargo parser: inline-table dep extracted
+  ok    cargo parser: workspace dep skip note emitted
+  ok    crates e2e: serde 1.0.100 < 1.0.219 → minor-behind
+  ok    crates e2e: tokio 1.0.0 < 2.0.0 → major-behind
+  ok    requirements parser: exact-pinned package extracted
+  ok    requirements parser: name lowercased (Flask → flask)
+  ok    requirements parser: underscore normalised to dash
+  ok    requirements parser: no-version dep gets * sentinel
+  ok    requirements parser: pip option -r silently skipped
+  ok    pypi e2e (req): requests 2.28.0 < 2.31.0 → minor-behind
+  ok    pypi e2e (req): click no-version → unknown
+  ok    pyproject parser (PEP 621): requests extracted
+  ok    pyproject parser (PEP 621): Click lowercased to click
+  ok    pyproject parser (Poetry): django extracted
+  ok    pyproject parser (Poetry): python constraint skipped
+  ok    pyproject parser (Poetry): inline-table dep with extras extracted
+  ok    pypi e2e (toml): click 8.1.0 == 8.1.0 → ok
+  ok    pypi e2e (toml): django 4.2.0 < 5.0.0 → major-behind
+  ok    pom parser: groupId+artifactId composite key extracted
+  ok    pom parser: second dep extracted
+  ok    pom parser: property-ref version not in stdout
+  ok    pom parser: property-ref skip note emitted to stderr
+  ok    maven e2e: spring-boot-starter 3.1.0 < 3.2.0 → minor-behind
+  ok    maven e2e: mylib 2.0.0 == 2.0.0 → ok
+  ok    dispatch: mapping ruff: S608 → AP-PY-SEC-001 (blocker)
+  ok    dispatch: mapping ruff-perf: PERF401 → AP-PY-PERF-003 (warn)
+  ok    dispatch: mapping eslint: no-eval → AP-TS-SEC-002 (blocker)
+  ok    dispatch: mapping eslint-warn: @typescript-eslint/no-explicit-any → AP-TS-MAINT-001 (warn)
+  ok    dispatch: mapping hadolint: DL3007 → AP-DOCKER-001 (error)
+  ok    dispatch: mapping hadolint-2: DL3002 → AP-DOCKER-002 (error)
+  ok    dispatch: mapping kube-linter: privileged-container → AP-K8S-001 (blocker)
+  ok    dispatch: mapping kube-warn: no-liveness-probe → AP-K8S-004 (warn)
+  ok    dispatch: mapping zizmor: template-injection → AP-CI-003 (blocker)
+  ok    dispatch: mapping zizmor-err: excessive-permissions → AP-CI-004 (error)
+  ok    dispatch: _dispatch_cwe_json single CWE
+  ok    dispatch: _dispatch_cwe_json empty
+  ok    diff: changed line 2 is in ranges
+  ok    diff: unchanged line 1 not in ranges
+  ok    diff: untracked file detected
+  ok    diff: tracked file is not untracked
+  ok    dispatch: finding on changed line (line 1) is reported
+  ok    dispatch: maintainability finding on unchanged line is filtered out
+  ok    dispatch: untracked file judged whole (finding reported)
+  ok    dispatch: missing tool fails open (no finding, exit 0)
+  ok    dispatch: tool timeout fails open (no finding, exit 0)
+  ok    dispatch: 25 findings produced (cap enforced by post-write)
+  ok    dispatch: post-write cap slice to 20
+  ok    dispatch: dedup: first run produces 1 finding
+  ok    dispatch: dedup: second run on same finding produces 0 (deduplicated)
+  ok    dispatch: dedup: findings.json has exactly 1 entry
+  ok    dispatch: .py routes to ruff
+  ok    dispatch: .ts routes to eslint-stack
+  ok    dispatch: Dockerfile routes to hadolint
+  ok    dispatch: .github/workflows/*.yml routes to zizmor
+  ok    dispatch: K8s manifest routes to kube-linter
+  ok    dispatch: end-to-end: post-write emits slopguard header
+  ok    dispatch: end-to-end: finding contains AP-PY-SEC-001
+  ok    dispatch: end-to-end: finding severity shown as BLOCKER
+  ok    dispatch: end-to-end: tool:rule shown in brackets
+  ok    dispatch: end-to-end: balanced mode with blocker exits 2
+  ok    ext: descriptor with project binary produces a finding
+  ok    ext: finding carries project AP id (AP-SQL-TEST-001)
+  ok    ext: absent binary → no finding
+  ok    ext: absent binary → ext_tools status=absent
+  ok    ext: sha256 mismatch → refused:sha256-mismatch
+  ok    ext: sha256 mismatch → tool does not run
+  ok    ext: no resolution fields → refused:no-resolution
+  ok    ext: pinned tool name → refused:pinned-tool-collision
+  ok    ext: metachar ';' arrives as literal argv element
+  ok    ext: metachar '$(echo hi)' arrives as literal argv element
+  ok    ext: {file} substituted to absolute path
+  ok    ext: override_counts reports 2 overrides, 1 downgrade
+  ok    ext: unmapped rule still produces a finding
+  ok    ext: unmapped rule gets neutral severity=warn
+  ok    ext: unmapped rule gets neutral category=maintainability
+  ok    ext: malformed descriptor → refused:* (got: refused:invalid-tier)
+  ok    ext: malformed descriptor → dispatch_fast still exits 0
+  ok    ext: descriptor runs through bin/slopguard post-write (hook path)
+  ok    stop-gate: loop protection (iters=2, active=true) exits 0
+  ok    stop-gate: loop protection emits systemMessage
+  ok    stop-gate: loop protection allows block at iters=1
+  ok    stop-gate: advisory never blocks (blocker present)
+  ok    stop-gate: advisory emits additionalContext
+  ok    stop-gate: balanced blocks on blocker
+  ok    stop-gate: balanced does NOT block on error alone
+  ok    stop-gate: strict blocks on blocker
+  ok    stop-gate: strict blocks on error alone
+  ok    stop-gate: strict does NOT block on warn alone
+  ok    stop-gate: no findings exits 0
+  ok    stop-gate: clean report contains 'no unresolved findings'
+  ok    stop-gate: allow_network=false skips dep check
+  ok    stop-gate: AP-AGENT-010 produces warn in report
+  ok    stop-gate: AP-AGENT-010 never blocks (advisory)
+  ok    stop-gate: AP-AGENT-010 never blocks (balanced, no other findings)
+  ok    stop-gate: suppression count reported
+  ok    stop-gate: out-of-hunk count reported
+  ok    stop-gate: psalm stub TaintedSql finding appears in report
+  ok    stop-gate: checkov stub finding appears in report
+  ok    stop-gate: secret scan blocker causes exit 2 in balanced mode
+  ok    stop-gate: hooks/stop wiring exits 0 in advisory mode
+  ok    stop-gate: bin/slopguard stop-gate wiring confirmed (MediumTier registered)
+  ok    stop-gate: fixture stop-normal.json valid
+  ok    stop-gate: fixture stop-active.json valid
+  ok    stop-gate: fixture stop-active-iter2.json valid
+  ok    medium: mapping phpstan: argument.type → AP-PHP-MAINT-001 (error)
+  ok    medium: mapping phpstan-def: phpstan-error → AP-PHP-MAINT-000 (warn)
+  ok    medium: mapping golangci: gosec:G201 → AP-GO-SEC-002 (blocker)
+  ok    medium: mapping golangci-p: bodyclose → AP-GO-PERF-001 (error)
+  ok    medium: mapping eslint-t: @typescript-eslint/no-floating-promises → AP-TS-ASYNC-001 (error)
+  ok    medium: mapping tflint: terraform_deprecated_interpolation → AP-TF-MAINT-001 (warn)
+  ok    medium: mapping checkov: CKV_AWS_57 → AP-TF-SEC-010 (blocker)
+  ok    medium: mapping checkov-k8s: CKV_K8S_1 → AP-K8S-010 (blocker)
+  ok    medium: mapping jscpd: duplicate-block → AP-SLOP-DUP-001 (warn)
+  ok    medium: .php routes to phpstan
+  ok    medium: .go routes to golangci_lint
+  ok    medium: .ts routes to eslint_typed
+  ok    medium: .tf routes to tflint
+  ok    medium: .tf also routes to checkov
+  ok    medium: .py routes to jscpd at medium tier
+  ok    medium: .go routes to jscpd at medium tier
+  ok    medium: .rb routes to jscpd at medium tier
+  ok    medium: .rs routes to jscpd at medium tier
+  ok    medium: .tf does not route to jscpd
+  ok    medium: fast tier does not return jscpd for .py
+  ok    medium: missing tool fails open (no finding, exit 0)
+  ok    medium: dispatcher timeout (=0) fails open (no finding, exit 0)
+  ok    medium: warn-only finding does not wake agent (exit 0)
+  ok    medium: dedup: first run on error finding exits 2 (wakes agent)
+  ok    medium: dedup: second run on same finding exits 0 (no rewake = Z8 protection)
+  ok    medium: debounce coalesces two rapid edits into one tool run
+  ok    medium: e2e: slopguard post-write --tier=medium exits 2 with error finding
+  ok    medium: e2e: §4.7 header present in stderr
+  ok    medium: e2e: stderr identifies medium tier
+  ok    medium: e2e: AP-id AP-PHP-MAINT-001 present
+  ok    medium: jscpd e2e: at least one finding emitted
+  ok    medium: jscpd e2e: ap_id AP-SLOP-DUP-001 present in finding
+  ok    medium: jscpd e2e: tool_rule duplicate-block present in finding
+  ok    medium: jscpd dedup: second file in same dir adds no new findings
+  ok    jscpd: firstFile case: finding attributed to changed file (a.py)
+  ok    jscpd: firstFile case: message names sibling (b.py)
+  ok    jscpd: neither-side: pair not touching changed file emits nothing
+  ok    jscpd: cooldown: fresh marker skips re-scan (1 invocation for 2 dispatches)
+  ok    jscpd: cooldown: aged marker triggers re-scan (2nd invocation)
+  ok    opengrep-rules: csharp.yaml has top-level 'rules:' key
+  ok    opengrep-rules: docker-ci.yaml has top-level 'rules:' key
+  ok    opengrep-rules: go.yaml has top-level 'rules:' key
+  ok    opengrep-rules: jvm.yaml has top-level 'rules:' key
+  ok    opengrep-rules: node.yaml has top-level 'rules:' key
+  ok    opengrep-rules: php-laravel.yaml has top-level 'rules:' key
+  ok    opengrep-rules: php.yaml has top-level 'rules:' key
+  ok    opengrep-rules: python.yaml has top-level 'rules:' key
+  ok    opengrep-rules: react.yaml has top-level 'rules:' key
+  ok    opengrep-rules: ruby.yaml has top-level 'rules:' key
+  ok    opengrep-rules: rust.yaml has top-level 'rules:' key
+  ok    opengrep-rules: sql-migrations.yaml has top-level 'rules:' key
+  ok    opengrep-rules: found 12 rule file(s) in rules/opengrep/
+  ok    opengrep-rules: csharp.yaml has 'languages:' field
+  ok    opengrep-rules: csharp.yaml has 'message:' field
+  ok    opengrep-rules: csharp.yaml has 'severity:' field
+  ok    opengrep-rules: csharp.yaml has at least one pattern key
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.sql-string-interpolation' matches naming convention
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.binary-formatter' matches naming convention
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.process-start-user-input' matches naming convention
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.path-traversal' matches naming convention
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.crypto-weak-algorithm' matches naming convention
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.insecure-random' matches naming convention
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.xxe-xml' matches naming convention
+  ok    opengrep-rules: csharp.yaml: rule id 'slopguard.cs.ldap-injection' matches naming convention
+  ok    opengrep-rules: docker-ci.yaml has 'languages:' field
+  ok    opengrep-rules: docker-ci.yaml has 'message:' field
+  ok    opengrep-rules: docker-ci.yaml has 'severity:' field
+  ok    opengrep-rules: docker-ci.yaml has at least one pattern key
+  ok    opengrep-rules: docker-ci.yaml: rule id 'slopguard.docker.curl-pipe-shell' matches naming convention
+  ok    opengrep-rules: docker-ci.yaml: rule id 'slopguard.gitlab.image-without-digest' matches naming convention
+  ok    opengrep-rules: docker-ci.yaml: rule id 'slopguard.gitlab.include-remote' matches naming convention
+  ok    opengrep-rules: go.yaml has 'languages:' field
+  ok    opengrep-rules: go.yaml has 'message:' field
+  ok    opengrep-rules: go.yaml has 'severity:' field
+  ok    opengrep-rules: go.yaml has at least one pattern key
+  ok    opengrep-rules: go.yaml: rule id 'slopguard.go.http-client-without-timeout' matches naming convention
+  ok    opengrep-rules: go.yaml: rule id 'slopguard.go.goroutine-per-item-unbounded' matches naming convention
+  ok    opengrep-rules: jvm.yaml has 'languages:' field
+  ok    opengrep-rules: jvm.yaml has 'message:' field
+  ok    opengrep-rules: jvm.yaml has 'severity:' field
+  ok    opengrep-rules: jvm.yaml has at least one pattern key
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.jdbc-string-concat' matches naming convention
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.runtime-exec-concat' matches naming convention
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.object-deserialize' matches naming convention
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.insecure-random' matches naming convention
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.jackson-default-typing' matches naming convention
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.trust-all-ssl' matches naming convention
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.xml-external-entity' matches naming convention
+  ok    opengrep-rules: jvm.yaml: rule id 'slopguard.jvm.log-injection' matches naming convention
+  ok    opengrep-rules: node.yaml has 'languages:' field
+  ok    opengrep-rules: node.yaml has 'message:' field
+  ok    opengrep-rules: node.yaml has 'severity:' field
+  ok    opengrep-rules: node.yaml has at least one pattern key
+  ok    opengrep-rules: node.yaml: rule id 'slopguard.node.prototype-pollution-merge' matches naming convention
+  ok    opengrep-rules: node.yaml: rule id 'slopguard.node.exec-template-literal' matches naming convention
+  ok    opengrep-rules: node.yaml: rule id 'slopguard.node.math-random-token' matches naming convention
+  ok    opengrep-rules: node.yaml: rule id 'slopguard.node.express-no-body-limit' matches naming convention
+  ok    opengrep-rules: node.yaml: rule id 'slopguard.node.jwt-verify-without-algorithms' matches naming convention
+  ok    opengrep-rules: php-laravel.yaml has 'languages:' field
+  ok    opengrep-rules: php-laravel.yaml has 'message:' field
+  ok    opengrep-rules: php-laravel.yaml has 'severity:' field
+  ok    opengrep-rules: php-laravel.yaml has at least one pattern key
+  ok    opengrep-rules: php-laravel.yaml: rule id 'slopguard.php.laravel.raw-sql-interpolation' matches naming convention
+  ok    opengrep-rules: php-laravel.yaml: rule id 'slopguard.php.laravel.blade-unescaped-output' matches naming convention
+  ok    opengrep-rules: php-laravel.yaml: rule id 'slopguard.php.laravel.mass-assignment-request-all' matches naming convention
+  ok    opengrep-rules: php-laravel.yaml: rule id 'slopguard.php.laravel.query-in-loop' matches naming convention
+  ok    opengrep-rules: php-laravel.yaml: rule id 'slopguard.php.laravel.unbounded-all' matches naming convention
+  ok    opengrep-rules: php.yaml has 'languages:' field
+  ok    opengrep-rules: php.yaml has 'message:' field
+  ok    opengrep-rules: php.yaml has 'severity:' field
+  ok    opengrep-rules: php.yaml has at least one pattern key
+  ok    opengrep-rules: php.yaml: rule id 'slopguard.php.weak-password-hash' matches naming convention
+  ok    opengrep-rules: php.yaml: rule id 'slopguard.php.insecure-random-token' matches naming convention
+  ok    opengrep-rules: python.yaml has 'languages:' field
+  ok    opengrep-rules: python.yaml has 'message:' field
+  ok    opengrep-rules: python.yaml has 'severity:' field
+  ok    opengrep-rules: python.yaml has at least one pattern key
+  ok    opengrep-rules: python.yaml: rule id 'slopguard.py.django-raw-sql-format' matches naming convention
+  ok    opengrep-rules: python.yaml: rule id 'slopguard.py.sqlalchemy-text-fstring' matches naming convention
+  ok    opengrep-rules: react.yaml has 'languages:' field
+  ok    opengrep-rules: react.yaml has 'message:' field
+  ok    opengrep-rules: react.yaml has 'severity:' field
+  ok    opengrep-rules: react.yaml has at least one pattern key
+  ok    opengrep-rules: react.yaml: rule id 'slopguard.react.token-in-localstorage' matches naming convention
+  ok    opengrep-rules: react.yaml: rule id 'slopguard.react.href-js-scheme' matches naming convention
+  ok    opengrep-rules: ruby.yaml has 'languages:' field
+  ok    opengrep-rules: ruby.yaml has 'message:' field
+  ok    opengrep-rules: ruby.yaml has 'severity:' field
+  ok    opengrep-rules: ruby.yaml has at least one pattern key
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.eval-user-input' matches naming convention
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.send-user-input' matches naming convention
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.constantize-user-input' matches naming convention
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.yaml-load-unsafe' matches naming convention
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.shell-injection-interpolation' matches naming convention
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.mass-assignment-without-permit' matches naming convention
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.sql-string-interpolation' matches naming convention
+  ok    opengrep-rules: ruby.yaml: rule id 'slopguard.ruby.insecure-random' matches naming convention
+  ok    opengrep-rules: rust.yaml has 'languages:' field
+  ok    opengrep-rules: rust.yaml has 'message:' field
+  ok    opengrep-rules: rust.yaml has 'severity:' field
+  ok    opengrep-rules: rust.yaml has at least one pattern key
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.unsafe-block' matches naming convention
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.unwrap-in-library' matches naming convention
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.serde-missing-deny-unknown' matches naming convention
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.integer-arithmetic-overflow' matches naming convention
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.raw-pointer-deref' matches naming convention
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.mem-transmute' matches naming convention
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.from-utf8-unchecked' matches naming convention
+  ok    opengrep-rules: rust.yaml: rule id 'slopguard.rs.command-injection' matches naming convention
+  ok    opengrep-rules: sql-migrations.yaml has 'languages:' field
+  ok    opengrep-rules: sql-migrations.yaml has 'message:' field
+  ok    opengrep-rules: sql-migrations.yaml has 'severity:' field
+  ok    opengrep-rules: sql-migrations.yaml has at least one pattern key
+  ok    opengrep-rules: sql-migrations.yaml: rule id 'slopguard.laravel.migration-fk-without-index' matches naming convention
+  ok    opengrep-rules: sql-migrations.yaml: rule id 'slopguard.migration.not-null-without-default' matches naming convention
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-002' is a known AP-* identifier
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-003' is a known AP-* identifier
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-004' is a known AP-* identifier
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-005' is a known AP-* identifier
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-006' is a known AP-* identifier
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-007' is a known AP-* identifier
+  ok    opengrep-rules: csharp.yaml: ap_id 'AP-CS-SEC-008' is a known AP-* identifier
+  ok    opengrep-rules: docker-ci.yaml: ap_id 'AP-DOCKER-004' is a known AP-* identifier
+  ok    opengrep-rules: docker-ci.yaml: ap_id 'AP-CI-006' is a known AP-* identifier
+  ok    opengrep-rules: docker-ci.yaml: ap_id 'AP-CI-006' is a known AP-* identifier
+  ok    opengrep-rules: go.yaml: ap_id 'AP-GO-PERF-001' is a known AP-* identifier
+  ok    opengrep-rules: go.yaml: ap_id 'AP-GO-PERF-003' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-002' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-003' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-004' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-005' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-006' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-007' is a known AP-* identifier
+  ok    opengrep-rules: jvm.yaml: ap_id 'AP-JVM-SEC-008' is a known AP-* identifier
+  ok    opengrep-rules: node.yaml: ap_id 'AP-NODE-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: node.yaml: ap_id 'AP-NODE-SEC-002' is a known AP-* identifier
+  ok    opengrep-rules: node.yaml: ap_id 'AP-NODE-SEC-006' is a known AP-* identifier
+  ok    opengrep-rules: node.yaml: ap_id 'AP-NODE-SEC-007' is a known AP-* identifier
+  ok    opengrep-rules: node.yaml: ap_id 'AP-NODE-SEC-009' is a known AP-* identifier
+  ok    opengrep-rules: php-laravel.yaml: ap_id 'AP-PHP-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: php-laravel.yaml: ap_id 'AP-PHP-SEC-004' is a known AP-* identifier
+  ok    opengrep-rules: php-laravel.yaml: ap_id 'AP-PHP-SEC-005' is a known AP-* identifier
+  ok    opengrep-rules: php-laravel.yaml: ap_id 'AP-PHP-PERF-003' is a known AP-* identifier
+  ok    opengrep-rules: php-laravel.yaml: ap_id 'AP-PHP-PERF-002' is a known AP-* identifier
+  ok    opengrep-rules: php.yaml: ap_id 'AP-PHP-SEC-006' is a known AP-* identifier
+  ok    opengrep-rules: php.yaml: ap_id 'AP-PHP-SEC-006' is a known AP-* identifier
+  ok    opengrep-rules: python.yaml: ap_id 'AP-PY-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: python.yaml: ap_id 'AP-PY-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: react.yaml: ap_id 'AP-TS-SEC-003' is a known AP-* identifier
+  ok    opengrep-rules: react.yaml: ap_id 'AP-TS-SEC-004' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-002' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-003' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-004' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-005' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-006' is a known AP-* identifier
+  ok    opengrep-rules: ruby.yaml: ap_id 'AP-RB-SEC-007' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-001' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-002' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-003' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-004' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-005' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-006' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-007' is a known AP-* identifier
+  ok    opengrep-rules: rust.yaml: ap_id 'AP-RS-SEC-008' is a known AP-* identifier
+  ok    opengrep-rules: sql-migrations.yaml: ap_id 'AP-SQL-004' is a known AP-* identifier
+  ok    opengrep-rules: sql-migrations.yaml: ap_id 'AP-SQL-003' is a known AP-* identifier
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-001.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-001.* exists
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-002.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-002.* exists
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-003.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-003.* exists
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-004.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-004.* exists
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-005.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-005.* exists
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-006.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-006.* exists
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-007.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-007.* exists
+  ok    opengrep-rules: fixture bad/AP-CS-SEC-008.* exists
+  ok    opengrep-rules: fixture good/AP-CS-SEC-008.* exists
+  ok    opengrep-rules: fixture bad/AP-DOCKER-004.* exists
+  ok    opengrep-rules: fixture good/AP-DOCKER-004.* exists
+  ok    opengrep-rules: fixture bad/AP-CI-006.* exists
+  ok    opengrep-rules: fixture good/AP-CI-006.* exists
+  ok    opengrep-rules: fixture bad/AP-GO-PERF-001.* exists
+  ok    opengrep-rules: fixture good/AP-GO-PERF-001.* exists
+  ok    opengrep-rules: fixture bad/AP-GO-PERF-003.* exists
+  ok    opengrep-rules: fixture good/AP-GO-PERF-003.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-001.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-001.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-002.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-002.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-003.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-003.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-004.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-004.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-005.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-005.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-006.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-006.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-007.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-007.* exists
+  ok    opengrep-rules: fixture bad/AP-JVM-SEC-008.* exists
+  ok    opengrep-rules: fixture good/AP-JVM-SEC-008.* exists
+  ok    opengrep-rules: fixture bad/AP-NODE-SEC-001.* exists
+  ok    opengrep-rules: fixture good/AP-NODE-SEC-001.* exists
+  ok    opengrep-rules: fixture bad/AP-NODE-SEC-002.* exists
+  ok    opengrep-rules: fixture good/AP-NODE-SEC-002.* exists
+  ok    opengrep-rules: fixture bad/AP-NODE-SEC-006.* exists
+  ok    opengrep-rules: fixture good/AP-NODE-SEC-006.* exists
+  ok    opengrep-rules: fixture bad/AP-NODE-SEC-007.* exists
+  ok    opengrep-rules: fixture good/AP-NODE-SEC-007.* exists
+  ok    opengrep-rules: fixture bad/AP-NODE-SEC-009.* exists
+  ok    opengrep-rules: fixture good/AP-NODE-SEC-009.* exists
+  ok    opengrep-rules: fixture bad/AP-PHP-SEC-001.* exists
+  ok    opengrep-rules: fixture good/AP-PHP-SEC-001.* exists
+  ok    opengrep-rules: fixture bad/AP-PHP-SEC-004.* exists
+  ok    opengrep-rules: fixture good/AP-PHP-SEC-004.* exists
+  ok    opengrep-rules: fixture bad/AP-PHP-SEC-005.* exists
+  ok    opengrep-rules: fixture good/AP-PHP-SEC-005.* exists
+  ok    opengrep-rules: fixture bad/AP-PHP-PERF-003.* exists
+  ok    opengrep-rules: fixture good/AP-PHP-PERF-003.* exists
+  ok    opengrep-rules: fixture bad/AP-PHP-PERF-002.* exists
+  ok    opengrep-rules: fixture good/AP-PHP-PERF-002.* exists
+  ok    opengrep-rules: fixture bad/AP-PHP-SEC-006.* exists
+  ok    opengrep-rules: fixture good/AP-PHP-SEC-006.* exists
+  ok    opengrep-rules: fixture bad/AP-PY-SEC-001.* exists
+  ok    opengrep-rules: fixture good/AP-PY-SEC-001.* exists
+  ok    opengrep-rules: fixture bad/AP-TS-SEC-003.* exists
+  ok    opengrep-rules: fixture good/AP-TS-SEC-003.* exists
+  ok    opengrep-rules: fixture bad/AP-TS-SEC-004.* exists
+  ok    opengrep-rules: fixture good/AP-TS-SEC-004.* exists
+  ok    opengrep-rules: fixture bad/AP-RB-SEC-001.* exists
+  ok    opengrep-rules: fixture good/AP-RB-SEC-001.* exists
+  ok    opengrep-rules: fixture bad/AP-RB-SEC-002.* exists
+  ok    opengrep-rules: fixture good/AP-RB-SEC-002.* exists
+  ok    opengrep-rules: fixture bad/AP-RB-SEC-003.* exists
+  ok    opengrep-rules: fixture good/AP-RB-SEC-003.* exists
+  ok    opengrep-rules: fixture bad/AP-RB-SEC-004.* exists
+  ok    opengrep-rules: fixture good/AP-RB-SEC-004.* exists
+  ok    opengrep-rules: fixture bad/AP-RB-SEC-005.* exists
+  ok    opengrep-rules: fixture good/AP-RB-SEC-005.* exists
+  ok    opengrep-rules: fixture bad/AP-RB-SEC-006.* exists
+  ok    opengrep-rules: fixture good/AP-RB-SEC-006.* exists
+  ok    opengrep-rules: fixture bad/AP-RB-SEC-007.* exists
+  ok    opengrep-rules: fixture good/AP-RB-SEC-007.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-001.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-001.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-002.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-002.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-003.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-003.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-004.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-004.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-005.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-005.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-006.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-006.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-007.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-007.* exists
+  ok    opengrep-rules: fixture bad/AP-RS-SEC-008.* exists
+  ok    opengrep-rules: fixture good/AP-RS-SEC-008.* exists
+  ok    opengrep-rules: fixture bad/AP-SQL-004.* exists
+  ok    opengrep-rules: fixture good/AP-SQL-004.* exists
+  ok    opengrep-rules: fixture bad/AP-SQL-003.* exists
+  ok    opengrep-rules: fixture good/AP-SQL-003.* exists
+  ok    opengrep-rules: ext_validate accepts a valid opengrep rule file
+  ok    opengrep-rules: ext_validate rejects rule file missing 'message:'
+  ok    opengrep-rules: ext_validate rejects rule file missing pattern key
+  ok    opengrep-rules: ext_validate still accepts valid mapping override files
+  ok    opengrep-rules: ext_opengrep_rules returns path for valid project rule dir
+  ok    opengrep-rules: ext_opengrep_rules returns the correct directory path
+  ok    opengrep-rules: ext_opengrep_rules exits 0 even with invalid rule file (fail-open)
+  ok    opengrep-rules: ext_opengrep_rules returns empty output for invalid rule dir
+  ok    opengrep-rules: ext_opengrep_rules returns empty when .slopguard/opengrep/ absent
+  ok    opengrep-rules: at least 12 rule files present (got 12)
+  ok    omp-adapter: parseDecision: empty/null/whitespace stdout allows
+  ok    omp-adapter: parseDecision: deny decision extracts reason
+  ok    omp-adapter: parseDecision: ask decision extracts reason
+  ok    omp-adapter: parseDecision: additionalContext returns context decision
+  ok    omp-adapter: parseDecision: non-JSON stdout allows with unparseable flag
+  ok    omp-adapter: parseDecision: valid JSON without hookSpecificOutput allows
+  ok    omp-adapter: stripReadSelector: strips common selector forms
+  ok    omp-adapter: editPathFromPatch: parses valid hashline header
+  ok    omp-adapter: editPathFromPatch: returns empty for absent or malformed header
+  ok    omp-adapter: bash: curl|sh is blocked with reason from bash.yaml policy
+  ok    omp-adapter: bash: benign echo command is allowed
+  ok    omp-adapter: write: hard-coded API key is blocked by secret detection
+  ok    omp-adapter: read: .env blocked and :10-20 selector stripped before policy sees path
+  ok    omp-adapter: ask decision with ctx.hasUI=false becomes a block
+  ok    omp-adapter: unparseable subprocess output allows and logs a warning
+  ok    omp-adapter: unknown tool name spawns no subprocess
+  ok    omp-adapter: ask decision with hasUI=true and user decline becomes a block
+  ok    omp-adapter: missing slopguard binary fails open (allow) and logs a warning
+  ok    config_mode: project config present → mode=project
+  ok    config_mode: project config → maintainability finding reported (project mode)
+  ok    config_mode: no project config, default knob → mode=overlay
+  ok    config_mode: overlay — security finding (S608→AP-PY-SEC-001) IS reported
+  ok    config_mode: overlay — maintainability finding (T201) is NOT reported
+  ok    config_mode: full — both findings (security + maintainability) reported
+  ok    config_mode: project-only — no findings produced (tool skipped)
+  ok    config_mode: project-only — ruff stub never invoked (marker absent)
+  ok    config_mode: overlay — unmapped rule id is dropped (not promoted to security)
+  ok    config_mode: unrecognised knob ('typo_value') → fallback to overlay
+  ok    config_mode: unrecognised knob → overlay behaviour (security kept, maint dropped)
+  ok    config_mode: psalm TaintedSql survives overlay mode (category=security)
+  ok    config_mode: psalm overlay: finding category is security
+  ok    config_mode: e2e overlay — security finding AP-PY-SEC-001 (S608) is reported
+  ok    config_mode: e2e overlay — style finding (T201/maintainability) is NOT reported
+  ok    config_mode: e2e full — style finding T201 IS reported in full mode
+  ok    config_mode: e2e full — security finding AP-PY-SEC-001 also present
+  ok    standalone suite: read_test.sh
+  ok    standalone suite: session_test.sh
+  ok    standalone suite: catalog_test.sh
+  ok    standalone suite: adopt_test.sh
+
+721 passed, 0 failed
+=== Slop Guard: baseline config validation ===
+Plugin root: /home/mgz/workspace/private/.aisdlc-worktrees/aisdlc-gh-43-a-20261019-230447-12644/plugins/slop-guard
+
+PASS  golangci-lint                      
+SKIP  PHPStan                              (tool not installed)
+SKIP  Psalm                                (tool not installed)
+PASS  ruff                               
+SKIP  ESLint                               (tool not installed)
+PASS  tflint                             
+PASS  Checkov                            
+PASS  kube-linter (checks list)          
+PASS  kube-linter (lint fixtures)        
+PASS  hadolint                           
+PASS  zizmor                             
+INFO  Opengrep rules — no rule files yet; validation starts with the Stage 3 rules
+
+--- Configs without a §9.3 validation row ---
+INFO  phpmd.xml             — no §9.3 validation row (no validate command defined in spec)
+INFO  pyrightconfig.json    — no §9.3 validation row (pyright --outputjson is a runtime invocation)
+INFO  .sqlfluff             — no §9.3 validation row (sqlfluff lint is per-file, no schema-check command)
+INFO  .squawk.toml          — no §9.3 validation row (squawk has no config-validate subcommand)
+INFO  .gitleaks.toml        — no §9.3 validation row (betterleaks/gitleaks has no config-validate subcommand)
+INFO  eslint.security-overlay.mjs — no §9.3 validation row (covered by the ESLint row above at runtime)
+
+--- Consistency check: rules/mapping/ ---
+PASS  mapping schema: jscpd.yaml (1 rules)
+INFO  consistency check: jscpd.yaml has no rule-catalogue extractor
+PASS  mapping schema: kube-linter.yaml (18 rules)
+PASS  mapping schema: mypy.yaml (19 rules)
+INFO  consistency check: mypy.yaml has no rule-catalogue extractor
+PASS  mapping schema: phpstan.yaml (14 rules)
+INFO  consistency check: phpstan.yaml has no rule-catalogue extractor
+PASS  mapping schema: pylint.yaml (18 rules)
+INFO  consistency check: pylint.yaml has no rule-catalogue extractor
+PASS  mapping schema: eslint-typed.yaml (5 rules)
+INFO  consistency check: eslint-typed.yaml has no rule-catalogue extractor
+PASS  mapping schema: eslint.yaml (45 rules)
+INFO  consistency check: eslint.yaml has no rule-catalogue extractor
+PASS  mapping schema: ruff.yaml (41 rules)
+PASS  mapping schema: golangci-lint.yaml (20 rules)
+PASS  mapping schema: hadolint.yaml (62 rules)
+INFO  consistency check: hadolint.yaml has no rule-catalogue extractor
+PASS  mapping schema: opengrep.yaml (55 rules)
+INFO  consistency check: opengrep.yaml has no rule-catalogue extractor
+PASS  mapping schema: tflint.yaml (12 rules)
+INFO  consistency check: tflint.yaml has no rule-catalogue extractor
+PASS  mapping schema: checkov.yaml (14 rules)
+INFO  consistency check: checkov.yaml has no rule-catalogue extractor
+PASS  mapping schema: zizmor.yaml (16 rules)
+INFO  consistency check: zizmor.yaml has no rule-catalogue extractor
+
+22 validated, 3 skipped (not validated — tools absent), 0 failed
+Validating plugin manifest: /home/mgz/workspace/private/.aisdlc-worktrees/aisdlc-gh-43-a-20261019-230447-12644/plugins/slop-guard/.claude-plugin/plugin.json
+
+✔ Validation passed
+Validating JSON...
+  ✓ marketplace.json
+  ✓ plugin.json
+  ✓ hooks.json
+  ✓ .agents/plugins/marketplace.json
+  ✓ .grok-plugin/marketplace.json
+  ✓ .omp-plugin/marketplace.json
+  ✓ plugins/sdlc/plugin.json
+  ✓ plugins/slop-guard/plugin.json
+  ✓ evals/harness/scenarios/go-contract-change/scenario.json
+  ✓ evals/harness/scenarios/go-endpoint/scenario.json
+  ✓ evals/harness/scenarios/js-formatter/scenario.json
+  ✓ evals/harness/scenarios/rest-design/scenario.json
+  ✓ evals/harness/scenarios/ui-flow/scenario.json
+Checking plugin name matches the command namespace...
+  ✓ plugin name consistent
+Checking cross-marketplace consistency...
+  ✓ sdlc: found in Codex marketplace
+  ✓ sdlc: Codex source.path ./plugins/sdlc resolves
+  ✓ sdlc: portable manifest name matches
+  ✓ sdlc: found in Grok marketplace
+  ✓ sdlc: Grok source.path ./plugins/sdlc resolves
+  ✓ sdlc: found in omp marketplace
+  ✓ sdlc: omp source ./plugins/sdlc resolves
+  ✓ sdlc: version consistent across hosts (0.11.0)
+  ✓ slop-guard: found in Codex marketplace
+  ✓ slop-guard: Codex source.path ./plugins/slop-guard resolves
+  ✓ slop-guard: portable manifest name matches
+  ✓ slop-guard: found in Grok marketplace
+  ✓ slop-guard: Grok source.path ./plugins/slop-guard resolves
+  ✓ slop-guard: found in omp marketplace
+  ✓ slop-guard: omp source ./plugins/slop-guard resolves
+  ✓ slop-guard: version consistent across hosts (0.3.0)
+Checking omp adapters...
+  ✓ sdlc/package.json
+  ✓ sdlc: package.json version matches plugin.json (0.11.0)
+  ✓ sdlc: omp.extensions[0] ./extensions/omp.mjs exists
+  ✓ slop-guard/package.json
+  ✓ slop-guard: package.json version matches plugin.json (0.3.0)
+  ✓ slop-guard: omp.extensions[0] ./extensions/omp.mjs exists
+  ✓ plugins/sdlc/extensions/omp.mjs syntax ok
+  ✓ plugins/slop-guard/extensions/omp.mjs syntax ok
+Checking required files...
+  ✓ commands/init.md
+  ✓ commands/update.md
+  ✓ commands/spec.md
+  ✓ commands/decompose.md
+  ✓ commands/mockup.md
+  ✓ commands/implement.md
+  ✓ commands/qa.md
+  ✓ commands/ship.md
+  ✓ commands/review.md
+  ✓ commands/fix-pr.md
+  ✓ commands/review-prs.md
+  ✓ commands/autopilot.md
+  ✓ commands/continue.md
+  ✓ commands/merge.md
+  ✓ commands/merge-buddy.md
+  ✓ commands/followup.md
+  ✓ commands/close-fixed.md
+  ✓ commands/changelog.md
+  ✓ commands/issue.md
+  ✓ commands/triage.md
+  ✓ commands/root-cause.md
+  ✓ commands/fix-issue.md
+  ✓ commands/brainstorm.md
+  ✓ commands/discover.md
+  ✓ commands/synthetic-users.md
+  ✓ commands/backlog.md
+  ✓ commands/ux-shape.md
+  ✓ commands/ux-setup.md
+  ✓ commands/test-env.md
+  ✓ commands/integration-tests.md
+  ✓ commands/verify-map.md
+  ✓ commands/ux-review.md
+  ✓ commands/retro.md
+  ✓ commands/arch-review.md
+  ✓ skills/spec-authoring/SKILL.md
+  ✓ skills/task-router/SKILL.md
+  ✓ skills/dense-testing/SKILL.md
+  ✓ skills/harness-eval/SKILL.md
+  ✓ skills/pipeline-contracts/SKILL.md
+  ✓ skills/code-review/SKILL.md
+  ✓ skills/discovery/SKILL.md
+  ✓ skills/architecture-review/SKILL.md
+  ✓ skills/rest-api-design/SKILL.md
+  ✓ skills/graphql-api-design/SKILL.md
+  ✓ skills/security-review/SKILL.md
+  ✓ skills/agent-orchestration/SKILL.md
+  ✓ skills/fleet-loop/SKILL.md
+  ✓ agents/auto-qa.md
+  ✓ agents/code-reviewer.md
+  ✓ templates/trackers/TEMPLATE.md
+  ✓ templates/trackers/github.md
+  ✓ templates/trackers/local.md
+  ✓ templates/browsers/TEMPLATE.md
+  ✓ templates/browsers/playwright.md
+  ✓ templates/browsers/agent-browser.md
+  ✓ templates/verify/TEMPLATE.md
+  ✓ templates/verify/feature-TEMPLATE.md
+  ✓ templates/playbooks/api-endpoint.md
+  ✓ templates/playbooks/db-change.md
+  ✓ templates/playbooks/ui-feature.md
+  ✓ templates/playbooks/service.md
+  ✓ templates/playbooks/infra-change.md
+  ✓ templates/playbooks/testing.md
+  ✓ templates/playbooks/graphql-api.md
+  ✓ templates/CLAUDE.md + templates/sdlc.md
+Checking instruction budgets (task-router skill)...
+  ✓ templates/CLAUDE.md 53 lines
+  ✓ every playbook within 70 lines
+  ✓ every command within 220 lines
+  ✓ every descriptor within 120 lines
+  ✓ browser descriptors have no TODO bodies
+Checking shell scripts...
+  ✓ plugins/sdlc/hooks/run-hook.cmd
+  ✓ plugins/sdlc/hooks/session-start
+  ✓ plugins/sdlc/hooks/guard
+  ✓ plugins/sdlc/bin/aisdlc
+  ✓ evals/harness/run.sh
+  ✓ evals/harness/selftest.sh
+  ✓ evals/harness/stub-claude
+  ✓ evals/harness/stub-gh
+  – shellcheck not installed, skipped
+Running sdlc hook tests...
+sdlc hook test suite
+
+  ok    PreToolUse (Grok): force-push camelCase payload blocked with {decision:deny}
+  ok    PreToolUse (Claude): force-push blocked with exit 2 and reason on stderr
+  ok    PreToolUse (Grok): safe command allows silently (exit 0, no stdout)
+  ok    PreToolUse (Claude): safe command allows silently (exit 0, no stdout)
+  ok    Stop (Grok): deleted test file → advisory on stderr, exits 0, no block
+  ok    Stop (Claude): deleted test file → blocks with exit 2 and reason on stderr
+  ok    SessionStart (Grok): registered command resolves via GROK_PLUGIN_ROOT, exits 0
+  ok    hooks.json: all referenced hook files exist and are executable
+  ok    stop: deletion listed with a reason passes and is reported as retired
+  ok    stop: ledger entry without a reason does not retire the test
+  ok    stop: glob entry retires every matching deletion; comment lines ignored
+  ok    stop: only unlisted deletions are reported
+  ok    stop (headless): a ledger entry written during the run is ignored
+  ok    stop (headless): a ledger entry committed on the default branch retires the test
+  ok    stop: SystemExit( in a test and a skip marker outside test files are not flagged
+  ok    stop: xit( added to a test file is flagged
+  ok    stop: the ledger does not excuse a skipped test
+  ok    omp adapter: destructive bash (git push --force) is blocked with guard message
+  ok    omp adapter: benign bash command is allowed
+  ok    omp adapter: write tool with t.Skip content is allowed (no write binding in hooks.json)
+  ok    omp adapter: missing hook script allows (fail-open) and decision is null
+  ok    omp adapter: unknown tool (read) spawns nothing and returns undefined
+  ok    omp adapter: turn_end sends an unchanged stop advisory once, and again after a clean turn
+change budget
+  ok    size: added lines count code only (30+5+7)
+  ok    size: files touched include the emptied file, exclude vendor/lock/specs
+  ok    size: module = first two path segments
+  ok    size: module list names the real directories
+  ok    size: vendored and spec paths never reach the module list
+  ok    eval: exactly at budget is clean
+  ok    eval: one line over budget is GAPS
+  ok    eval: past the hard ceiling is BLOCKED
+  ok    eval: thin edits across many modules are named as shotgun surgery
+  ok    eval: a focused change produces no findings
+  ok    eval: a large change inside two modules is over budget but not shotgun surgery
+  ok    budget: the spec's own budget wins
+  ok    budget: the profile answers when the spec is silent
+  ok    budget: the built-in default is the last resort
+  ok    budget: the repo may lower its own hard ceiling
+verify: test file detection
+  ok    test path: evals/harness/selftest.sh
+  ok    test path: selftest.sh
+  ok    test path: scripts/deploy_test.sh
+  ok    test path: lib/test_parse.sh
+  ok    test path: hooks/guard.bats
+  ok    test path: plugins/x/tests/run-tests
+  ok    test path: pkg/stub_test.go
+  ok    test path: src/a.test.ts
+  ok    test path: app/test_api.py
+  ok    source path: evals/harness/run.sh
+  ok    source path: scripts/latest.sh
+  ok    source path: lib/contest.sh
+  ok    source path: plugins/sdlc/bin/aisdlc
+  ok    source path: src/testing.ts
+  ok    source path: docs/test-plan.md
+
+53 passed, 0 failed
+All checks passed.

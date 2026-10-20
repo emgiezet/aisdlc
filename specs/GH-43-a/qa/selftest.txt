@@ -1,0 +1,248 @@
+aisdlc runner selftest (stub claude and stub omp, no API calls)
+
+every requested phase runs, in order
+  ok    status is done
+  ok    implement ran
+  ok    qa ran too (stdin not swallowed)
+  ok    qa report collected
+  ok    diff collected
+  ok    verify ran and passed
+
+a phase that never ran is a failure, not a success
+  ok    0-turn phase marked failed
+
+the message-array output shape is read like the bare result object
+  ok    array output: task completes
+  ok    array output: turns read from the result element
+  ok    array output: cost accumulated
+
+a blocked implementation keeps its evidence
+  ok    status is failed
+  ok    worktree kept for inspection
+  ok    BLOCKED.md present
+  ok    error mentions BLOCKED.md
+  ok    retry re-queues and clears the worktree
+
+the spec gate refuses before spending anything
+  ok    add refuses a draft spec
+  ok    worktree gate refuses it even with --force
+  ok    model was never invoked
+
+the target repo never looks dirty
+  ok    .aisdlc/ excluded from git
+
+parallel workers drain the queue exactly once
+  ok    all 4 tasks done, none run twice
+  ok    queue drained
+
+the queue tells hooks there is nobody to ask
+  ok    invoke_claude exports AISDLC_HEADLESS
+
+review phase runs after ship with the PR number
+  ok    review.log exists
+  ok    review prompt contains PR number 7
+
+--no-pr strips ship and review
+  ok    --no-pr task done
+  ok    ship phase absent
+  ok    review phase absent
+
+add --issue claims once and refuses twice
+  ok    first add --issue 42 succeeds
+  ok    issue has in-progress label
+  ok    claim comment appended
+  ok    second add --issue 42 refused: already claimed
+
+bugfix spec passes the gate only while the issue is labelled bug
+  ok    bugfix spec passes gate with bug label
+  ok    bugfix spec refused without bug label
+
+artifacts_exist scorer uses real score() from run.sh
+  ok    absent artifact: score() records a failure
+  ok    present artifact: score() records a pass
+
+claim failure: die and create no task
+  ok    add --issue fails when claim fails
+  ok    no task created after failed claim
+
+issue released after ship, prs.jsonl created
+  ok    issue released with 'handed off to PR #7'
+  ok    prs.jsonl created after PR claim
+  ok    one PR record for #7, not a duplicate
+  ok    PR lock released with APPROVED after review
+
+issue released aborted when a phase fails
+  ok    issue released with aborted: when a phase fails
+
+cancel gives a queued issue claim back; retry takes it again
+  ok    cancel released the issue claim
+  ok    retry re-queued the cancelled issue task
+  ok    retry re-claimed the issue
+
+pull picks the oldest approved issue nobody holds and this repo has not built
+  ok    pull --dry-run selects #7 and only #7
+  ok    pull --dry-run queued nothing
+  ok    pull queued #7
+  ok    pull created a GH-7 issue task
+  ok    pull claimed #7
+  ok    second pull finds nothing — a built issue is never pulled again
+  ok    still one task after the second pull
+
+loop --once drains the queue even when pull finds nothing
+  ok    loop --once ran the queued GH-7 task to done
+  ok    loop released the issue after the run
+  ok    loop refuses a non-numeric --interval
+
+scope-check: all changed files in scope → PASS
+  ok    scope PASS: task done
+  ok    scope PASS: scope-report.md collected
+  ok    scope PASS: verdict is PASS
+  ok    scope PASS: scope_verdict in task.json
+
+scope-check: undeclared changed file → GAPS, chain continues
+  ok    scope GAPS: task still done (GAPS does not stop the chain)
+  ok    scope GAPS: verdict is GAPS
+  ok    scope GAPS: undeclared files listed in report
+  ok    scope GAPS: scope_verdict in task.json
+
+scope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship
+  ok    scope BLOCKED: task failed
+  ok    scope BLOCKED: verdict is BLOCKED
+  ok    scope BLOCKED: ship phase never ran
+  ok    scope BLOCKED: out-of-bounds file listed in report
+
+billing=subscription: null cost, no --max-budget-usd in args
+  ok    billing=subscription: task done
+  ok    billing=subscription: cost_usd is null
+  ok    billing=subscription: --max-budget-usd absent from invoke
+  ok    billing=subscription: mode logged in phase log
+  ok    billing=subscription: 0-turn phase still a hard failure
+
+billing=api (default): numeric cost, --max-budget-usd present
+  ok    billing=api: task done
+  ok    billing=api: cost_usd is numeric (0.1)
+  ok    billing=api: --max-budget-usd present in invoke
+
+model_roles absent: no models key, log headers unchanged (UC-1)
+  ok    UC-1: model=sonnet in task.json
+  ok    UC-1: no models key when model_roles absent
+  ok    UC-1: implement.log header shows sonnet
+
+model_roles full: models key maps every phase (UC-2)
+  ok    UC-2: models key present
+  ok    UC-2: scope-check → haiku (smol role)
+  ok    UC-2: ship → haiku (smol role)
+  ok    UC-2: review → opus (slow role)
+  ok    UC-2: implement → sonnet (default role falls back)
+  ok    UC-2: qa → sonnet (default role falls back)
+
+model_roles: run_phase routes each phase to its model (UC-3)
+  ok    UC-3: ship.log header shows haiku
+  ok    UC-3: review.log header shows opus
+  ok    UC-3: implement.log header shows sonnet
+
+model_roles partial: missing roles fall back to task model (UC-4)
+  ok    UC-4: models key present with partial config
+  ok    UC-4: scope-check → haiku (smol configured)
+  ok    UC-4: implement → sonnet (default role not in config, falls back)
+  ok    UC-4: qa → sonnet (default role not in config, falls back)
+  ok    UC-4: task completes without error on partial config
+
+model_roles snapshot: config edit after add does not affect queued task (UC-5)
+  ok    UC-5: ship uses snapshotted haiku, not changed-model
+  ok    UC-5: review uses snapshotted opus, not another-model
+
+aisdlc help documents model_roles (UC-6)
+  ok    UC-6: help mentions model_roles
+  ok    UC-6: help mentions smol role
+  ok    UC-6: help mentions slow role
+  ok    UC-6: help shows smol phases (scope-check, ship)
+
+PR claim lock survives a gh build where `gh pr edit` fails (SDLC-012)
+  ok    claim succeeds while gh pr edit fails
+  ok    claim applied label and assignee
+  ok    claim never calls gh pr edit
+  ok    release removed the in-progress label
+  ok    pull over github: oldest unassigned, not in-progress, first
+  ok    pull over github asks for the approval label on the wire
+
+verify is the last gate before ship, and it reads git, not reports
+  ok    no verify commands is a FAIL, not a skip
+  ok    ship never ran
+  ok    the error says what to configure
+  ok    a failing verification command fails verify
+  ok    the failure names the command
+  ok    ship never ran
+  ok    a UC with no test naming it fails verify
+  ok    the report names the untested UC
+  ok    a switched-off test fails verify
+  ok    an uncommitted change fails verify — the PR would not contain it
+  ok    the report names the uncommitted file
+  ok    ship never ran
+  ok    a deleted test file fails verify
+  ok    the report names the deleted file
+  ok    a deletion retired on the base passes verify
+  ok    the report still names the retired file
+  ok    a retirement the branch wrote for itself fails verify
+  ok    ship never ran
+
+the omp runtime runs the same pipeline
+  ok    runtime recorded at queue time
+  ok    status is done
+  ok    implement ran through omp as /sdlc:implement
+  ok    qa ran through omp as /sdlc:qa
+  ok    ship ran through omp as /sdlc:ship
+  ok    review ran through omp as /sdlc:review
+  ok    the raw event stream is kept
+  ok    turns counted from turn_end events
+  ok    cost summed from turn usage
+  ok    --plugin-dir loads this checkout's plugin
+  ok    --plugin-dir loads the guard plugin beside it
+  ok    no approval prompt can stall the phase
+  ok    the phase runs with AISDLC_HEADLESS=1
+  ok    no spend cap is claimed
+
+omp forwards an unknown command to the model; the runner must not accept that
+  ok    an unexpanded command fails the phase
+  ok    nothing runs after it
+  ok    the log says the command was not expanded
+  ok    a phase with no command file fails
+  ok    omp was never invoked for it
+
+an omp phase that edits the policy layer fails
+  ok    editing .claude/ fails the task
+  ok    the log names the policy edit
+
+the runtime is validated and resolved like every other default
+  ok    an unknown runtime is refused
+  ok    config.json sets the runtime
+  ok    run refuses when a queued task's runtime is missing
+  ok    the task stays queued
+
+sessions: claude records phase sessions (UC-1)
+  ok    UC-1: two entries
+  ok    UC-1: phase and runtime
+  ok    UC-1: session_id from implement.json
+  ok    UC-1: ISO started
+  ok    UC-1: ISO ended
+  ok    UC-1: qa session_id
+  ok    UC-1: qa phase and runtime
+
+sessions: transcript encodes worktree path (UC-2)
+  ok    UC-2: transcript encodes /. to -
+
+sessions: omp records session from sessions/ (UC-3)
+  ok    UC-3: session .jsonl written
+  ok    UC-3: session_id and transcript
+  ok    UC-3: runtime is omp
+
+sessions: runtime_version from --version (UC-4)
+  ok    UC-4: runtime_version correct
+  ok    UC-4: --version called once for two-phase task
+
+sessions: missing session_id records null (UC-5)
+  ok    UC-5: null session_id and transcript
+  ok    UC-5: entry present
+  ok    UC-5: outcome unchanged
+
+163 passed, 0 failed

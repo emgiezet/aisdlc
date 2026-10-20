@@ -1022,8 +1022,11 @@ claude" ] && ok "UC-1: phase and runtime" || bad "UC-1 fields" "$(jq -r '.sessio
 [ "$(jq -r '.sessions[0].session_id' "$TF")" = "$(jq -r '.session_id // empty' "$D/implement.json")" ] \
     && ok "UC-1: session_id from implement.json" || bad "UC-1 sid" "mismatch"
 jq -r '.sessions[0].started' "$TF" | grep -qE '^[0-9]{4}-' && ok "UC-1: ISO started" || bad "UC-1 ts" "$(jq -r '.sessions[0].started' "$TF")"
+jq -r '.sessions[0].ended' "$TF" | grep -qE '^[0-9]{4}-' && ok "UC-1: ISO ended" || bad "UC-1 ended" "$(jq -r '.sessions[0].ended' "$TF")"
 [ "$(jq -r '.sessions[1].session_id' "$TF")" = "$(jq -r '.session_id // empty' "$D/qa.json")" ] \
     && ok "UC-1: qa session_id" || bad "UC-1 qa" "mismatch"
+[ "$(jq -r '.sessions[1].phase,.sessions[1].runtime' "$TF")" = "qa
+claude" ] && ok "UC-1: qa phase and runtime" || bad "UC-1 qa fields" "$(jq -r '.sessions[1]' "$TF")"
 printf '\nsessions: transcript encodes worktree path (UC-2)\n'
 R="$WORK/sessions-uc2"; fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --phase implement >/dev/null 2>&1
@@ -1052,6 +1055,17 @@ R="$WORK/sessions-uc4"; fresh_repo "$R"
 TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)"
 [ "$(jq -r '.runtime_version' "$TF")" = "$(claude --version 2>/dev/null | head -1)" ] \
     && ok "UC-4: runtime_version correct" || bad "UC-4" "$(jq -r '.runtime_version' "$TF")"
+_CF="$WORK/vc4"; printf '0' > "$_CF"
+_SD="$(mktemp -d)"; _REAL="$STUB_DIR/claude"
+printf '#!/bin/sh\n[ "${1:-}" = "--version" ] && { c=$(cat "%s"); printf "%%d" "$((c+1))" > "%s"; }\nexec "%s" "$@"\n' \
+    "$_CF" "$_CF" "$_REAL" > "$_SD/claude"
+chmod +x "$_SD/claude"
+R="$WORK/sessions-uc4b"; fresh_repo "$R"
+PATH="$_SD:$PATH" "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+PATH="$_SD:$PATH" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(cat "$_CF")" -eq 1 ] && ok "UC-4: --version called once for two-phase task" \
+    || bad "UC-4 once" "--version called $(cat "$_CF") times, expected 1"
+rm -rf "$_SD"; unset _CF _SD _REAL
 printf '\nsessions: missing session_id records null (UC-5)\n'
 R="$WORK/sessions-uc5"; fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --phase implement >/dev/null 2>&1
