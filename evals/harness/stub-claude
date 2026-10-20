@@ -19,6 +19,10 @@
 #   selfretire  deltest, and the branch adds its own .claude/retired-tests entry for it
 #   dirty     implement commits the test but leaves the code change uncommitted
 #   mdonly    implement commits only a .md file (for testing structure check with non-code changes)
+#
+# AISDLC_STUB_READINESS: when set and the prompt is NOT a phase command (does not start with /),
+#   the stub returns the variable's value as the model result text verbatim (readiness JSON).
+#   This lets selftest exercise readiness_check without a real model.
 set -uo pipefail
 [ "${1:-}" = "--version" ] && { printf 'Claude stub 1.0.0\n'; exit 0; }
 printf 'stub-claude args: %s\n' "$*" >&2
@@ -106,6 +110,24 @@ case "${AISDLC_STUB:-ok}" in
         esac
         ;;
 esac
+
+# GH-40: readiness check invocations are plain-text prompts (not starting with /).
+# AISDLC_STUB_READINESS — return as model result text (readiness JSON).
+# READINESS_ERROR_ENVELOPE — set is_error in envelope (tests envelope fail-closed).
+# READINESS_FAIL_EXIT — exit code to use (tests process-exit fail-closed).
+case "$prompt" in
+    /*) ;;
+    *)
+        if [ -n "${AISDLC_STUB_READINESS:-}" ]; then
+            jq -cn --arg r "$AISDLC_STUB_READINESS" \
+                --argjson err "${READINESS_ERROR_ENVELOPE:-false}" \
+                '{"type":"result","subtype":"success","is_error":$err,"num_turns":1,
+                  "result":$r,"session_id":"stub-readiness","total_cost_usd":0.01}'
+            exit "${READINESS_FAIL_EXIT:-0}"
+        fi
+        ;;
+esac
+
 
 case "$prompt" in
     /implement*)

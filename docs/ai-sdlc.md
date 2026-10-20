@@ -250,6 +250,7 @@ Precedence for every setting: CLI flag > `.aisdlc/config.json` > environment var
 | model roles | `model_roles` | — | *(absent)* | Maps `smol`/`default`/`slow` roles to model names; see below. Absent = today's behaviour |
 | pull label | `pull_label` | `AISDLC_PULL_LABEL` | `bug` | The approval label `aisdlc pull` selects on |
 | loop interval | `loop_interval` | `AISDLC_LOOP_INTERVAL` | `900` | Seconds between `aisdlc loop` ticks |
+| readiness min | `readiness_min` | — | `null` | Config-key only; absent or null disables add-time spec scoring. Set to an integer 0–100 to opt in; `aisdlc add` refuses specs that score below the threshold. Uses `model_roles.smol`. |
 
 ### billing = subscription
 

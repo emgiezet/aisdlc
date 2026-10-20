@@ -1855,5 +1855,125 @@ AISDLC_ARCHIVE="$_FAILED_ROOT" bash -c 'sed() { return 1; }; export -f sed; exec
     || bad "UC-8 publication" "failed redaction published files or changed task outcome"
 unset R_CANCEL ARC_CANCEL _CANCEL_ID _CANCEL_SLUG _CANCEL_DIR
 
+# --------------------------------------------------------------------------- #
+# GH-40: readiness gate
+# Helper: set readiness_min in repo config (one-line vs. repeated jq/mv).
+rdy_setup() { local d="$1" v="$2"
+    jq --argjson v "$v" '.readiness_min = $v' "$d/.aisdlc/config.json" > "$d/.aisdlc/config.json.tmp" \
+        && mv "$d/.aisdlc/config.json.tmp" "$d/.aisdlc/config.json"; }
+
+printf '\nGH-40 UC-1: absent and null readiness_min are no-ops\n'
+R="$WORK/ready-off"; fresh_repo "$R"
+AISDLC_STUB_READINESS='should-not-be-called' "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "UC-1 absent: add succeeds" || bad "UC-1 absent" "add failed"
+[ "$(task_field "$R" .readiness_score)" = "" ] \
+    && ok "UC-1 absent: no readiness_score" || bad "UC-1 score" "$(task_field "$R" .readiness_score)"
+rdy_setup "$R" null
+AISDLC_STUB_READINESS='should-not-be-called' "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "UC-1 null: add succeeds" || bad "UC-1 null" "add failed"
+
+printf '\nGH-40 UC-2/3: below threshold blocks; --force bypasses with score\n'
+R="$WORK/ready-fail"; fresh_repo "$R"; rdy_setup "$R" 80
+_RDY_GAP='## Acceptance criteria: rows are not checkable'
+AISDLC_STUB_READINESS="{\"score\":60,\"gaps\":[\"$_RDY_GAP\"]}" \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "UC-2" "should exit non-zero" || ok "UC-2: exits non-zero (60 < 80)"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "UC-2: queue empty" || bad "UC-2 queue" "not empty"
+[ -f "$R/specs/SBX-1/readiness.md" ] \
+    && ok "UC-2: readiness.md created" || bad "UC-2 rmd" "not written"
+grep -q "$_RDY_GAP" "$R/specs/SBX-1/readiness.md" 2>/dev/null \
+    && ok "UC-2: gap in readiness.md" || bad "UC-2 gap" "not found"
+out="$(AISDLC_STUB_READINESS="{\"score\":60,\"gaps\":[\"$_RDY_GAP\"]}" \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr --force 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok "UC-3: --force exits zero" || bad "UC-3 exit" "rc=$rc"
+printf '%s' "$out" | grep -qi 'warning' && ok "UC-3: warning printed" || bad "UC-3 warn" "$out"
+printf '%s' "$out" | grep -q '60' && ok "UC-3: warning names score" || bad "UC-3 score" "$out"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -gt 0 ] \
+    && ok "UC-3: task queued" || bad "UC-3 queue" "not queued"
+[ "$(task_field "$R" .readiness_score)" = "60" ] \
+    && ok "UC-3: readiness_score:60" || bad "UC-3 field" "$(task_field "$R" .readiness_score)"
+
+printf '\nGH-40 UC-4/5: above threshold queues; status shows READY\n'
+R="$WORK/ready-pass"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "UC-4: add succeeds (85 >= 80)" || bad "UC-4" "add failed"
+[ "$(task_field "$R" .readiness_score)" = "85" ] \
+    && ok "UC-4: readiness_score:85" || bad "UC-4 score" "$(task_field "$R" .readiness_score)"
+[ ! -f "$R/specs/SBX-1/readiness.md" ] \
+    && ok "UC-4: no readiness.md on pass" || bad "UC-4 rmd" "written"
+_sts="$("$AISDLC" status --repo "$R" 2>/dev/null)"
+printf '%s' "$_sts" | grep -q 'READY' && ok "UC-5: READY column in header" || bad "UC-5 hdr" "$_sts"
+printf '%s' "$_sts" | grep -q '85' && ok "UC-5: score 85 in status" || bad "UC-5 score" "$_sts"
+
+printf '\nGH-40 UC-6: non-JSON fails closed; --force queues without score\n'
+R="$WORK/ready-bad"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='not valid json' "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "UC-6" "should exit non-zero" || ok "UC-6: parse failure exits non-zero"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "UC-6: queue empty" || bad "UC-6 queue" "not empty"
+AISDLC_STUB_READINESS='not valid json' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr --force >/dev/null 2>&1 \
+    && ok "UC-6: --force queues despite parse failure" || bad "UC-6 force" "failed"
+[ "$(task_field "$R" .readiness_score)" = "" ] \
+    && ok "UC-6: no readiness_score after parse failure" \
+    || bad "UC-6 no-score" "$(task_field "$R" .readiness_score)"
+
+printf '\nGH-40 UC-7: --issue route skips readiness\n'
+R="$WORK/ready-issue"; fresh_repo "$R"; rdy_setup "$R" 80
+mkdir -p "$R/.aisdlc/tracker/issues" "$R/.claude"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: [bug]
+assignees: []
+author: selftest
+created: 2026-10-01T00:00:00Z
+---
+Test issue.
+
+## Comments
+ISSUE
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
+AISDLC_STUB_READINESS='invalid-would-fail' \
+    "$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1 \
+    && ok "UC-7: --issue skips readiness" || bad "UC-7" "--issue failed"
+[ ! -f "$R/specs/GH-42/readiness.md" ] \
+    && ok "UC-7: no readiness.md for --issue" || bad "UC-7 rmd" "written"
+
+printf '\nGH-40: fail-closed boundaries (fraction, non-string gap, process rc, error envelope)\n'
+R="$WORK/ready-bounds"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='{"score":85.5,"gaps":[]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "fraction" "85.5 should reject" || ok "fraction: 85.5 rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "fraction: queue empty" || bad "fraction queue" "queued"
+AISDLC_STUB_READINESS='{"score":85,"gaps":[7]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "nonstring gap" "[7] should reject" || ok "nonstring gap: [7] rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "nonstring gap: queue empty" || bad "nonstring gap queue" "queued"
+AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' READINESS_FAIL_EXIT=1 \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "failed-process" "rc=1 should reject" || ok "failed-process: rc=1 rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "failed-process: queue empty" || bad "failed-process queue" "queued"
+AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' READINESS_ERROR_ENVELOPE=true \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "error-envelope" "is_error:true should reject" || ok "error-envelope: is_error:true rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "error-envelope: queue empty" || bad "error-envelope queue" "queued"
+
+printf '\nGH-40: omp runtime — readiness check via omp stub\n'
+R="$WORK/ready-omp"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='{"score":82,"gaps":[]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr --runtime omp >/dev/null 2>&1 \
+    && ok "omp: add succeeds (82 >= 80)" || bad "omp" "add failed"
+[ "$(task_field "$R" .readiness_score)" = "82" ] \
+    && ok "omp: readiness_score:82" || bad "omp score" "$(task_field "$R" .readiness_score)"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

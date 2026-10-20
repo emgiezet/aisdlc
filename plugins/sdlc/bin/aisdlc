@@ -576,6 +576,114 @@ tracker_release() {
 }
 
 # --------------------------------------------------------------------------- #
+# readiness
+# --------------------------------------------------------------------------- #
+#
+# Optional add-time quality gate. Disabled when readiness_min is absent or null in
+# .aisdlc/config.json. When enabled, invokes the smol model with the spec and a rubric,
+# expects JSON {"score":<0-100>,"gaps":[…≤5]}, and fails if score < readiness_min.
+#
+# Side effects: sets globals READINESS_SCORE READINESS_MIN READINESS_REASON.
+#   READINESS_SCORE — parsed integer score, or empty on parse failure or disabled.
+#   READINESS_MIN   — configured threshold, or empty when disabled.
+#   READINESS_REASON — human-readable failure reason, set when returning non-zero.
+# Returns 0: feature disabled or score >= threshold.
+# Returns 1: below threshold (writes specs/<ticket>/readiness.md), parse failure, or missing rubric.
+readiness_check() {
+    local repo="$1" spec="$2" model="$3" budget="$4" billing="$5" runtime="$6"
+    local specs_dir="$7" ticket="$8"
+    READINESS_SCORE=""; READINESS_MIN=""; READINESS_REASON=""
+
+    # Feature is off when readiness_min is absent or null.
+    local cfg rmin
+    cfg="$(state_dir "$repo")/config.json"
+    rmin="$(jq -r 'if (.readiness_min // null) == null then "" else (.readiness_min | tostring) end' \
+        "$cfg" 2>/dev/null)"
+    [ -z "$rmin" ] && return 0
+    READINESS_MIN="$rmin"
+
+    # Smol model: model_roles.smol when configured, else the task's default model.
+    local smol="$model"
+    local mr_smol; mr_smol="$(jq -r '.model_roles.smol // empty' "$cfg" 2>/dev/null)"
+    [ -n "$mr_smol" ] && smol="$mr_smol"
+
+    # Rubric loaded at runtime so operators can edit without touching the binary.
+    local rubric="$PLUGIN_ROOT/prompts/readiness.md"
+    if [ ! -f "$rubric" ]; then
+        READINESS_REASON="readiness rubric not found: $rubric"; return 1
+    fi
+
+    local prompt; prompt="$(cat "$rubric"; printf '\n\n---\n\n## Spec to evaluate\n\n'; cat "$spec")"
+    local settings; settings="$(state_dir "$repo")/settings.json"
+    # Extra isolation: dedicated dir avoids repo access; sessions and stream files stay contained.
+    local rdir; rdir="$(mktemp -d)"
+    local result="$rdir/result.json" log="$rdir/invoke.log" rc=0
+
+    case "$runtime" in
+        claude)
+            invoke_claude "$prompt" "$smol" "$budget" "$settings" "$rdir" "$result" "$log" "false" "$billing" "true" || rc=$?
+            collapse_result "$result"
+            ;;
+        omp)
+            invoke_omp "$prompt" "$smol" "$budget" "$rdir" "$result" "$log" "$billing" "true" || rc=$?
+            ;;
+    esac
+
+    # Fail closed: process error or is_error in result envelope.
+    if [ "$rc" -ne 0 ] || [ "$(jq -r '.is_error // false' "$result" 2>/dev/null)" = "true" ]; then
+        rm -rf "$rdir"
+        READINESS_REASON='readiness check: model response is not valid {"score":<0-100>,"gaps":[...<=5]}'
+        return 1
+    fi
+
+    local raw; raw="$(jq -r '.result // empty' "$result" 2>/dev/null)"
+    rm -rf "$rdir"
+
+    # Fail closed: process error or is_error in result envelope.
+    if [ "$rc" -ne 0 ] || [ "$(jq -r '.is_error // false' "$tmp" 2>/dev/null)" = "true" ]; then
+        rm -f "$tmp"
+        READINESS_REASON='readiness check: model response is not valid {"score":<0-100>,"gaps":[...<=5]}'
+        return 1
+    fi
+
+    # Extract the model's text reply from the result envelope.
+    local raw; raw="$(jq -r '.result // empty' "$tmp" 2>/dev/null)"; rm -f "$tmp"
+
+    # Strict parse: exact integer (no fractional part) 0–100, array of ≤5 strings only.
+    local score="" gaps_ok=0
+    score="$(printf '%s' "$raw" | \
+        jq -re '.score | select(type == "number") | select(. == floor) |
+                select(. >= 0 and . <= 100) | tostring' \
+        2>/dev/null)" || true
+    if [ -n "$score" ]; then
+        gaps_ok="$(printf '%s' "$raw" | \
+            jq -r 'if (.gaps | type) == "array" and (.gaps | length) <= 5
+                      and (.gaps | all(type == "string")) then "1" else "0" end' \
+            2>/dev/null)" || gaps_ok=0
+    fi
+
+    if [ -z "$score" ] || [ "${gaps_ok:-0}" != "1" ]; then
+        READINESS_REASON='readiness check: model response is not valid {"score":<0-100>,"gaps":[...<=5]}'
+        return 1
+    fi
+
+    READINESS_SCORE="$score"
+
+    if [ "$score" -ge "$rmin" ]; then
+        return 0
+    fi
+
+    # Below threshold: write readiness.md with gap list for the operator.
+    local rmd="$repo/$specs_dir/$ticket/readiness.md"
+    { printf '# Readiness report: %s\n\nScore: %s / %s required\n\n## Gaps\n\n' \
+          "$ticket" "$score" "$rmin"
+      printf '%s' "$raw" | jq -r '.gaps[] | "- " + .' 2>/dev/null; } > "$rmd"
+    READINESS_REASON="readiness score $score < $rmin — spec needs improvement (see $rmd)"
+    return 1
+}
+
+
+# --------------------------------------------------------------------------- #
 # add
 # --------------------------------------------------------------------------- #
 
@@ -628,6 +736,8 @@ cmd_add() {
     local specs_dir
     specs_dir="$(resolve_default "$repo" specs_dir "" "${AISDLC_SPECS_DIR:-}" "$BUILTIN_SPECS_DIR")"
 
+    READINESS_SCORE=""   # set by readiness_check; cleared here so --issue tasks start clean
+
     if [ -n "$issue_n" ]; then
         # --issue: check and claim the issue; triage will write the spec in-worktree.
         local kind claim_status
@@ -642,12 +752,27 @@ cmd_add() {
             || die "could not claim issue $issue_n"
     else
         # Normal spec gate — skip for --issue (triage writes the spec in-worktree).
-        local spec="$repo/$specs_dir/$ticket/spec.md" reason
+        local spec="$repo/$specs_dir/$ticket/spec.md" reason spec_passed=0
         if ! reason="$(check_spec "$spec" "$repo")"; then
             if [ "$force" -eq 1 ]; then
                 say "aisdlc: WARNING — $reason (queued anyway because of --force)"
             else
                 die "$reason"
+            fi
+        else
+            spec_passed=1
+        fi
+        # Readiness gate — only when check_spec passed cleanly; --force bypass of check_spec
+        # skips readiness per spec (scoring a known-flawed spec adds noise, not signal).
+        READINESS_SCORE=""; READINESS_MIN=""; READINESS_REASON=""
+        if [ "$spec_passed" -eq 1 ]; then
+            if ! readiness_check "$repo" "$spec" "$model" "$budget" "$billing" "$runtime" \
+                    "$specs_dir" "$ticket"; then
+                if [ "$force" -eq 1 ]; then
+                    say "aisdlc: WARNING — $READINESS_REASON (queued anyway because of --force)"
+                else
+                    die "$READINESS_REASON"
+                fi
             fi
         fi
     fi
@@ -690,13 +815,15 @@ cmd_add() {
           --argjson budget "$budget" --argjson no_pr "$no_pr" --argjson plugin_dir "$plugin_dir" \
           --argjson is_issue "$is_issue_flag" --argjson cost_init "$cost_init" \
           --argjson models_obj "$models_arg" \
+          --argjson rs_score "${READINESS_SCORE:-null}" \
           '({id:$id, ticket:$ticket, repo:$repo, model:$model, base:$base, specs_dir:$sd,
             billing:$billing, runtime:$runtime,
             phases:($phases|split(" ")|map(select(length>0))), budget:$budget,
             no_pr:($no_pr==1), plugin_dir:($plugin_dir==1), is_issue:($is_issue==1),
             status:"queued", attempts:0, cost_usd:$cost_init, created:$t, updated:$t,
             branch:null, worktree:null, pr_url:null, error:null}
-           | if $models_obj != null then . + {models: $models_obj} else . end)' > "$dir/task.json"
+           | if $models_obj != null then . + {models: $models_obj} else . end
+           | if $rs_score != null then . + {readiness_score: $rs_score} else . end)' > "$dir/task.json"
 
     flock "$(state_dir "$repo")/queue.lock" \
         bash -c "printf '%s\n' \"$id\" >> \"$(state_dir "$repo")/queue.jsonl\""
@@ -929,12 +1056,17 @@ omp_result() {
 # `--approval-mode yolo` because nobody is there to answer a prompt; the guard is the floor, as
 # it is for claude under bypassPermissions.
 invoke_omp() {
-    local prompt="$1" model="$2" budget="$3" wt="$4" out="$5" log="$6" billing="${7:-api}"
+    local prompt="$1" model="$2" budget="$3" wt="$4" out="$5" log="$6" billing="${7:-api}" data_only="${8:-}"
     local sessions; sessions="$(dirname "$out")/sessions"
 
     local -a args=(-p --mode json --no-title --approval-mode yolo --session-dir "$sessions" --model "$model")
-    local d
-    while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+    if [ "$data_only" = "true" ]; then
+        # Data-only: disable all tools and load no extension-provided tools.
+        args+=(--no-tools)
+    else
+        local d
+        while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+    fi
 
     # omp has no spend cap, so none is claimed. Under api billing the cost is still recorded.
     if [ "$billing" = "subscription" ]; then
@@ -963,7 +1095,7 @@ invoke_omp() {
 
 # One headless invocation. Prints nothing; writes $out and appends to $log.
 invoke_claude() {
-    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}"
+    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}" data_only="${10:-}"
 
     local -a args=(
         -p "$prompt"
@@ -976,6 +1108,8 @@ invoke_claude() {
     # Subscription billing: omit --max-budget-usd — a spend cap that cannot be enforced
     # reads as a guarantee and is worse than silence.
     [ "$billing" != "subscription" ] && args+=(--max-budget-usd "$budget")
+    # Data-only mode: disable all tools so the model cannot perform side effects.
+    [ "$data_only" = "true" ] && args+=(--tools "")
     if [ "$use_plugin_dir" = "true" ]; then
         local d
         while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
@@ -1047,11 +1181,11 @@ run_claude_phase() {
         alternate="/${PLUGIN_NAME}:${phase} ${ticket}"
     fi
 
-    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
+    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" || rc=$?
     if grep -q '"result":"Unknown command' "$out" 2>/dev/null; then
         printf '[%s] %s not registered — retrying as "%s"\n' "$(ts)" "${primary%% *}" "${alternate%% *}" >> "$log"
         rc=0
-        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
+        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" || rc=$?
     fi
     return $rc
 }
@@ -1083,7 +1217,7 @@ run_phase() {
                 "$(ts)" "$phase" "$PLUGIN_ROOT" "$phase" >> "$log"
             return 1
         fi
-        invoke_omp "/${PLUGIN_NAME}:${phase} ${ticket}" "$model" "$budget" "$wt" "$out" "$log" "$billing" || rc=$?
+        invoke_omp "/${PLUGIN_NAME}:${phase} ${ticket}" "$model" "$budget" "$wt" "$out" "$log" "$billing" "" || rc=$?
     else
         run_claude_phase || rc=$?
     fi
@@ -2534,15 +2668,16 @@ cmd_status() {
     queue_file="$(state_dir "$repo")/queue.jsonl"
     local queued=0
     [ -f "$queue_file" ] && queued="$(wc -l < "$queue_file" | tr -d ' ')"
-    printf '%-34s %-9s %-6s %8s  %s\n' TASK STATUS PHASES COST NOTE
+    printf '%-34s %-9s %-6s %8s  %-5s  %s\n' TASK STATUS PHASES COST READY NOTE
     local f
     while read -r f; do
         [ -n "$f" ] || continue
         # Phases as initials (i·q·s) so the column stays aligned on a narrow terminal.
         jq -r '[.id, .status, (.phases | map(.[0:1]) | join("·")), ((.cost_usd//0)|tostring),
+                ((.readiness_score // "-") | tostring),
                 (.pr_url // .error // "")] | @tsv' "$f" 2>/dev/null \
-        | while IFS=$'\t' read -r id st ph cost note; do
-            printf '%-34s %-9s %-6s %8s  %s\n' "$id" "$st" "$ph" "\$$cost" "${note:0:56}"
+        | while IFS=$'\t' read -r id st ph cost ready note; do
+            printf '%-34s %-9s %-6s %8s  %-5s  %s\n' "$id" "$st" "$ph" "\$$cost" "$ready" "${note:0:56}"
           done
     done < <(each_task "$repo")
 
@@ -2863,6 +2998,16 @@ Optional: add model_roles to route cheap phases to a smaller model:
   Resolved once at add time and snapshotted into task.json (.models). Absent model_roles →
   today's single-model behaviour, byte for byte. Values are opaque strings passed directly
   to claude --model; any name the host understands is valid.
+
+Optional: add readiness_min to score spec quality before queuing:
+
+  "readiness_min": 70
+
+  Config key only — no CLI flag or environment variable. Absent or null disables scoring.
+  When set, \`aisdlc add\` invokes the smol model with the spec and a rubric, expects JSON
+  {"score":<0-100>,"gaps":[…≤5]}, and refuses if score < readiness_min. --force bypasses
+  the check with a warning. On pass, task.json records readiness_score; \`aisdlc status\`
+  shows it in the READY column.
 
 Environment overrides: AISDLC_MODEL, AISDLC_BUDGET, AISDLC_BASE, AISDLC_WORKERS,
 AISDLC_LABEL, AISDLC_SPECS_DIR, AISDLC_PULL_LABEL, AISDLC_LOOP_INTERVAL (config keys
