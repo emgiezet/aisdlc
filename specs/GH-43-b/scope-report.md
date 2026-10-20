@@ -3,7 +3,7 @@
 > **GAPS** — Some changed files were not declared in the spec scope.
 
 Base: `origin/main`  
-Checked: 2026-10-20T11:19:13Z
+Checked: 2026-10-20T14:41:32Z
 
 ## File classification
 
@@ -14,12 +14,17 @@ Checked: 2026-10-20T11:19:13Z
 | `evals/harness/selftest.sh` | in scope |
 | `evals/harness/stub-claude` | in scope |
 | `plugins/sdlc/bin/aisdlc` | in scope |
+| `specs/GH-43-b/pr-body.md` | in scope |
+| `specs/GH-43-b/qa-report.md` | in scope |
+| `specs/GH-43-b/scope-report.md` | in scope |
+| `specs/GH-43-b/spec.md` | in scope |
+| `specs/GH-43-b/verify-report.md` | in scope |
 
 ## Verdict
 
 Verdict: GAPS
 
-5 in scope · 0 undeclared · 0 out of bounds
+10 in scope · 0 undeclared · 0 out of bounds
 
 ## Size
 
