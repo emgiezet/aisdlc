@@ -194,17 +194,30 @@ esac
 # --------------------------------------------------------------------------- #
 # UC-3 (unit gap) — skip body format when lizard is not on PATH
 # --------------------------------------------------------------------------- #
-# _struct_run_lizard emits "skip:not installed" when lizard is absent.
-# run_scope_check strips the "skip:" prefix and passes the remainder to
-# _write_structure_section. Spec UC-3 requires the section to read
-# "skipped: lizard not installed". The skip: producer must therefore emit
-# "skip:skipped: lizard not installed" — not "skip:not installed".
-_uc3_raw="skip:not installed"
+# _struct_run_lizard prints "skip:skipped: lizard not installed" when at least
+# one code file is changed but lizard is absent from PATH.
+# run_scope_check strips the "skip:" prefix; the remainder must be exactly
+# "skipped: lizard not installed" so the section reads correctly.
+_uc3_tmp="$(mktemp -d)"
+# Build a minimal git repo with one Go file added in a commit so
+# _struct_code_files finds it (diff-filter=AMR against base commit).
+git -C "$_uc3_tmp" init -q
+git -C "$_uc3_tmp" config user.email "test@test"
+git -C "$_uc3_tmp" config user.name "test"
+git -C "$_uc3_tmp" commit -q --allow-empty -m "base"
+_uc3_base="$(git -C "$_uc3_tmp" rev-parse HEAD)"
+printf 'package main\n' > "$_uc3_tmp/main.go"
+git -C "$_uc3_tmp" add main.go
+git -C "$_uc3_tmp" commit -q -m "add go file"
+# Restricted PATH: keep git/awk/mktemp/dirname/mkdir/printf/sed but no lizard.
+_uc3_restricted_path="$(dirname "$(command -v git)"):$(dirname "$(command -v awk)")"
+_uc3_raw="$(PATH="$_uc3_restricted_path" _struct_run_lizard "$_uc3_tmp" "$_uc3_base" "")"
+rm -rf "$_uc3_tmp"
 _uc3_body="${_uc3_raw#skip:}"
 [ "$_uc3_body" = "skipped: lizard not installed" ] \
     && ok "UC-3 unit: skip body is 'skipped: lizard not installed'" \
     || bad "UC-3 unit: skip body format" \
-           "expected 'skipped: lizard not installed', got: '$_uc3_body' (implementation bug: _struct_run_lizard must emit 'skip:skipped: lizard not installed')"
+           "expected 'skipped: lizard not installed', got: '$_uc3_body' (raw: '$_uc3_raw')"
 
 if [ "${_standalone:-0}" = "1" ]; then
     printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"

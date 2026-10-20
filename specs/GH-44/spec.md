@@ -42,6 +42,7 @@ In:
 - Docs: the gate and its thresholds in `docs/ai-sdlc.md` and the `README.md` queue paragraph.
 - Tests: `evals/harness/selftest.sh` cases and `plugins/sdlc/tests/structure_test.sh` (new).
 - Test registration: `plugins/sdlc/tests/run-tests` sources the new suite.
+- Stub: `evals/harness/stub-claude` gains an `mdonly` mode (implement commits only a .md file) for UC-4.
 
 Out:
 - Installing, pinning or version-checking lizard (`install.sh`, `slopguard doctor`,
@@ -56,7 +57,7 @@ Out:
 - `plugins/slop-guard/**`, including decision D33.
 - This repo's own `.claude/sdlc.md`; `/sdlc:update` proposes the new profile fields.
 
-Change budget: 540 added lines, 9 files, 4 modules
+Change budget: 760 added lines, 11 files, 4 modules
 
 ## Context
 

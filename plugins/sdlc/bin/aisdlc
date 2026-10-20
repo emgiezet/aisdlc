@@ -1527,7 +1527,7 @@ _struct_run_lizard() {
     code_files_raw="$(_struct_code_files "$wt" "$base" "$specs_dir")"
     [ -n "$code_files_raw" ] || { printf 'skip:nofiles'; return 0; }
 
-    command -v lizard >/dev/null 2>&1 || { printf 'skip:not installed'; return 0; }
+    command -v lizard >/dev/null 2>&1 || { printf 'skip:skipped: lizard not installed'; return 0; }
 
     # Prepare temp dir for before-versions of Modified files
     local tmp; tmp="$(mktemp -d)"
@@ -1545,20 +1545,22 @@ _struct_run_lizard() {
     done <<< "$code_files_raw"
 
     # Before pass (Modified files only — Added/Renamed count as new, no before)
-    local before_csv=""
+    local before_csv="" _ec
     if [ ${#before_files[@]} -gt 0 ]; then
-        if ! before_csv="$(_AISDLC_STRUCT_PASS=before lizard --csv "${before_files[@]}" 2>/dev/null)"; then
+        before_csv="$(_AISDLC_STRUCT_PASS=before lizard --csv "${before_files[@]}" 2>/dev/null)"; _ec=$?
+        if [ "$_ec" -ne 0 ]; then
             rm -rf "$tmp"
-            printf 'skip:lizard failed'
+            printf 'skip:skipped: lizard failed (%d)' "$_ec"
             return 0
         fi
     fi
 
     # After pass (all code files at HEAD)
     local after_csv
-    if ! after_csv="$(lizard --csv "${after_files[@]}" 2>/dev/null)"; then
+    after_csv="$(lizard --csv "${after_files[@]}" 2>/dev/null)"; _ec=$?
+    if [ "$_ec" -ne 0 ]; then
         rm -rf "$tmp"
-        printf 'skip:lizard failed'
+        printf 'skip:skipped: lizard failed (%d)' "$_ec"
         return 0
     fi
 

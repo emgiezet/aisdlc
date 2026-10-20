@@ -639,10 +639,49 @@ grep -qF '**out of bounds**' "${D}scope-report.md" 2>/dev/null \
 # structure check selftest (UC-1, UC-3, UC-4, UC-8 — GH-44)
 # --------------------------------------------------------------------------- #
 
-# Stub lizard lives in a dedicated dir; added to PATH only for UC-1.
+# Stub lizard lives in a dedicated dir; generated here, added to PATH only for UC-1.
 _LIZARD_STUB_DIR="$WORK/lizard-stub-bin"
 mkdir -p "$_LIZARD_STUB_DIR"
-ln -sf "$HARNESS_DIR/stub-lizard" "$_LIZARD_STUB_DIR/lizard"
+cat > "$_LIZARD_STUB_DIR/lizard" <<'LIZARD_STUB_EOF'
+#!/usr/bin/env bash
+# stub-lizard — fake lizard for selftest structure checks. No real analysis; returns
+# fixed CC values so the selftest can assert on specific erosion/hotspot outcomes.
+#
+# The structure check exports _AISDLC_STRUCT_PASS=before for the before-version call
+# and leaves it unset (defaults to "after") for the current-HEAD call. The stub uses
+# this to return different CC values, simulating a function whose CC rose from 8 to 14.
+#
+# File-name heuristics keep the test simple:
+#   *_test.go files (Go test files): low CC (2) to avoid polluting the largest-CC-
+#   increase result with the added-file entry.
+#
+# Lizard CSV format (1.24.1):
+#   NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
+set -uo pipefail
+
+printf 'NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end\n'
+
+for f in "$@"; do
+    case "$f" in
+        *.go|*.py|*.js|*.ts)
+            case "${_AISDLC_STRUCT_PASS:-after}" in
+                before)
+                    cc=8; nloc=45
+                    ;;
+                *)
+                    case "$f" in
+                        *_test.go|*_test.py|*.test.ts|*.spec.ts) cc=2; nloc=20 ;;
+                        *)                                         cc=14; nloc=45 ;;
+                    esac
+                    ;;
+            esac
+            printf '%d,%d,100,2,30,%s:GoFunc,%s,GoFunc,GoFunc,1,30\n' \
+                "$nloc" "$cc" "$f" "$f"
+            ;;
+    esac
+done
+LIZARD_STUB_EOF
+chmod +x "$_LIZARD_STUB_DIR/lizard"
 
 # --------------------------------------------------------------------------- #
 printf '\nstructure UC-1: CC 8 -> 14 in a Go file → ## Structure, new hotspot, GAPS\n'
