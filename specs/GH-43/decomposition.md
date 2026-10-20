@@ -21,7 +21,7 @@ no provenance chain for compliance.
 |-------|--------|-----------------|
 | [GH-43-a](../GH-43-a/spec.md) | **merged** (48bb657) | `task.json` records `sessions[]` per phase and `runtime_version` |
 | [GH-43-b](../GH-43-b/spec.md) | **merged** (4825bc7, PR #61) | private, fail-closed archive on terminal status — manifest, redacted logs/reports, append-only `index.jsonl`; built-in regex redaction |
-| [GH-43-c](../GH-43-c/spec.md) | draft | transcript copies in `sessions/` inside the archive; betterleaks scanner (v2 JSONL, findings-driven, no publication on error/incomplete/encoded credential); `archive_transcripts` opt-out in `.aisdlc/config.json`; `archive: off` placement open question |
+| [GH-43-c](../GH-43-c/spec.md) | approved | transcript copies; installed betterleaks v2 with network disabled and whole-archive fail-closed publication; profile `Archive: off` and JSON `archive_transcripts` opt-outs |
 | [GH-43-d](../GH-43-d/spec.md) | approved | `aisdlc archive ls\|show\|grep\|prune` read/maintenance subcommands |
 | [GH-43-e](../GH-43-e/spec.md) | approved | `/sdlc:retro --archive` reads `index.jsonl` for cross-repo pipeline metrics |
 | [GH-43-f](../GH-43-f/spec.md) | approved | phase verdict/timestamp/session provenance and preservation of recorded model identity; depends-on GH-43-b |
@@ -30,8 +30,8 @@ no provenance chain for compliance.
 
 **Functions:**
 - `archive_task(repo, id)` — called at every terminal-status site before any worktree removal;
-  non-fatal; reads `AISDLC_ARCHIVE` env var only. (`archive: off` config-key support is in
-  GH-43-c but placement unresolved — see GH-43-c open questions.)
+  non-fatal; GH-43-b reads `AISDLC_ARCHIVE` env var only. GH-43-c adds the approved profile
+  `Archive: off` policy and transcript configuration.
 - `_arc_redact(src, dst)` — copies `src` to `dst` with built-in regex redaction; prints
   JSON `{rule:count}` to stdout.
 - `_arc_merge(a, b)` — merges two `{rule:count}` JSON objects.
@@ -49,7 +49,7 @@ ${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}/
   <repo-slug>/<YYYY-MM>/<task-id>.<attempts>/  # later attempts, including 1 after a pre-run cancellation
     manifest.json     # id, ticket, repo, base, branch, pr_url, status, attempts,
                       # cost_usd, runtime, runtime_version,
-                      # model (always non-null — GH-43-f), models (per-phase or null),
+                      # model (recorded identity; legacy unknown stays null — GH-43-f), models (per-phase or null),
                       # sessions (from task.json), aisdlc_version, policy_fingerprint,
                       # archived_at, redactions {rule:count}, files {rel-path:sha256}
                       # phases [{name,verdict,session_id,started,ended}] — GH-43-f; null if pre-f task
@@ -62,10 +62,10 @@ ${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}/
 
 **betterleaks gap:** GH-43-b uses built-in regex only. GH-43-c adds betterleaks v2 scanner
 integration: run in JSONL mode, rc=1 = findings found (normal), rc>1 = scanner error →
-no publication; `scan.state != "complete"` → no publication; decoded findings
-(`encodings`/`decode_depth > 0`) → no publication (coordinate-based replacement unspecified).
-Exact network-isolation flags and v1 support are open questions in GH-43-c spec. The
-`manifest.scanner_warnings` field is removed from the contract (spec logs to `run.log` instead).
+no publication of the new archive; `scan.state != "complete"` or decoded findings
+(`encodings`/`decode_depth > 0`) likewise withhold the entire new archive.
+GH-43-c supports installed v2 only and passes `--analyze=false --validate=false`.
+Diagnostics go to `run.log` without credentials, not a `manifest.scanner_warnings` field.
 
 **Phase/model provenance allocated to GH-43-f:** The issue requires
 `phases[{name, verdict, session_id, started, ended}]`; GH-43-b's `sessions[]` lacks verdicts

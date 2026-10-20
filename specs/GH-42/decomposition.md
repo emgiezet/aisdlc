@@ -22,8 +22,8 @@ rules slop-guard adopts and why.
 | slice | status | what it delivers |
 |-------|--------|-----------------|
 | [GH-42-a](../GH-42-a/spec.md) | **merged** (777f93f) | Decision D36 recorded; `AP-TS-MAINT-005` (chained / uncommented assertions) and `AP-TS-MAINT-006` (widen-then-assert) enabled; `@spacemansh/anti-slop` 0.3.0 installed |
-| [GH-42-b](../GH-42-b/spec.md) | draft | `AP-TS-MAINT-007` (unknown/object signatures) and `AP-TS-MAINT-008` (Reflect API bypass); 7 rules enabled |
-| [GH-42-c](../GH-42-c/spec.md) | draft | `AP-TS-PERF-005` (O(n²) reduce accumulator copy) and `AP-TS-MAINT-009` (whole-module mock); 2 rules enabled |
+| [GH-42-b](../GH-42-b/spec.md) | approved | `AP-TS-MAINT-007` (unknown/object signatures) and `AP-TS-MAINT-008` (Reflect API bypass); 7 rules enabled |
+| [GH-42-c](../GH-42-c/spec.md) | approved | `AP-TS-PERF-005` (O(n²) reduce accumulator copy) and `AP-TS-MAINT-009` (whole-module mock); 2 rules enabled |
 
 ## D36 mapping coverage
 

@@ -109,7 +109,9 @@ The user instructed “ok jazda robić”, approving continuation of the remaini
 Selected conservative decisions are recorded in GH-38 (run-wide mixed-billing cap),
 GH-39 (skip adversarial on spec-only PRs), and GH-41 (bounded aggregation without losing
 out-of-scope warnings). Their specs, GH-40, GH-42-b/c, GH-43-d/e/f, and GH-59 are approved.
-GH-43-c still needs its scanner/profile decision and wiring-budget correction finalized.
+The user separately approved GH-43-c's installed-v2-only, network-disabled, whole-archive
+fail-closed scanner contract, profile/config opt-outs, and 600-line / seven-file / three-module
+budget correction for complete wiring. All remaining feature contracts are now approved.
 
 The user then prioritized resolving PR #61 and authorized merge after safe verification.
 After explicit approval of its 800-line / five-file / four-module repair budget, PR #61
