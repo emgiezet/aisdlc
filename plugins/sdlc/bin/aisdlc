@@ -1056,13 +1056,13 @@ omp_result() {
 # `--approval-mode yolo` because nobody is there to answer a prompt; the guard is the floor, as
 # it is for claude under bypassPermissions.
 invoke_omp() {
-    local prompt="$1" model="$2" budget="$3" wt="$4" out="$5" log="$6" billing="${7:-api}" data_only="${8:-}"
+    local prompt="$1" model="$2" budget="$3" wt="$4" out="$5" log="$6" billing="${7:-api}" data_only="$8"
     local sessions; sessions="$(dirname "$out")/sessions"
 
     local -a args=(-p --mode json --no-title --approval-mode yolo --session-dir "$sessions" --model "$model")
     if [ "$data_only" = "true" ]; then
         # Data-only: disable all tools and load no extension-provided tools.
-        args+=(--no-tools)
+        args+=(--no-tools --no-extensions)
     else
         local d
         while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
@@ -1095,7 +1095,7 @@ invoke_omp() {
 
 # One headless invocation. Prints nothing; writes $out and appends to $log.
 invoke_claude() {
-    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}" data_only="${10:-}"
+    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}" data_only="${10}"
 
     local -a args=(
         -p "$prompt"
@@ -1109,7 +1109,7 @@ invoke_claude() {
     # reads as a guarantee and is worse than silence.
     [ "$billing" != "subscription" ] && args+=(--max-budget-usd "$budget")
     # Data-only mode: disable all tools so the model cannot perform side effects.
-    [ "$data_only" = "true" ] && args+=(--tools "")
+    [ "$data_only" = "true" ] && args+=(--tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}')
     if [ "$use_plugin_dir" = "true" ]; then
         local d
         while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
