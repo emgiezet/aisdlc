@@ -11,6 +11,7 @@
 # <plugin-dir>/commands/<cmd>.md exists; otherwise the text reaches the model unexpanded. With
 # AISDLC_STUB=noop the stub never expands, which is how omp behaves for a command it cannot find.
 set -uo pipefail
+[ "${1:-}" = "--version" ] && { printf 'omp stub 1.0.0\n'; exit 0; }
 
 cat > /dev/null   # consume stdin, exactly as the real CLI does
 
@@ -22,12 +23,13 @@ if [ -n "${AISDLC_STUB_TRACE:-}" ]; then
         >> "$AISDLC_STUB_TRACE"
 fi
 
-prompt="" model="" plugin_dirs=()
+prompt="" model="" plugin_dirs=() session_dir=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --plugin-dir) plugin_dirs+=("$2"); shift 2 ;;
         --model) model="$2"; shift 2 ;;
-        --mode|--approval-mode|--session-dir|--config|--cwd|--max-time) shift 2 ;;
+        --session-dir) session_dir="$2"; shift 2 ;;
+        --mode|--approval-mode|--config|--cwd|--max-time) shift 2 ;;
         -*) shift ;;
         *) prompt="$1"; shift ;;
     esac
@@ -69,4 +71,10 @@ jq -c -n --arg asked "$asked" --arg model "$model" --argjson r "$res" '
          {role: "user", content: [{type: "text", text: $asked}]},
          {role: "assistant", content: [{type: "text", text: ($r.result // "")}],
           stopReason: (if $r.is_error then "error" else "stop" end)}]}'
+if [ -n "${session_dir:-}" ]; then
+    mkdir -p "$session_dir"
+    _ts="$(date -u +%Y%m%dT%H%M%SZ)"
+    _uuid="$(uuidgen 2>/dev/null || printf '%08x-%04x-%04x-%04x-%012x' $RANDOM $RANDOM $RANDOM $RANDOM $RANDOM)"
+    printf '{"stub":true}\n' > "${session_dir}/${_ts}_${_uuid}.jsonl"
+fi
 exit $rc
