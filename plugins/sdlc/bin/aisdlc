@@ -1506,8 +1506,9 @@ cmd_scope_check() {
 #      guard's Stop hook in a headless run. An entry the branch added itself does not count.
 
 # A path that is a test file, by the conventions of the stacks this plugin supports.
+# Bash: *_test.sh, test_*.sh, *.bats, and a harness's selftest.sh outside any tests/ directory.
 _is_test_path() {
-    printf '%s' "$1" | grep -qE '(^|/)(tests?|__tests__|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.(go|py)$|(^|/)test_[^/]*\.py$'
+    printf '%s' "$1" | grep -qE '(^|/)(tests?|__tests__|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.(go|py|sh)$|(^|/)test_[^/]*\.(py|sh)$|\.bats$|(^|/)selftest\.sh$'
 }
 
 # _retired_patterns WT REV — path patterns of the retired-tests ledger entries that carry a reason, as of REV.
