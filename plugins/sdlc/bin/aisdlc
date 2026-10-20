@@ -1034,6 +1034,11 @@ run_phase() {
     billing="${billing:-api}"
     settings="$(state_dir "$repo")/settings.json"
     runtime="$(task_get "$repo" .runtime "$id")"; runtime="${runtime:-claude}"
+    local phase_started ended session_id="" transcript=""
+    if [ "$(task_get "$repo" .runtime_version "$id")" = "" ]; then
+        task_set "$repo" "$id" --arg v "$("$runtime" --version 2>/dev/null | head -1 || true)" '.runtime_version = $v'
+    fi
+    phase_started="$(ts)"
 
     local rc=0
     if [ "$runtime" = "omp" ]; then
@@ -1050,6 +1055,18 @@ run_phase() {
     fi
 
     collapse_result "$out"
+
+    ended="$(ts)"
+    if [ "$runtime" = "omp" ]; then
+        local jf; jf="$(ls -t "$dir/sessions/"*.jsonl 2>/dev/null | head -1 || true)"
+        [ -n "$jf" ] && { session_id="$(basename "$jf" .jsonl | sed 's/^[^_]*_//')"; transcript="$jf"; }
+    else
+        session_id="$(jq -r '.session_id // empty' "$out" 2>/dev/null || true)"
+        [ -n "$session_id" ] && transcript="$HOME/.claude/projects/$(printf '%s' "$wt" | tr '/.' '-')/${session_id}.jsonl"
+    fi
+    task_set "$repo" "$id" --arg ph "$phase" --arg rt "$runtime" --arg sid "$session_id" \
+        --arg tr "$transcript" --arg s "$phase_started" --arg e "$ended" \
+        '.sessions += [{phase:$ph,runtime:$rt,session_id:(if $sid=="" then null else $sid end),transcript:(if $tr=="" then null else $tr end),started:$s,ended:$e}]'
 
     # Fold this phase's cost into the task total, whatever the outcome.
     if [ "$billing" = "subscription" ]; then
