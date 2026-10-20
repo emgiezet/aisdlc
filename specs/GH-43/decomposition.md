@@ -20,11 +20,11 @@ no provenance chain for compliance.
 | slice | status | what it delivers |
 |-------|--------|-----------------|
 | [GH-43-a](../GH-43-a/spec.md) | **merged** (48bb657) | `task.json` records `sessions[]` per phase and `runtime_version` |
-| [GH-43-b](https://github.com/emgiezet/aisdlc/pull/61) | **PR #61 open** | archive on terminal status — manifest, redacted logs/reports, `index.jsonl`; built-in regex redaction only |
+| [GH-43-b](../GH-43-b/spec.md) | **merged** (4825bc7, PR #61) | private, fail-closed archive on terminal status — manifest, redacted logs/reports, append-only `index.jsonl`; built-in regex redaction |
 | [GH-43-c](../GH-43-c/spec.md) | draft | transcript copies in `sessions/` inside the archive; betterleaks scanner (v2 JSONL, findings-driven, no publication on error/incomplete/encoded credential); `archive_transcripts` opt-out in `.aisdlc/config.json`; `archive: off` placement open question |
-| [GH-43-d](../GH-43-d/spec.md) | draft | `aisdlc archive ls\|show\|grep\|prune` read/maintenance subcommands |
-| [GH-43-e](../GH-43-e/spec.md) | draft | `/sdlc:retro --archive` reads `index.jsonl` for cross-repo pipeline metrics |
-| [GH-43-f](../GH-43-f/spec.md) | draft | phase verdict/timestamp/session provenance and preservation of recorded model identity; depends-on GH-43-b |
+| [GH-43-d](../GH-43-d/spec.md) | approved | `aisdlc archive ls\|show\|grep\|prune` read/maintenance subcommands |
+| [GH-43-e](../GH-43-e/spec.md) | approved | `/sdlc:retro --archive` reads `index.jsonl` for cross-repo pipeline metrics |
+| [GH-43-f](../GH-43-f/spec.md) | approved | phase verdict/timestamp/session provenance and preservation of recorded model identity; depends-on GH-43-b |
 
 ## Archive contracts produced by GH-43-b (consumed by c/d/e/f)
 
@@ -46,7 +46,7 @@ no provenance chain for compliance.
 ${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}/
   index.jsonl          # flock-ed via <root>/index.lock sidecar
   <repo-slug>/<YYYY-MM>/<task-id>/              # first attempt
-  <repo-slug>/<YYYY-MM>/<task-id>.<attempts>/  # subsequent retries (attempts > 1)
+  <repo-slug>/<YYYY-MM>/<task-id>.<attempts>/  # later attempts, including 1 after a pre-run cancellation
     manifest.json     # id, ticket, repo, base, branch, pr_url, status, attempts,
                       # cost_usd, runtime, runtime_version,
                       # model (always non-null — GH-43-f), models (per-phase or null),
@@ -73,14 +73,13 @@ and native phases. The draft adds phase capture and preserves the recorded base 
 When archiving legacy task records without these fields, retain unknown values as null;
 do not rewrite existing archives or invent historical provenance.
 
-**PR #61 prerequisite risk [INFERENCE from static review]:** attempt-0 and attempt-1 paths can both resolve to `<id>`,
-contrary to its append-only contract. The prerequisite must preserve both snapshots before
-the remainder lands. GH-43-d's shared-path pruning guard prevents deletion of retained data,
-but does not repair producer overwrite; no duplicate implementation of PR #61 is planned.
+**PR #61 prerequisite satisfied:** merged as `4825bc7` after security and lifecycle repairs.
+Attempt-0 and attempt-1 archives are now distinct; exclusive directory creation prevents
+overwrite. GH-43-d still guards legacy shared paths, since older archives may predate the fix.
 
 ## Dependencies between slices
 
-- **c/d/e/f block on GH-43-b** and its append-only contract; do not duplicate the open PR.
+- **c/d/e/f consume merged GH-43-b**; preserve its private staging, fail-closed publication, and append-only guarantees.
 - **c, d, and f are semantically independent** after b but share runner, selftest, and
   documentation files; one integration owner must serialize overlapping edits.
 - **e consumes b's archived task.json and manifest**, not c's transcripts or f's new phases.

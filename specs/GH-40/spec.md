@@ -1,7 +1,7 @@
 ---
 ticket: GH-40
 title: "aisdlc add: optional readiness score on the smol model before a spec is queued"
-status: draft
+status: approved
 stacks: [bash, instructions]
 source: https://github.com/emgiezet/aisdlc/issues/40
 ---

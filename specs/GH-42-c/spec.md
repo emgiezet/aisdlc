@@ -1,7 +1,7 @@
 ---
 ticket: GH-42-c
 title: "anti-slop O(n²) reduce as AP-TS-PERF-005, whole-module mock as AP-TS-MAINT-009"
-status: draft
+status: approved
 stacks: [slop-guard catalogue, bash]
 depends-on: GH-42-a
 ---

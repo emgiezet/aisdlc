@@ -1,7 +1,7 @@
 ---
 ticket: GH-41
 title: "ship: add a Change map (mermaid + before/after UC table) to the PR body"
-status: draft
+status: approved
 stacks: [instructions]
 ---
 
@@ -68,7 +68,4 @@ Change budget: 80 added lines, 2 files, 2 modules
 
 ## Open questions
 
-- [ ] **Node selection strategy when >12 modules are touched** (UC-5): the issue caps at 12
-  nodes but does not specify how to select or aggregate when the diff touches more — by
-  relevance to spec `In:` scope, by call-graph degree, by collapsed grouping (e.g., one node
-  per top-level directory), or another rule. Must be resolved before `status: approved`.
+- [x] If more than 12 modules are touched, repeatedly collapse sibling modules into their common directory until the graph fits. If more than 12 top-level groups remain, retain 11 groups in lexical order and put the remainder in one explicitly labelled aggregate node. Every touched module remains represented; any group containing an out-of-scope module carries the warning style. Conservative choice under the user's instruction to proceed.

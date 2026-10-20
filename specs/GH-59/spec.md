@@ -1,7 +1,7 @@
 ---
 ticket: GH-59
 title: "Change budget: repo-wide Tolerance percentage before scope-check reports an overshoot"
-status: draft
+status: approved
 stacks: [bash, instructions]
 ---
 

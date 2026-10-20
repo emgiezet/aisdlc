@@ -1,7 +1,7 @@
 ---
 ticket: GH-42-b
 title: "anti-slop unknown/object signatures as AP-TS-MAINT-007, Reflect API bypass as AP-TS-MAINT-008"
-status: draft
+status: approved
 stacks: [slop-guard catalogue, bash]
 depends-on: GH-42-a
 ---

@@ -1,7 +1,7 @@
 ---
 ticket: GH-39
 title: "/sdlc:review --adversarial: independent second pass, commit-by-commit, stricter verdict wins"
-status: draft
+status: approved
 stacks: [instructions]
 ---
 
@@ -75,6 +75,4 @@ Change budget: 75 added lines, 5 files, 2 modules
 
 ## Open questions
 
-- [ ] **UC-8 / spec-only interaction:** the issue does not specify whether `--adversarial` applies to
-  spec-only PRs. UC-8 is marked `[INFERENCE]` (conservative: skip adversarial on spec-only). Resolve
-  before setting `status: approved`.
+- [x] Skip the adversarial pass for spec-only PRs. UC-8's conservative inferred behavior is the selected implementation contract under the user's instruction to proceed.

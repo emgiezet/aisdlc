@@ -1,7 +1,7 @@
 ---
 ticket: GH-43-f
 title: "manifest.phases per-phase provenance and model identity"
-status: draft
+status: approved
 stacks: [bash]
 depends-on: GH-43-b
 ---

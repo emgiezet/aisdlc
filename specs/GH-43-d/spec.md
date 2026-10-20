@@ -1,7 +1,7 @@
 ---
 ticket: GH-43-d
 title: "aisdlc archive ls/show/grep/prune subcommands"
-status: draft
+status: approved
 stacks: [bash]
 depends-on: GH-43-b
 ---

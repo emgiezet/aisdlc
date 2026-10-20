@@ -85,7 +85,7 @@ because PHPStan/Psalm were absent (23 configs validated, two skipped, zero faile
 Local-mode validation passed afterward; Docker ShellCheck separately covered the changed
 shell files. No claim of a complete strict-CI tool matrix is made.
 
-## Human approval queue
+## Initial human approval queue (historical)
 
 These features are planned, not implemented:
 
@@ -102,4 +102,25 @@ These features are planned, not implemented:
 PR #61 was refreshed at handoff: OPEN, merge state DIRTY. It was neither duplicated nor
 modified. Its append-only attempt-path concern is a static-review inference recorded in
 the decomposition, not a reproduced or repaired defect claimed by this implementation.
+
+## Approved continuation
+
+The user instructed “ok jazda robić”, approving continuation of the remaining feature plans.
+Selected conservative decisions are recorded in GH-38 (run-wide mixed-billing cap),
+GH-39 (skip adversarial on spec-only PRs), and GH-41 (bounded aggregation without losing
+out-of-scope warnings). Their specs, GH-40, GH-42-b/c, GH-43-d/e/f, and GH-59 are approved.
+GH-43-c still needs its scanner/profile decision and wiring-budget correction finalized.
+
+The user then prioritized resolving PR #61 and authorized merge after safe verification.
+After explicit approval of its 800-line / five-file / four-module repair budget, PR #61
+was fixed and merged as `4825bc73fb807781ae212e0002d9bcbd69bdcb30`. Verification: 226 runner
+checks, local validation, ShellCheck, trigger sets, independent code/security approval,
+and both hosted CI jobs passed. The append-only concern was reproduced and repaired;
+the earlier prerequisite-risk note is superseded.
+
+The original checkout's unrelated corrupt Git object prevents fetching. Execution therefore
+continues in a healthy clone, preserving the original issue commits via a Git bundle and
+merging the new main into their history. No unrelated ref or user worktree is repaired.
+The coordinator remains the sole integration owner; each remaining issue receives an
+isolated implementation agent, and overlapping runner/command edits are combined centrally.
 

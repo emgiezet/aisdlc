@@ -1,7 +1,7 @@
 ---
 ticket: GH-38
 title: "aisdlc run: stop popping tasks at a max-open-PRs cap and a run spend cap"
-status: draft
+status: approved
 stacks: [bash, instructions]
 ---
 
@@ -59,4 +59,4 @@ Change budget: 150 added lines, 6 files, 3 modules
 
 ## Open questions
 
-- [ ] Mixed stored API/subscription billing: approve a run-wide rule before implementation. Recommended: sum numeric API costs, never coerce subscription null costs to measured zero, and stop all new claims when that run-wide cap is reached; only all-subscription runs ignore it with a warning. Confirm whether subscription tasks may instead continue after the API cap.
+- [x] On mixed stored API/subscription billing, sum numeric API costs and stop all new claims when the run-wide cap is reached. Never coerce subscription null costs to measured zero. Only all-subscription runs ignore the cap with a warning. Conservative choice under the user's instruction to proceed.

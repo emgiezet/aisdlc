@@ -1,7 +1,7 @@
 ---
 ticket: GH-43-e
 title: "retro --archive reads cross-repo index.jsonl for pipeline metrics"
-status: draft
+status: approved
 stacks: [instructions]
 depends-on: GH-43-b
 ---
