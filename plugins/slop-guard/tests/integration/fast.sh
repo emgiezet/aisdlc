@@ -197,3 +197,19 @@ if it_skip_unless_tool eslint-stack; then
     it_expect_silent "$_fast_out" \
         "UC-6: eslint anti-slop good fixture (SAFETY-commented -> no AP-TS-MAINT-005 or -006)"
 fi
+
+# --------------------------------------------------------------------------- #
+# anti-slop/no-known-value-widening good fixture → silence (UC-6 negative for 006)
+# --------------------------------------------------------------------------- #
+
+it_project eslint-anti-slop-006-good; _fast_proj="$_IT_CUR_PROJ"
+if it_skip_unless_tool eslint-stack; then
+    it_commit "$_fast_proj" package.json '{"type":"module"}'
+    it_commit "$_fast_proj" app.ts 'export {};'
+    it_modify "$_fast_proj" app.ts \
+        "$(cat "${_IT_FIXTURES}/ts/good/AP-TS-MAINT-006.ts")"
+    _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
+        it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
+    it_expect_silent "$_fast_out" \
+        "UC-6: eslint anti-slop/AP-TS-MAINT-006 good fixture (no widening -> no AP-TS-MAINT-006)"
+fi
