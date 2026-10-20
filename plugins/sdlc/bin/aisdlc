@@ -1409,7 +1409,15 @@ run_scope_check() {
             done <<< "$prohibited_pats"
         fi
         [ "$classified" -eq 1 ] && continue
-        # 3. In scope (spec In: + Context)
+        # 3. Pipeline artefacts written by qa/ship into this task's own spec dir
+        #    (scope-report.md, qa-report.md, qa/*, pr-body.md, BLOCKED.md, …).
+        #    These are already excluded from the size budget and can never be
+        #    pre-declared in the spec; treat them as in scope automatically.
+        case "$f" in "${specs_dir}/${ticket}/"*)
+            in_files="${in_files:+$in_files$'\n'}$f"; classified=1 ;;
+        esac
+        [ "$classified" -eq 1 ] && continue
+        # 4. In scope (spec In: + Context)
         if [ -n "$in_pats" ]; then
             while IFS= read -r pat; do
                 [ -n "$pat" ] || continue
@@ -1419,7 +1427,7 @@ run_scope_check() {
             done <<< "$in_pats"
         fi
         [ "$classified" -eq 1 ] && continue
-        # 4. Undeclared — conservative default
+        # 5. Undeclared — conservative default
         undeclared="${undeclared:+$undeclared$'\n'}$f"
     done <<< "$changed"
 

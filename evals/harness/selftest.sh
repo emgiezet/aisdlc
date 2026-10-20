@@ -589,9 +589,10 @@ grep -q 'Verdict: PASS' "${D}scope-report.md" 2>/dev/null \
 # --------------------------------------------------------------------------- #
 printf '\nscope-check: undeclared changed file → GAPS, chain continues\n'
 R="$WORK/scope-gaps"
-# In: covers only pkg/ — specs/SBX-1/qa-report.md (committed by stub qa) is undeclared.
+# In: covers only pkg/stub.go — pkg/stub_test.go (committed by stub implement) is undeclared;
+# specs/SBX-1/qa-report.md is the task's own spec dir and must NOT be undeclared (regression).
 fresh_repo_scope "$R" \
-    $'- `pkg/`' \
+    $'- `pkg/stub.go`' \
     "" \
     ""
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
@@ -609,6 +610,25 @@ grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
 [ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
     && ok "scope GAPS: scope_verdict in task.json" \
     || bad "scope_verdict GAPS" "$(task_field "$R" .scope_verdict)"
+
+# --------------------------------------------------------------------------- #
+printf '\nscope-check: own spec-dir artefacts are never undeclared → PASS (regression)\n'
+R="$WORK/scope-own-spec-dir"
+# In: covers pkg/ only — specs/SBX-1/qa-report.md is the task's own spec dir artefact and
+# must be classified as in scope automatically, not flagged as undeclared.
+fresh_repo_scope "$R" \
+    $'- `pkg/`' \
+    "" \
+    ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
+    && ok "scope own-spec-dir: verdict is PASS (artefacts not undeclared)" \
+    || bad "scope own-spec-dir verdict" "$(task_field "$R" .scope_verdict)"
+grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
+    && bad "scope own-spec-dir report" "specs/SBX-1/qa-report.md wrongly listed as undeclared" \
+    || ok "scope own-spec-dir: no undeclared entry — own spec-dir artefacts are in scope"
 
 # --------------------------------------------------------------------------- #
 printf '\nscope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship\n'
