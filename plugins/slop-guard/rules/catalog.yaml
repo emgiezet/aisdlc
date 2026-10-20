@@ -1212,6 +1212,25 @@
   detect: []
   prevent_in_skill: true
   references: []
+
+- id: AP-TS-PERF-005
+  title: O(n²) reduce accumulator spreading
+  language: [typescript]
+  frameworks: [plain]
+  category: performance
+  severity: warn
+  cwe: []
+  summary: Spreading the accumulator on every reduce iteration creates a new object at each step, making the whole operation O(n²) in both time and memory allocations. The accumulated result from all previous iterations is copied on each call. Mutate the accumulator in place instead and return it; total allocation becomes O(1) objects rather than O(n).
+  skill_line: Never spread the accumulator in `reduce`; mutate in-place (`acc[key] = val; return acc`).
+  bad: |
+    const index = items.reduce((acc, x) => ({ ...acc, [x.id]: x }), {} as Record<string, Item>);
+  good: |
+    const index = items.reduce((acc, x) => { acc[x.id] = x; return acc; }, {} as Record<string, Item>);
+  detect:
+    - { tool: eslint, rule: "anti-slop/no-reduce-accumulator-copy" }
+  prevent_in_skill: true
+  references: []
+
 - id: AP-TS-MAINT-001
   title: any type, non-null assertions, or unsafe casts on external data
   language: [typescript]
@@ -1392,6 +1411,25 @@
   detect:
     - { tool: eslint, rule: "anti-slop/no-reflect-get" }
     - { tool: eslint, rule: "anti-slop/no-reflect-apply" }
+  prevent_in_skill: true
+  references: []
+
+- id: AP-TS-MAINT-009
+  title: Whole-module mock replaces the module contract instead of targeting one export
+  language: [typescript]
+  frameworks: [plain]
+  category: maintainability
+  severity: warn
+  cwe: []
+  summary: Replacing an entire module with jest.mock() or vi.mock() couples the test to the module's internal structure rather than its public contract. Any refactor that moves a function to a different file breaks every test that mocks the module, even when the behavior is unchanged. Use vi.spyOn or jest.spyOn to replace only the specific export the test needs to control; the rest of the module runs its real implementation.
+  skill_line: Replace `jest.mock`/`vi.mock` full-module replacement with `vi.spyOn`/`jest.spyOn` on specific exports.
+  bad: |
+    jest.mock('../auth');
+  good: |
+    import * as auth from '../auth';
+    vi.spyOn(auth, 'getUser').mockReturnValue(fakeUser);
+  detect:
+    - { tool: eslint, rule: "anti-slop/no-module-mocking" }
   prevent_in_skill: true
   references: []
 

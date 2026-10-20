@@ -91,6 +91,8 @@ export default defineConfig(
       'anti-slop/no-unsafe-dictionary-type': 'warn',
       'anti-slop/no-reflect-get': 'warn',
       'anti-slop/no-reflect-apply': 'warn',
+      'anti-slop/no-reduce-accumulator-copy': 'warn',
+      'anti-slop/no-module-mocking': 'warn',
     },
   },
 

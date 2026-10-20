@@ -283,3 +283,13 @@ rules:
     severity: warn
     category: maintainability
     cwe: ""
+  "anti-slop/no-reduce-accumulator-copy":
+    ap_id: AP-TS-PERF-005
+    severity: warn
+    category: performance
+    cwe: ""
+  "anti-slop/no-module-mocking":
+    ap_id: AP-TS-MAINT-009
+    severity: warn
+    category: maintainability
+    cwe: ""

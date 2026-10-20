@@ -3,6 +3,11 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **AP-TS-PERF-005 and AP-TS-MAINT-009 added** (GH-42-c, 2026-10-20)
+  Warn on quadratic reduce-accumulator copying and whole-module `jest.mock`/`vi.mock`.
+  Catalogue, ESLint mappings and generated skills include both rules; isolated bad/good
+  fixtures contrast accumulator mutation and targeted spies with the flagged patterns.
+
 - **AP-TS-MAINT-007 and AP-TS-MAINT-008 added** (GH-42-b, 2026-10-20)
   Five warn-level anti-slop rules flag `unknown`/`object` signatures and unsafe dictionaries;
   two flag `Reflect.get`/`Reflect.apply` bypasses. Catalogue, ESLint mappings and prevention
