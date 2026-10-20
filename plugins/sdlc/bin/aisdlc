@@ -53,6 +53,8 @@ BUILTIN_BUDGET_ADDED="400"
 BUILTIN_BUDGET_FILES="15"
 BUILTIN_BUDGET_MODULES="3"
 BUILTIN_BUDGET_CEILING="3000"
+BUILTIN_STRUCT_EROSION_MAX="0.05"
+BUILTIN_STRUCT_HOTSPOT_MAX="0"
 
 # Map a phase name to its cost role.  Unknown phases → default.
 phase_role() {
@@ -1337,6 +1339,235 @@ _write_size_section() {
     } >> "$out"
 }
 
+# --------------------------------------------------------------------------- #
+# structure check — SlopCodeBench erosion (arXiv 2603.24755 v2 §2.3)
+# --------------------------------------------------------------------------- #
+
+# Like _budget_profile but handles floating-point values (e.g. "0.05").
+# Uses literal index() matching to avoid regex metachar issues with **.
+_budget_profile_float() {
+    local file="$1" label="$2"
+    [ -f "$file" ] || return 0
+    awk -v lbl="$label" '
+        /^## Change budget/ { in_b = 1; next }
+        in_b && /^## /      { in_b = 0; next }
+        in_b {
+            marker = "**" lbl ":**"
+            pos = index($0, marker)
+            if (pos > 0) {
+                val = substr($0, pos + length(marker))
+                gsub(/^[[:space:]]+/, "", val)
+                gsub(/[[:space:]].*/, "", val)
+                if (val ~ /^[0-9]/) { print val; exit }
+            }
+        }' "$file"
+}
+
+# Get changed code files (Added/Modified/Renamed, filtered by extension and exclusion rules).
+# Prints "<status> <after-path>" per line; status is A, M, or R.
+# Bash/shell files are excluded (lizard has no shell parser).
+_struct_code_files() {
+    local wt="$1" base="$2" specs_dir="$3"
+    git -C "$wt" diff --diff-filter=AMR --name-status "${base}...HEAD" 2>/dev/null | awk \
+        -v specs="$specs_dir" -v excl="$_SIZE_EXCLUDE" '
+        {
+            status = substr($1, 1, 1)
+            path = $NF
+            if (specs != "" && index(path, specs "/") == 1) next
+            if (path ~ excl) next
+            n = split(path, seg, ".")
+            ext = seg[n]
+            if (ext !~ /^(py|js|jsx|mjs|cjs|ts|tsx|mts|cts|go|php|java|kt|kts|cs|rb|rs)$/) next
+            print status " " path
+        }'
+}
+
+# Analyze before/after lizard CSV data; paths may carry a prefix that is stripped.
+# Prints structured pipe-separated records (one per line):
+#   erosion_before|<val>
+#   erosion_after|<val>
+#   new_hotspot|<name>|<cc_before>|<cc_after>|<sloc>    (zero or more)
+#   hotspot25|<name>|<cc_before>|<cc_after>|<sloc>      (zero or more)
+#   largest_increase|<name>|<cc_before>|<cc_after>|<sloc>   (at most one)
+# mass(f) = CC(f) * sqrt(SLOC(f)); erosion = sum(mass, CC>10) / sum(mass); 0 when sum=0.
+_struct_analyze() {
+    local before_csv="$1" after_csv="$2" bpfx="${3:-}" apfx="${4:-}"
+    {
+        printf '%s\n' "$before_csv"
+        printf '%s\n' "---AFTER---"
+        printf '%s\n' "$after_csv"
+    } | awk -F, -v bpfx="$bpfx" -v apfx="$apfx" '
+    BEGIN { pass = "before" }
+    /^---AFTER---$/ { pass = "after"; next }
+    /^NLOC,/        { next }   # header line
+    NF < 9          { next }   # malformed
+    {
+        nloc = $1+0; cc = $2+0
+        file = $7; long_name = $9
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", file)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", long_name)
+        pfx = (pass == "before") ? bpfx : apfx
+        if (pfx != "" && index(file, pfx) == 1) file = substr(file, length(pfx)+1)
+        sub(/^\//, "", file)
+        key = file "|" long_name
+        m = cc * sqrt(nloc)
+        if (pass == "before") {
+            b_nloc[key] = nloc; b_cc[key] = cc
+            b_total += m
+            if (cc > 10) b_hot += m
+        } else {
+            a_nloc[key] = nloc; a_cc[key] = cc
+            a_total += m
+            if (cc > 10) a_hot += m
+        }
+    }
+    END {
+        b_ero = (b_total > 0) ? b_hot/b_total : 0
+        a_ero = (a_total > 0) ? a_hot/a_total : 0
+        printf "erosion_before|%.4f\n", b_ero
+        printf "erosion_after|%.4f\n",  a_ero
+        max_inc = -1; max_name = ""; max_cb = 0; max_ca = 0; max_sl = 0
+        for (key in a_cc) {
+            cc_a = a_cc[key]; nl_a = a_nloc[key]
+            cc_b = (key in b_cc) ? b_cc[key] : 0
+            if (cc_a > 10 && cc_b <= 10) {
+                split(key, kp, "|"); printf "new_hotspot|%s|%d|%d|%d\n", kp[2], cc_b, cc_a, nl_a
+            }
+            if (cc_a > 25 && cc_b <= 25) {
+                split(key, kp, "|"); printf "hotspot25|%s|%d|%d|%d\n", kp[2], cc_b, cc_a, nl_a
+            }
+            inc = cc_a - cc_b
+            if (inc > max_inc) {
+                max_inc = inc; split(key, kp, "|")
+                max_name = kp[2]; max_cb = cc_b; max_ca = cc_a; max_sl = nl_a
+            }
+        }
+        if (max_name != "") printf "largest_increase|%s|%d|%d|%d\n", max_name, max_cb, max_ca, max_sl
+    }'
+}
+
+# Build the body of the ## Structure section from analysis records and thresholds.
+# Prints the section body (erosion line, table, largest-increase line, findings).
+# Structure findings NEVER block (they promote PASS→GAPS only).
+_struct_text() {
+    local records="$1" erosion_max="${2:-$BUILTIN_STRUCT_EROSION_MAX}" hotspot_max="${3:-$BUILTIN_STRUCT_HOTSPOT_MAX}"
+    local b_ero a_ero nh_count h25_count li_line
+    b_ero="$(printf '%s\n' "$records" | awk -F'|' '/^erosion_before\|/{print $2; exit}')"
+    a_ero="$(printf '%s\n' "$records" | awk -F'|' '/^erosion_after\|/{print $2; exit}')"
+    nh_count="$(printf '%s\n' "$records" | awk '/^new_hotspot\|/{n++} END{print n+0}')"
+    h25_count="$(printf '%s\n' "$records" | awk '/^hotspot25\|/{n++} END{print n+0}')"
+    li_line="$(printf '%s\n' "$records" | grep '^largest_increase|' || true)"
+
+    printf 'Erosion: %s -> %s\n\n' \
+        "$(awk -v v="${b_ero:-0}" 'BEGIN{printf "%.2f",v+0}')" \
+        "$(awk -v v="${a_ero:-0}" 'BEGIN{printf "%.2f",v+0}')"
+
+    # Table of newly-crossing functions (all new_hotspot entries)
+    if [ "${nh_count:-0}" -gt 0 ]; then
+        printf '| Function | CC | SLOC |\n|----------|----|------|\n'
+        while IFS='|' read -r _t name cc_b cc_a sloc; do
+            printf '| %s | %s -> %s | %s |\n' "$name" "$cc_b" "$cc_a" "$sloc"
+        done < <(printf '%s\n' "$records" | grep '^new_hotspot|')
+        printf '\n'
+    fi
+
+    # Largest CC increase line
+    if [ -n "$li_line" ]; then
+        local _t li_name li_cb li_ca li_sl
+        IFS='|' read -r _t li_name li_cb li_ca li_sl <<< "$li_line"
+        printf 'Largest CC increase: %s %s -> %s (SLOC %s)\n' "$li_name" "$li_cb" "$li_ca" "$li_sl"
+    fi
+
+    # Findings section (structure never causes BLOCKED)
+    local has_finding=0
+
+    # Erosion finding: delta > max
+    local delta
+    delta="$(awk -v b="${b_ero:-0}" -v a="${a_ero:-0}" 'BEGIN{printf "%.4f", (a+0)-(b+0)}')"
+    if awk -v d="$delta" -v m="${erosion_max}" 'BEGIN{exit (d+0 > m+0) ? 0 : 1}'; then
+        [ "$has_finding" -eq 0 ] && { printf '\n### Findings\n\n'; has_finding=1; }
+        printf -- '- erosion: %s -> %s (delta %s, max %s)\n' \
+            "$(awk -v v="${b_ero:-0}" 'BEGIN{printf "%.2f",v+0}')" \
+            "$(awk -v v="${a_ero:-0}" 'BEGIN{printf "%.2f",v+0}')" \
+            "$(awk -v v="$delta"      'BEGIN{printf "%.2f",v+0}')" \
+            "$erosion_max"
+    fi
+
+    # New hotspot findings: count > max
+    if [ "${nh_count:-0}" -gt "${hotspot_max:-0}" ]; then
+        while IFS='|' read -r _t name cc_b cc_a sloc; do
+            [ "$has_finding" -eq 0 ] && { printf '\n### Findings\n\n'; has_finding=1; }
+            printf -- '- new hotspot: %s CC %s -> %s SLOC %s\n' "$name" "$cc_b" "$cc_a" "$sloc"
+        done < <(printf '%s\n' "$records" | grep '^new_hotspot|')
+    fi
+
+    # Hotspot over 25 findings: always, regardless of max
+    if [ "${h25_count:-0}" -gt 0 ]; then
+        while IFS='|' read -r _t name cc_b cc_a sloc; do
+            [ "$has_finding" -eq 0 ] && { printf '\n### Findings\n\n'; has_finding=1; }
+            printf -- '- hotspot over 25: %s CC %s -> %s SLOC %s\n' "$name" "$cc_b" "$cc_a" "$sloc"
+        done < <(printf '%s\n' "$records" | grep '^hotspot25|')
+    fi
+}
+
+# Append the ## Structure section to a scope report.
+# $1=report-file, $2=section-body-text (empty string → skip)
+_write_structure_section() {
+    local out="$1" body="$2"
+    { printf '\n## Structure\n\n'; printf '%s\n' "$body"; } >> "$out"
+}
+
+# Run lizard before/after and return analysis records, or a skip:<reason> string.
+# $1=wt $2=base $3=specs_dir
+# Prints records (for _struct_text) or "skip:<reason>" on stdout; always returns 0.
+_struct_run_lizard() {
+    local wt="$1" base="$2" specs_dir="$3"
+
+    local code_files_raw
+    code_files_raw="$(_struct_code_files "$wt" "$base" "$specs_dir")"
+    [ -n "$code_files_raw" ] || { printf 'skip:nofiles'; return 0; }
+
+    command -v lizard >/dev/null 2>&1 || { printf 'skip:not installed'; return 0; }
+
+    # Prepare temp dir for before-versions of Modified files
+    local tmp; tmp="$(mktemp -d)"
+    local before_files=() after_files=()
+
+    while IFS=' ' read -r status path; do
+        after_files+=("$wt/$path")
+        if [ "$status" = "M" ]; then
+            local bdir; bdir="$(dirname "$tmp/$path")"
+            mkdir -p "$bdir"
+            if git -C "$wt" show "${base}:${path}" > "$tmp/$path" 2>/dev/null; then
+                before_files+=("$tmp/$path")
+            fi
+        fi
+    done <<< "$code_files_raw"
+
+    # Before pass (Modified files only — Added/Renamed count as new, no before)
+    local before_csv=""
+    if [ ${#before_files[@]} -gt 0 ]; then
+        if ! before_csv="$(_AISDLC_STRUCT_PASS=before lizard --csv "${before_files[@]}" 2>/dev/null)"; then
+            rm -rf "$tmp"
+            printf 'skip:lizard failed'
+            return 0
+        fi
+    fi
+
+    # After pass (all code files at HEAD)
+    local after_csv
+    if ! after_csv="$(lizard --csv "${after_files[@]}" 2>/dev/null)"; then
+        rm -rf "$tmp"
+        printf 'skip:lizard failed'
+        return 0
+    fi
+
+    local bpfx="${tmp}/" apfx="${wt}/"
+    _struct_analyze "$before_csv" "$after_csv" "$bpfx" "$apfx"
+    rm -rf "$tmp"
+}
+
+
 # Native scope-check phase: classify the branch's changed files against the spec's
 # declared scope (In:/Out:/Context) and the project's repo-wide out-of-bounds list.
 # Writes specs/<TICKET>/scope-report.md and commits it. Records scope_verdict in
@@ -1456,6 +1687,37 @@ run_scope_check() {
     _write_scope_report "$report_wt" "$ticket" "$base" "$in_files" "$undeclared" "$oob" "$verdict"
     _write_size_section "$report_wt" "$added" "$n_files" "$n_mods" "$modlist" \
         "$b_added" "$b_files" "$b_mods" "$ceiling" "$size_findings"
+
+    # Structure check — SlopCodeBench erosion; never causes BLOCKED.
+    local erosion_max hotspot_max struct_result struct_body
+    erosion_max="$(_budget_profile_float "$profile" 'Erosion delta max')"
+    [ -n "$erosion_max" ] || erosion_max="$BUILTIN_STRUCT_EROSION_MAX"
+    hotspot_max="$(_budget_profile "$profile" 'New hotspots max')"
+    [ -n "$hotspot_max" ] || hotspot_max="$BUILTIN_STRUCT_HOTSPOT_MAX"
+
+    struct_result="$(_struct_run_lizard "$wt" "$base" "$specs_dir")"
+    case "$struct_result" in
+        skip:nofiles)
+            # No code files changed — omit the ## Structure section entirely
+            printf '[%s] scope-check: structure skipped (no code files)\n' "$(ts)" >> "$log"
+            struct_body=""
+            ;;
+        skip:*)
+            struct_body="${struct_result#skip:}"
+            printf '[%s] scope-check: structure %s\n' "$(ts)" "$struct_body" >> "$log"
+            _write_structure_section "$report_wt" "$struct_body"
+            struct_body=""  # already written, mark as handled
+            ;;
+        *)
+            struct_body="$(_struct_text "$struct_result" "$erosion_max" "$hotspot_max")"
+            _write_structure_section "$report_wt" "$struct_body"
+            if printf '%s' "$struct_body" | grep -q '^### Findings'; then
+                [ "$verdict" = "PASS" ] && verdict="GAPS"
+            fi
+            struct_body=""  # already written
+            ;;
+    esac
+
     git -C "$wt" add "$specs_dir/$ticket/scope-report.md" >> "$log" 2>&1
     git -C "$wt" -c user.name=aisdlc -c user.email=aisdlc@localhost \
         commit -q -m "docs(scope): scope report for $ticket [$verdict]" >> "$log" 2>&1
