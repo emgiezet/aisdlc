@@ -103,9 +103,10 @@ runs them in this order and treats a second failure of the same command as a har
 Things an unattended run must never touch, whatever a spec says. Additive to each spec's own
 `Out:` section.
 
-- Generated files and lock files, unless the spec names them — here: `plugins/slop-guard/skills/*-antipatterns/**`
-  and `plugins/slop-guard/skills/agent-discipline/**` (regenerate via `scripts/gen-skills`),
-  `plugins/slop-guard/tools/tools.lock.json`
+- Generated files and lock files, unless the spec names them — here the generated slop-guard
+  skills (the antipatterns skills and agent-discipline: regenerate with gen-skills, never edit
+  by hand) and the pinned tools lock. Deliberately no backticked paths: scope-check would turn
+  them into hard prohibitions, and every catalogue change regenerates those skills.
 - CI configuration, unless the spec is about CI
 - `version` fields in any manifest and `chore(release):` commits — the release workflow owns them
 - `evals/fixtures/sandbox/**` — the eval fixture; changing it changes what every eval measures
