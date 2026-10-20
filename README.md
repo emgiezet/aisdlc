@@ -195,6 +195,11 @@ deletion retired in `.claude/retired-tests` on the base passes), and ship does n
   runs it. The queue never merges.
 - **Cost is bounded and recorded.** A per-phase spend cap, the actual cost in each task's record,
   and `/sdlc:retro` to rank what the harness cost, by cause.
+- **Evidence survives.** Every terminal task is archived locally before its worktree is removed:
+  phase logs (redacted), spec artefacts, and a `manifest.json` with per-file sha256 checksums.
+  Archive root: `$AISDLC_ARCHIVE` or `~/.local/share/aisdlc/archive`. Set `AISDLC_ARCHIVE=off`
+  to disable. Details: [`docs/ai-sdlc.md` → Archive](docs/ai-sdlc.md#archive).
+
 
 ## 📦 Catalog
 
@@ -592,6 +597,9 @@ Releases are not hand-made. When `Validate` goes green on `main`,
 tag — `feat!`/`BREAKING CHANGE` → major, `feat` → minor, anything else → patch — runs the matching
 `make bump-*`, bumps `slop-guard` by the same step only when `plugins/slop-guard/` changed, then
 commits `chore(release): vX.Y.Z`, tags it and publishes the GitHub release with generated notes.
+Superseded validation runs skip the release when their commit is no longer the tip of `main`.
+The bump commit and its tag are pushed atomically: if `main` advances after that check, neither
+ref is published, leaving the newer validation run to release.
 Run it by hand with a forced level from the Actions tab (`workflow_dispatch`, `level:`); the manual
 path is still `make bump-patch|bump-minor|bump-major` and `make bump-slopguard`.
 

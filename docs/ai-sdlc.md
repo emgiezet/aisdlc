@@ -302,6 +302,49 @@ the dispatch that would carry it.
 {"model": "sonnet", "model_roles": {"smol": "haiku", "slow": "opus"}}
 ```
 
+## Archive
+
+Every task that reaches a terminal status (`done`, `failed`, `refused`, `cancelled`) is
+automatically archived before its worktree is removed. The archive is local-only and private:
+nothing is uploaded or synced.
+
+**Location:** `$AISDLC_ARCHIVE` when set; otherwise
+`${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive`.
+Set `AISDLC_ARCHIVE=off` to disable archiving entirely.
+
+**Layout:**
+```
+<root>/
+  index.jsonl               — one JSON line per archived task (append-only, flock-ed)
+  <repo-slug>/              — <basename>-<8 hex of sha256 of absolute repo path>
+    <YYYY-MM>/
+      <task-id>/            — first run
+        manifest.json       — all task metadata + redaction counts + per-file sha256 map
+        task.json           — copy of .aisdlc/tasks/<id>/task.json
+        phases/             — *.log and *.json for each phase that ran
+        spec/               — spec.md, qa-report.md, scope-report.md, verify-report.md,
+                              pr-body.md, BLOCKED.md (whichever exist at archive time)
+      <task-id>.2/          — second run (after aisdlc retry), etc.
+```
+
+After cancellation before the first execution, that execution uses `<task-id>.1/`.
+An existing archive directory is never overwritten.
+
+**Redaction:** every archived text file is redacted before its sha256 is recorded.
+Built-in rules: Anthropic/OpenAI API keys (`sk-ant-…` / `sk-…`), GitHub tokens
+(`ghp_`, `gho_`, `ghs_`, `github_pat_`), AWS access key IDs, `Bearer <token>`,
+PEM private key blocks, and `KEY=value` lines whose key contains `TOKEN`, `SECRET`,
+`PASSWORD`, `API_KEY`, or `PRIVATE`. Each match becomes `[REDACTED:<rule>]`.
+The live task files in `.aisdlc/tasks/` are **not** redacted — only the archive copy is.
+`manifest.json` carries `redactions: {"<rule>": <count>}` across all archived files.
+Temporary raw copies and newly created archive files are owner-only. The manifest uses
+redacted task metadata; generated index records also pass through redaction.
+
+A failed copy or redaction withholds the new archive and index entry. Archive errors
+(including an unwritable root or full disk) log `archive failed: <reason>` to `run.log`
+and never change the task's status or the runner's exit code. Existing archive entries
+remain intact.
+
 ## Failure modes
 
 | Symptom | Real cause | Fix |

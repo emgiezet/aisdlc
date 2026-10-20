@@ -138,11 +138,13 @@ case "$(task_field "$R" .error)" in *BLOCKED*) ok "error mentions BLOCKED.md" ;;
 printf '\nGH-52: implement that changes nothing is caught before qa runs\n'
 R="$WORK/gh52-refuse"; fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
-AISDLC_STUB=refuse "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+AISDLC_ARCHIVE="$WORK/gh52-archive" AISDLC_STUB=refuse "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "failed" ] && ok "GH-52 UC-1: status failed" || bad "GH-52 UC-1 status" "$(task_field "$R" .status)"
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 [ ! -f "${D}qa.json" ] && ok "GH-52 UC-1: qa.json absent" || bad "GH-52 UC-1 qa" "qa.json exists"
 [ "$(task_field "$R" .error)" = "phase 'implement' failed — it changed no file; see implement.json for why" ] && ok "GH-52 UC-1: exact no-change diagnostic" || bad "GH-52 UC-1 error" "$(task_field "$R" .error)"
+jq -e '.status == "failed"' "$WORK/gh52-archive/index.jsonl" >/dev/null 2>&1 \
+    && ok "GH-52 UC-1: empty implementation failure archived" || bad "GH-52 archive" "terminal record missing"
 R="$WORK/gh52-uc3"; fresh_repo "$R"; BASE="$(git -C "$R" rev-parse HEAD)"
 mkdir -p "$R/.claude/rules"; printf 'x\n' > "$R/.claude/rules/test.md"
 git -C "$R" add .claude/rules/test.md && git -C "$R" commit -qm "agent config only"
@@ -907,10 +909,7 @@ grep -q 'Largest CC increase' "${D}scope-report.md" 2>/dev/null \
 
 # --------------------------------------------------------------------------- #
 printf '\nstructure UC-3: lizard not on PATH → skipped: not installed, no finding\n'
-# This test relies on lizard not being installed in the test environment (the selftest
-# runner has no real lizard, and the stub-lizard is only added for UC-1 via
-# _LIZARD_STUB_DIR). Running with the normal stub PATH naturally exercises the
-# "not installed" path without requiring a fully-enumerated restricted PATH.
+# Hide only the optional external tool; do not depend on the host's installed toolchain.
 R="$WORK/struct-uc3"
 fresh_repo_scope "$R" \
     $'- `pkg/`\n- `specs/SBX-1/`' \
@@ -922,9 +921,15 @@ git -C "$R" add -A && git -C "$R" commit -q -m "feat: add stub at base"
 git -C "$R" update-ref refs/remotes/origin/master HEAD
 mkdir -p "$R/.aisdlc"
 printf '{"verify":["true"]}\n' > "$R/.aisdlc/config.json"
-# Run without the lizard stub dir — no lizard binary on PATH in the selftest environment.
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
-"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+(
+    command() {
+        [ "${1:-}" = "-v" ] && [ "${2:-}" = "lizard" ] && return 1
+        builtin command "$@"
+    }
+    export -f command
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+)
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 grep -q '## Structure' "${D}scope-report.md" 2>/dev/null \
     && ok "UC-3: ## Structure section present (skipped message)" \
@@ -1559,10 +1564,12 @@ _LN_BIN="$WORK/gh60-uc5-bin"
 mkdir -p "$_LN_BIN"
 printf '#!/bin/sh\nif [ "${1:-}" = "-sfn" ]; then exit 1; fi\nexec /bin/ln "$@"\n' > "$_LN_BIN/ln"
 chmod +x "$_LN_BIN/ln"
-PATH="$_LN_BIN:$PATH" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+AISDLC_ARCHIVE="$WORK/gh60-archive" PATH="$_LN_BIN:$PATH" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "failed" ] \
     && ok "GH-60 UC-5: task status is failed" \
     || bad "GH-60 UC-5 status" "$(task_field "$R" .status)"
+jq -e '.status == "failed"' "$WORK/gh60-archive/index.jsonl" >/dev/null 2>&1 \
+    && ok "GH-60 UC-5: tracker-link failure archived" || bad "GH-60 archive" "terminal record missing"
 _TF5="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
 jq -e '.error' "$_TF5" 2>/dev/null | grep -qi 'symlink' \
     && ok "GH-60 UC-5: .error field mentions symlink failure" \
@@ -1593,6 +1600,260 @@ _WT6="$(jq -r '.worktree' "$_TF6")"
     && ok "GH-60 UC-6: no symlink or tracker dir created in worktree for github tracker" \
     || bad "GH-60 UC-6" "unexpected symlink or tracker dir at $_WT6/.aisdlc/tracker"
 unset _TF6 _WT6
+# archive tests — UC-6 through UC-13 (GH-43-b)
+# --------------------------------------------------------------------------- #
+
+# Helper: archive slug for a repo absolute path.
+arc_slug() { local p; p="$(cd "$1" && pwd)"; printf '%s-%s' "$(basename "$p")" "$(printf '%s' "$p" | sha256sum | cut -c1-8)"; }
+
+printf '\narchive: done task writes archive dir, manifest, task.json, phases, spec (UC-6)\n'
+R_ARC6="$WORK/arc-uc6"; ARC6="$WORK/arc-uc6-root"
+fresh_repo "$R_ARC6"
+"$AISDLC" add SBX-1 --repo "$R_ARC6" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC6" "$AISDLC" run --repo "$R_ARC6" --once >/dev/null 2>&1
+[ "$(task_field "$R_ARC6" .status)" = "done" ] && ok "UC-6: task done" || bad "UC-6 pre" "status $(task_field "$R_ARC6" .status)"
+_ARC6_ID="$(ls -1 "$R_ARC6/.aisdlc/tasks" | head -1)"
+_ARC6_SLUG="$(arc_slug "$R_ARC6")"
+_ARC6_DIR="$ARC6/$_ARC6_SLUG/$(date -u +%Y-%m)/$_ARC6_ID"
+[ -d "$_ARC6_DIR" ] && ok "UC-6: archive dir created" || bad "UC-6 dir" "not found: $_ARC6_DIR"
+[ -f "$_ARC6_DIR/manifest.json" ] && ok "UC-6: manifest.json present" || bad "UC-6 manifest" "missing"
+[ -f "$_ARC6_DIR/task.json" ] && ok "UC-6: task.json present" || bad "UC-6 task.json" "missing"
+[ -f "$_ARC6_DIR/phases/implement.log" ] && ok "UC-6: phases/implement.log present" || bad "UC-6 impl.log" "missing"
+[ -f "$_ARC6_DIR/spec/spec.md" ] && ok "UC-6: spec/spec.md present" || bad "UC-6 spec.md" "missing"
+[ -f "$_ARC6_DIR/spec/qa-report.md" ] && ok "UC-6: spec/qa-report.md present" || bad "UC-6 qa-report" "missing"
+# Every file in manifest.files has sha256sum that matches.
+_arc6_hash_ok=1; _arc6_bad=""
+while IFS= read -r _ent; do
+    _rel="$(printf '%s' "$_ent" | jq -r '.key')"; _exp="$(printf '%s' "$_ent" | jq -r '.value')"
+    _act="$(sha256sum "$_ARC6_DIR/$_rel" 2>/dev/null | cut -c1-64)"
+    [ "$_exp" = "$_act" ] || { _arc6_hash_ok=0; _arc6_bad="$_rel"; break; }
+done < <(jq -c '.files | to_entries[]' "$_ARC6_DIR/manifest.json" 2>/dev/null)
+[ "$_arc6_hash_ok" -eq 1 ] && ok "UC-6: sha256sum of every file matches manifest.files" \
+    || bad "UC-6 sha256" "mismatch on $_arc6_bad"
+# Verify individual manifest fields required by spec are present.
+jq -e 'has("policy_fingerprint") and has("aisdlc_version") and has("archived_at") and
+        has("runtime_version") and has("sessions") and has("attempts")' \
+    "$_ARC6_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-6: manifest has required fields (policy_fingerprint, aisdlc_version, archived_at, runtime_version, sessions, attempts)" \
+    || bad "UC-6 manifest-fields" "$(jq 'keys' "$_ARC6_DIR/manifest.json" 2>/dev/null)"
+
+
+printf '\narchive: index.jsonl gains exactly one line with id, status, path (UC-7)\n'
+[ -f "$ARC6/index.jsonl" ] && ok "UC-7: index.jsonl created" || bad "UC-7 index" "missing"
+[ "$(wc -l < "$ARC6/index.jsonl" | tr -d ' ')" -eq 1 ] \
+    && ok "UC-7: exactly one line" || bad "UC-7 lines" "$(wc -l < "$ARC6/index.jsonl" | tr -d ' ') lines"
+jq -e --arg id "$_ARC6_ID" --arg p "$_ARC6_DIR" \
+    'select(.id == $id and .status == "done" and .path == $p)' \
+    "$ARC6/index.jsonl" >/dev/null 2>&1 \
+    && ok "UC-7: index has id, status done, correct path" \
+    || bad "UC-7 entry" "$(cat "$ARC6/index.jsonl" 2>/dev/null)"
+
+printf '\narchive: anthropic key in phase log is redacted; live log unchanged (UC-8)\n'
+R="$WORK/arc-uc8"; ARC8="$WORK/arc-uc8-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC8" AISDLC_STUB=keyleak "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-8: task done" || bad "UC-8 pre" "status $(task_field "$R" .status)"
+_ARC8_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC8_DIR="$ARC8/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC8_ID"
+grep -q '\[REDACTED:anthropic-key\]' "$_ARC8_DIR/phases/implement.log" 2>/dev/null \
+    && ok "UC-8: archived log has [REDACTED:anthropic-key]" \
+    || bad "UC-8 redacted" "$(grep 'sk-ant\|REDACT' "$_ARC8_DIR/phases/implement.log" 2>/dev/null | head -1)"
+grep -q 'sk-ant-' "$R/.aisdlc/tasks/$_ARC8_ID/implement.log" 2>/dev/null \
+    && ok "UC-8: live log unchanged (key still present)" \
+    || bad "UC-8 live" "key not in live log"
+jq -e '(.redactions["anthropic-key"] // 0) >= 1' "$_ARC8_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-8: manifest.redactions[anthropic-key] >= 1" \
+    || bad "UC-8 count" "$(jq '.redactions' "$_ARC8_DIR/manifest.json" 2>/dev/null)"
+
+printf '\narchive: failed task archived with status failed and BLOCKED.md (UC-9)\n'
+R_ARC9="$WORK/arc-uc9"; ARC9="$WORK/arc-uc9-root"
+fresh_repo "$R_ARC9"
+"$AISDLC" add SBX-1 --repo "$R_ARC9" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC9" AISDLC_STUB=blocked "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
+[ "$(task_field "$R_ARC9" .status)" = "failed" ] && ok "UC-9: task failed" || bad "UC-9 pre" "status $(task_field "$R_ARC9" .status)"
+_ARC9_ID="$(ls -1 "$R_ARC9/.aisdlc/tasks" | head -1)"
+_ARC9_DIR="$ARC9/$(arc_slug "$R_ARC9")/$(date -u +%Y-%m)/$_ARC9_ID"
+[ -d "$_ARC9_DIR" ] && ok "UC-9: archive dir created for failed task" || bad "UC-9 dir" "missing"
+jq -e '.status == "failed"' "$_ARC9_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-9: manifest status is failed" || bad "UC-9 status" "$(jq -r '.status' "$_ARC9_DIR/manifest.json" 2>/dev/null)"
+[ -f "$_ARC9_DIR/spec/BLOCKED.md" ] \
+    && ok "UC-9: spec/BLOCKED.md in archive" || bad "UC-9 BLOCKED.md" "missing"
+[ -f "$_ARC9_DIR/spec/spec.md" ] \
+    && ok "UC-9: spec/spec.md in archive (worktree spec/ reports present)" \
+    || bad "UC-9 spec.md" "spec/spec.md missing from archive"
+
+
+printf '\narchive: refused task archives BLOCKED.md before worktree removal (UC-10)\n'
+R="$WORK/arc-uc10"; ARC10="$WORK/arc-uc10-root"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues" "$R/.claude"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ARCISSUE'
+---
+number: 42
+title: archive test issue
+state: open
+labels: [bug]
+assignees: []
+---
+## Comments
+ARCISSUE
+printf -- '- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
+AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" add --issue 42 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "refused" ] \
+    && ok "UC-10: task refused" || bad "UC-10 status" "$(task_field "$R" .status)"
+_ARC10_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC10_DIR="$ARC10/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC10_ID"
+[ -d "$_ARC10_DIR" ] && ok "UC-10: archive dir for refused task" || bad "UC-10 dir" "missing"
+[ -f "$_ARC10_DIR/spec/BLOCKED.md" ] \
+    && ok "UC-10: spec/BLOCKED.md copied before worktree removal" || bad "UC-10 BLOCKED.md" "missing"
+
+printf '\narchive: clean --all leaves archive byte-identical (UC-11)\n'
+before_arc_lines="$(wc -l < "$ARC6/index.jsonl" | tr -d ' ')"
+before_arc_files="$(find "$ARC6" -type f | sort | sha256sum)"
+"$AISDLC" clean --all --repo "$R_ARC6" >/dev/null 2>&1
+after_arc_lines="$(wc -l < "$ARC6/index.jsonl" | tr -d ' ')"
+after_arc_files="$(find "$ARC6" -type f | sort | sha256sum)"
+[ "$before_arc_lines" = "$after_arc_lines" ] \
+    && ok "UC-11: index.jsonl unchanged after clean --all" || bad "UC-11 index" "changed"
+[ "$before_arc_files" = "$after_arc_files" ] \
+    && ok "UC-11: archive files unchanged after clean --all" || bad "UC-11 files" "changed"
+
+printf '\narchive: AISDLC_ARCHIVE=off creates no archive and no index (UC-12)\n'
+R="$WORK/arc-uc12"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE=off "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-12: task completes" || bad "UC-12 pre" "status $(task_field "$R" .status)"
+_ARC12_SLUG="$(arc_slug "$R")"
+_ARC12_DEFAULT="${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive"
+[ ! -d "$_ARC12_DEFAULT/$_ARC12_SLUG" ] \
+    && ok "UC-12: no archive dir created with AISDLC_ARCHIVE=off" \
+    || bad "UC-12 dir" "archive created at default root"
+_ARC12_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+! grep -q "\"id\":\"$_ARC12_ID\"" "$_ARC12_DEFAULT/index.jsonl" 2>/dev/null \
+    && ok "UC-12: no index.jsonl entry for task with AISDLC_ARCHIVE=off" \
+    || bad "UC-12 index-entry" "index.jsonl contains task $_ARC12_ID despite AISDLC_ARCHIVE=off"
+unset _ARC12_SLUG _ARC12_DEFAULT _ARC12_ID
+
+printf '\narchive: retry creates <id>.<attempts> dir; first archive unchanged (UC-13)\n'
+# Reuse UC-9 repo (failed task, worktree kept) — retry it so it reaches done.
+_ARC13_FIRST="$_ARC9_DIR"
+_first_snap="$(find "$_ARC13_FIRST" -type f | sort | sha256sum)"
+"$AISDLC" retry "$_ARC9_ID" --repo "$R_ARC9" >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC9" "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
+[ "$(task_field "$R_ARC9" .status)" = "done" ] \
+    && ok "UC-13: retried task reaches done" || bad "UC-13 status" "$(task_field "$R_ARC9" .status)"
+_ARC13_SECOND="$ARC9/$(arc_slug "$R_ARC9")/$(date -u +%Y-%m)/${_ARC9_ID}.2"
+[ -d "$_ARC13_SECOND" ] \
+    && ok "UC-13: second archive dir <id>.2 created" || bad "UC-13 retry dir" "missing: $_ARC13_SECOND"
+_after_snap="$(find "$_ARC13_FIRST" -type f | sort | sha256sum)"
+[ "$_first_snap" = "$_after_snap" ] \
+    && ok "UC-13: first archive dir unchanged after retry" || bad "UC-13 unchanged" "first archive modified"
+_arc13_lines="$(jq -s --arg id "$_ARC9_ID" '[.[] | select(.id == $id)] | length' "$ARC9/index.jsonl" 2>/dev/null)"
+[ "${_arc13_lines:-0}" -ge 2 ] \
+    && ok "UC-13: two index.jsonl entries for the id" || bad "UC-13 index" "$_arc13_lines entries"
+
+printf '\narchive: unwritable root is non-fatal — task still reaches done\n'
+R="$WORK/arc-nonfatal"; fresh_repo "$R"
+_ARC_CONFLICT="$WORK/arc-conflict-file"
+printf 'not-a-dir\n' > "$_ARC_CONFLICT"   # file at archive root blocks mkdir
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$_ARC_CONFLICT" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "non-fatal archive: task done despite unwritable archive root" \
+    || bad "non-fatal archive" "status $(task_field "$R" .status)"
+_nf_id="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+grep -q 'archive failed' "$R/.aisdlc/tasks/$_nf_id/run.log" 2>/dev/null \
+    && ok "non-fatal archive: failure logged to run.log" \
+    || bad "non-fatal archive log" "no 'archive failed' in run.log"
+unset _ARC_CONFLICT _nf_id
+printf '\narchive: cancelled task creates archive dir and index entry (non-functional)\n'
+R_CANCEL="$WORK/arc-cancel"; ARC_CANCEL="$WORK/arc-cancel-root"
+fresh_repo "$R_CANCEL"
+"$AISDLC" add SBX-1 --repo "$R_CANCEL" --no-pr >/dev/null 2>&1
+_CANCEL_ID="$(ls -1 "$R_CANCEL/.aisdlc/tasks" | head -1)"
+AISDLC_ARCHIVE="$ARC_CANCEL" "$AISDLC" cancel "$_CANCEL_ID" --repo "$R_CANCEL" >/dev/null 2>&1
+[ "$(task_field "$R_CANCEL" .status)" = "cancelled" ] \
+    && ok "archive/cancel: task status is cancelled" \
+    || bad "archive/cancel status" "$(task_field "$R_CANCEL" .status)"
+_CANCEL_SLUG="$(arc_slug "$R_CANCEL")"
+_CANCEL_DIR="$ARC_CANCEL/$_CANCEL_SLUG/$(date -u +%Y-%m)/$_CANCEL_ID"
+[ -d "$_CANCEL_DIR" ] \
+    && ok "archive/cancel: archive dir created for cancelled task" \
+    || bad "archive/cancel dir" "not found: $_CANCEL_DIR"
+jq -e '.status == "cancelled"' "$_CANCEL_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "archive/cancel: manifest status is cancelled" \
+    || bad "archive/cancel manifest" "$(jq -r '.status' "$_CANCEL_DIR/manifest.json" 2>/dev/null)"
+jq -e --arg id "$_CANCEL_ID" 'select(.id == $id and .status == "cancelled")' \
+    "$ARC_CANCEL/index.jsonl" >/dev/null 2>&1 \
+    && ok "archive/cancel: index.jsonl entry with status cancelled" \
+    || bad "archive/cancel index" "$(cat "$ARC_CANCEL/index.jsonl" 2>/dev/null)"
+
+printf '\narchive: retry after cancellation before first execution is append-only (UC-13)\n'
+_cancel_hash="$(sha256sum "$_CANCEL_DIR/manifest.json")"
+"$AISDLC" retry "$_CANCEL_ID" --repo "$R_CANCEL" >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC_CANCEL" "$AISDLC" run --repo "$R_CANCEL" --once >/dev/null 2>&1
+[ "$_cancel_hash" = "$(sha256sum "$_CANCEL_DIR/manifest.json")" ] \
+    && ok "UC-13: attempt zero archive survives first execution" || bad "UC-13 zero" "original overwritten"
+jq -e '.attempts == 1 and .status == "done"' "${_CANCEL_DIR}.1/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-13: first execution gets separate archive" || bad "UC-13 first" "missing attempt one"
+
+printf '\narchive: missing seed spec is archived as failed (UC-9)\n'
+R="$WORK/arc-missing-spec"; fresh_repo "$R"; _SEC_ROOT="$WORK/arc-missing-root"
+"$AISDLC" add MISSING-1 --force --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$_SEC_ROOT" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_missing_manifest="$(find "$_SEC_ROOT" -name manifest.json 2>/dev/null)"
+jq -e '.status == "failed"' "$_missing_manifest" >/dev/null 2>&1 \
+    && ok "UC-9: seed_spec failure archived" || bad "UC-9 seed" "failed task has no archive"
+
+printf '\narchive: all built-in redaction forms and publication failures (UC-8)\n'
+_SEC="$WORK/arc-security"; mkdir -p "$_SEC"
+cat > "$_SEC/source" <<'SECRETS'
+-----BEGIN PRIVATE KEY-----
+fake-pem-body
+-----END PRIVATE KEY-----
+-----BEGIN RSA PRIVATE KEY-----
+fake-rsa-body
+-----END RSA PRIVATE KEY-----
+TOKEN=fake-token-value
+SECRET=fake-secret-value
+PASSWORD=fake-password-value
+API_KEY=fake-api-value
+PRIVATE_KEY=fake-private-value
+SECRETS
+_sec_counts="$(bash -c 'source "$1"; _arc_redact "$2" "$3"' _ "$AISDLC" "$_SEC/source" "$_SEC/redacted")"
+! grep -q 'fake-' "$_SEC/redacted" && jq -e '.["pem-private-key"] == 2 and .["env-secret"] == 5' <<< "$_sec_counts" >/dev/null 2>&1 \
+    && ok "UC-8: PEM and bare secret assignments redacted and counted" || bad "UC-8 forms" "secret survived or count wrong"
+printf 'sk-ant-api03-abcdefABCDEF0123456789abcdefABCDEF0123456789\n' > "$_SEC/token"
+if bash -c 'source "$1"; sed() { return 1; }; _arc_redact "$2" "$3"' _ \
+    "$AISDLC" "$_SEC/token" "$_SEC/failed" >/dev/null 2>&1; then
+    bad "UC-8 fail closed" "redaction error reported success"
+else
+    [ ! -e "$_SEC/failed" ] && ok "UC-8: transform failure publishes no destination" || bad "UC-8 failed output" "destination exists"
+fi
+bash -c 'umask 022; source "$1"; marker="$4"; sed() { stat -c "%a" "${@: -1}" > "$marker"; command sed "$@"; }; _arc_redact "$2" "$3"' \
+    _ "$AISDLC" "$_SEC/token" "$_SEC/private" "$_SEC/mode" >/dev/null 2>&1
+[ "$(cat "$_SEC/mode")" = "600" ] && ok "UC-8: raw staging file is private" || bad "UC-8 permissions" "raw staging readable by others"
+
+R="$WORK/arc-metadata"; fresh_repo "$R"; _META_ROOT="$WORK/arc-metadata-root"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_meta_id="$(task_field "$R" .id)"; _meta_tf="$R/.aisdlc/tasks/$_meta_id/task.json"
+jq '.pr_url = "https://ghp_abcdefghijklmnopqrst@github.com/example/repo/pull/1"' "$_meta_tf" > "$_meta_tf.tmp" && mv "$_meta_tf.tmp" "$_meta_tf"
+AISDLC_ARCHIVE="$_META_ROOT" "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
+_meta_manifest="$(find "$_META_ROOT" -name manifest.json)"
+! grep -q 'ghp_abcdefghijklmnopqrst' "$_meta_manifest" \
+    && jq -e '.pr_url | contains("[REDACTED:github-token]")' "$_meta_manifest" >/dev/null 2>&1 \
+    && ok "UC-8: manifest uses redacted metadata" || bad "UC-8 metadata" "manifest restored secret"
+_FAILED_ROOT="$WORK/arc-transform-failed"
+AISDLC_ARCHIVE="$_FAILED_ROOT" bash -c 'sed() { return 1; }; export -f sed; exec "$@"' \
+    _ "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
+[ ! -e "$_FAILED_ROOT/index.jsonl" ] && [ -z "$(find "$_FAILED_ROOT" -type f)" ] \
+    && [ "$(task_field "$R" .status)" = "cancelled" ] \
+    && ok "UC-8: archive failure publishes nothing and preserves task outcome" \
+    || bad "UC-8 publication" "failed redaction published files or changed task outcome"
+unset R_CANCEL ARC_CANCEL _CANCEL_ID _CANCEL_SLUG _CANCEL_DIR
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
