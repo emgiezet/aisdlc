@@ -3,6 +3,21 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **AP-TS-MAINT-007 (unknown/object signatures) and AP-TS-MAINT-008 (Reflect API bypass) added** (GH-42-b, 2026-10-20)
+
+  **Why.** Agents generate functions typed as `unknown`, `object`, or `{ [key: string]: unknown }` when they cannot determine the right shape — forcing every call site to re-validate what the type system should already know. They also reach for `Reflect.get`/`Reflect.apply` to access properties dynamically, bypassing TypeScript's property-access and call-site checks entirely. Five `@spacemansh/anti-slop` rules (no-unknown-parameters, no-unknown-returns, no-unknown-type-aliases, no-object-parameters, no-unsafe-dictionary-type) name the signature anti-patterns; two more (no-reflect-get, no-reflect-apply) name the Reflect bypass. This slice wires all seven.
+
+  - `rules/catalog.yaml`: `AP-TS-MAINT-007` (unknown/object-typed signatures, `warn`, maintainability, five detect entries) and `AP-TS-MAINT-008` (Reflect API bypass, `warn`, maintainability, two detect entries), both inserted after `AP-TS-MAINT-006` in §8.4.
+  - `rules/mapping/eslint.yaml`: seven entries — five mapping to `AP-TS-MAINT-007` and two mapping to `AP-TS-MAINT-008`, all at `severity: warn`, `category: maintainability`.
+  - `configs/baseline/eslint.config.mjs`: seven rules added at `warn` in the TypeScript block after the four GH-42-a rules.
+  - `tests/fixtures/ts/bad/AP-TS-MAINT-007.ts`: five declarations, one per anti-slop rule, each triggering exactly one finding.
+  - `tests/fixtures/ts/bad/AP-TS-MAINT-008.ts`: one `Reflect.get` and one `Reflect.apply` call.
+  - `tests/fixtures/ts/good/AP-TS-MAINT-007.ts`: concrete-typed equivalents of the five bad declarations.
+  - `tests/fixtures/ts/good/AP-TS-MAINT-008.ts`: direct property access and typed function call replacing each Reflect call.
+  - `tests/integration/fast.sh`: seven isolated test blocks — UC-1a (no-unknown-parameters), UC-1b (no-unknown-type-aliases), UC-2 (no-unknown-returns), UC-3 (no-object-parameters), UC-4 (no-unsafe-dictionary-type) each with a single-declaration inline input; UC-5 (no-reflect-get) and UC-6 (no-reflect-apply) likewise isolated; good-fixture silence blocks confirm no false positives (UC-7). All use `CONFIG_SOURCE=full`.
+  - `skills/ts-react-antipatterns/` (regenerated): `SKILL.md` (33 lines, ~511 tokens); `reference/AP-TS-MAINT-007.md` and `reference/AP-TS-MAINT-008.md` generated.
+
+
 - **@spacemansh/anti-slop 0.3.0 wired; AP-TS-MAINT-005 (chained/uncommented assertions) and AP-TS-MAINT-006 (widen-then-assert) added** (GH-42-a, 2026-10-20)
 
   **Why.** Agents write code that passes the type checker by fabricating type evidence — `(y as unknown) as Foo`, an unexplained `as User`, a known value widened to `unknown` and asserted back. These patterns are invisible to `@typescript-eslint/no-explicit-any` (AP-TS-MAINT-001) because they use `as` rather than `any`. dmmulroy/anti-slop catalogues four rules that name them; this slice wires the two that fire on assertion evidence specifically.

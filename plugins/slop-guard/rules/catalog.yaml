@@ -1212,7 +1212,6 @@
   detect: []
   prevent_in_skill: true
   references: []
-
 - id: AP-TS-MAINT-001
   title: any type, non-null assertions, or unsafe casts on external data
   language: [typescript]
@@ -1339,6 +1338,60 @@
   detect:
     - { tool: eslint, rule: "anti-slop/no-known-value-widening" }
     - { tool: eslint, rule: "anti-slop/no-widen-then-assert" }
+  prevent_in_skill: true
+  references: []
+
+- id: AP-TS-MAINT-007
+  title: Parameters, return types, or aliases typed as `unknown` or `object`
+  language: [typescript]
+  frameworks: [plain]
+  category: maintainability
+  severity: warn
+  cwe: []
+  summary: Using `unknown`, `object`, or `{ [key: string]: unknown }` as a parameter type, return type, or type alias carries no structural information and forces callers to re-validate what the type system should already know. Use a concrete, named interface or type instead. Every boundary that receives external data must validate with a schema library and expose a narrowed type; downstream code should not see `unknown`.
+  skill_line: No `unknown`/`object` parameters, returns, or aliases; use named interfaces and validate at boundaries.
+  bad: |
+    function process(raw: unknown): void {}
+    function build(): unknown { return {}; }
+    type Payload = unknown;
+    function send(opts: object): void {}
+    const cache: { [key: string]: unknown } = {};
+  good: |
+    interface RawInput { id: string; value: number }
+    function process(raw: RawInput): void {}
+    interface Result { id: string }
+    function build(): Result { return { id: 'x' }; }
+    type Payload = { id: string; ts: number };
+    interface SendOptions { timeout: number }
+    function send(opts: SendOptions): void {}
+    const cache: Record<string, string> = {};
+  detect:
+    - { tool: eslint, rule: "anti-slop/no-unknown-parameters" }
+    - { tool: eslint, rule: "anti-slop/no-unknown-returns" }
+    - { tool: eslint, rule: "anti-slop/no-unknown-type-aliases" }
+    - { tool: eslint, rule: "anti-slop/no-object-parameters" }
+    - { tool: eslint, rule: "anti-slop/no-unsafe-dictionary-type" }
+  prevent_in_skill: true
+  references: []
+
+- id: AP-TS-MAINT-008
+  title: Reflect API bypasses TypeScript property-access and call-site checks
+  language: [typescript]
+  frameworks: [plain]
+  category: maintainability
+  severity: warn
+  cwe: []
+  summary: Reflect.get and Reflect.apply operate on property names as strings and argument lists as arrays, bypassing the TypeScript type checker's property-access and call-site validation entirely. Use direct property access (obj.id) and typed function calls instead; the type system can then catch misspelled property names and wrong argument counts at compile time.
+  skill_line: Replace `Reflect.get`/`Reflect.apply` with direct property access and typed function calls.
+  bad: |
+    const v = Reflect.get(obj, 'id');
+    const r = Reflect.apply(fn, null, [arg]);
+  good: |
+    const v = obj.id;
+    const r = fn(arg);
+  detect:
+    - { tool: eslint, rule: "anti-slop/no-reflect-get" }
+    - { tool: eslint, rule: "anti-slop/no-reflect-apply" }
   prevent_in_skill: true
   references: []
 

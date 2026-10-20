@@ -27,5 +27,7 @@ Checks run automatically after each edit. Findings reference the IDs below.
 - AP-TS-MAINT-001 — Validate external data at the boundary (e.g. zod); avoid `any`, `!`, and unsafe `as` casts.
 - AP-TS-MAINT-005 — No chained `as` casts; put `// SAFETY: <reason>` above every type assertion.
 - AP-TS-MAINT-006 — Don't widen a known value to `unknown` to assert it into another type; use the original type.
+- AP-TS-MAINT-007 — No `unknown`/`object` parameters, returns, or aliases; use named interfaces and validate at boundaries.
+- AP-TS-MAINT-008 — Replace `Reflect.get`/`Reflect.apply` with direct property access and typed function calls.
 
 Details for any ID: `reference/<ID>.md`

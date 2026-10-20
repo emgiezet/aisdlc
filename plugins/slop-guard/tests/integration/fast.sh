@@ -213,3 +213,75 @@ if it_skip_unless_tool eslint-stack; then
     it_expect_silent "$_fast_out" \
         "UC-6: eslint anti-slop/AP-TS-MAINT-006 good fixture (no widening -> no AP-TS-MAINT-006)"
 fi
+
+
+# --------------------------------------------------------------------------- #
+# anti-slop unknown/object signatures → AP-TS-MAINT-007
+# Table loop: each row is its own it_project; assertions are independent (UC-1a..4)
+# Good fixture: concrete named types → silence (UC-7)
+# --------------------------------------------------------------------------- #
+
+while IFS='|' read -r _uc _rule _ts_input; do
+    it_project "eslint-anti-slop-007-${_uc}"; _fast_proj="$_IT_CUR_PROJ"
+    if it_skip_unless_tool eslint-stack; then
+        it_commit "$_fast_proj" package.json '{"type":"module"}'
+        it_commit "$_fast_proj" app.ts 'export {};'
+        it_modify "$_fast_proj" app.ts "$_ts_input"
+        _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
+            it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
+        it_expect_ap "$_fast_out" AP-TS-MAINT-007 \
+            "${_uc}: anti-slop/${_rule} (isolated -> AP-TS-MAINT-007)"
+    fi
+done <<'MAINT007_CASES'
+UC-1a|no-unknown-parameters|function process(raw: unknown): void { void raw; } export { process };
+UC-1b|no-unknown-type-aliases|type Payload = unknown; export type { Payload };
+UC-2|no-unknown-returns|function build(): unknown { return {}; } export { build };
+UC-3|no-object-parameters|function send(opts: object): void { void opts; } export { send };
+UC-4|no-unsafe-dictionary-type|const cache: { [key: string]: unknown } = {}; export { cache };
+MAINT007_CASES
+
+it_project eslint-anti-slop-007-good; _fast_proj="$_IT_CUR_PROJ"
+if it_skip_unless_tool eslint-stack; then
+    it_commit "$_fast_proj" package.json '{"type":"module"}'
+    it_commit "$_fast_proj" app.ts 'export {};'
+    it_modify "$_fast_proj" app.ts \
+        "$(cat "${_IT_FIXTURES}/ts/good/AP-TS-MAINT-007.ts")"
+    _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
+        it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
+    it_expect_silent "$_fast_out" \
+        "UC-7: eslint AP-TS-MAINT-007 good fixture (concrete types -> no AP-TS-MAINT-007)"
+fi
+
+# --------------------------------------------------------------------------- #
+# anti-slop Reflect.get / Reflect.apply → AP-TS-MAINT-008
+# Table loop: each row is its own it_project; assertions are independent (UC-5..6)
+# Good fixture: direct property access and typed call → silence (UC-7)
+# --------------------------------------------------------------------------- #
+
+while IFS='|' read -r _uc _rule _ts_input; do
+    it_project "eslint-anti-slop-008-${_uc}"; _fast_proj="$_IT_CUR_PROJ"
+    if it_skip_unless_tool eslint-stack; then
+        it_commit "$_fast_proj" package.json '{"type":"module"}'
+        it_commit "$_fast_proj" app.ts 'export {};'
+        it_modify "$_fast_proj" app.ts "$_ts_input"
+        _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
+            it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
+        it_expect_ap "$_fast_out" AP-TS-MAINT-008 \
+            "${_uc}: anti-slop/${_rule} (isolated -> AP-TS-MAINT-008)"
+    fi
+done <<'MAINT008_CASES'
+UC-5|no-reflect-get|const obj = { id: "u" }; const v = Reflect.get(obj, "id"); export { v };
+UC-6|no-reflect-apply|declare function fn(x: string): string; const r = Reflect.apply(fn, null, ["a"]); export { r };
+MAINT008_CASES
+
+it_project eslint-anti-slop-008-good; _fast_proj="$_IT_CUR_PROJ"
+if it_skip_unless_tool eslint-stack; then
+    it_commit "$_fast_proj" package.json '{"type":"module"}'
+    it_commit "$_fast_proj" app.ts 'export {};'
+    it_modify "$_fast_proj" app.ts \
+        "$(cat "${_IT_FIXTURES}/ts/good/AP-TS-MAINT-008.ts")"
+    _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
+        it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
+    it_expect_silent "$_fast_out" \
+        "UC-7: eslint AP-TS-MAINT-008 good fixture (direct access -> no AP-TS-MAINT-008)"
+fi
