@@ -195,6 +195,11 @@ deletion retired in `.claude/retired-tests` on the base passes), and ship does n
   runs it. The queue never merges.
 - **Cost is bounded and recorded.** A per-phase spend cap, the actual cost in each task's record,
   and `/sdlc:retro` to rank what the harness cost, by cause.
+- **Evidence survives.** Every terminal task is archived locally before its worktree is removed:
+  phase logs (redacted), spec artefacts, and a `manifest.json` with per-file sha256 checksums.
+  Archive root: `$AISDLC_ARCHIVE` or `~/.local/share/aisdlc/archive`. Set `AISDLC_ARCHIVE=off`
+  to disable. Details: [`docs/ai-sdlc.md` → Archive](docs/ai-sdlc.md#archive).
+
 
 ## 📦 Catalog
 

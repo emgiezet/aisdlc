@@ -75,6 +75,28 @@ case "${AISDLC_STUB:-ok}" in
                 ;;
         esac
         ;;
+    keyleak)
+        # Like ok but implement embeds a fake Anthropic key in its result, which lands in the log.
+        case "$prompt" in
+            /implement*) ;;  # handled below in the shared case; see keyleak branch there
+        esac
+        ;;
+    refuse-blocked)
+        # For --issue tasks: triage writes a draft (non-approved) spec + BLOCKED.md so the
+        # implement gate refuses while BLOCKED.md is still present in the worktree.
+        case "$prompt" in
+            /triage*)
+                issue_n="${ticket#GH-}"
+                mkdir -p "specs/$ticket"
+                printf -- '---\nticket: %s\nkind: bugfix\nstatus: draft\n---\n\n| id | actor | action | expected observable result | test |\n|----|-------|--------|----------------------------|------|\n| UC-1 | caller | calls Stub() | returns a non-empty string | unit |\n' \
+                    "$ticket" > "specs/$ticket/spec.md"
+                printf '# BLOCKED — %s\n**Stopped at:** triage\n\n## What I need from a human\ntriage could not reproduce\n' \
+                    "$ticket" > "specs/$ticket/BLOCKED.md"
+                commit "docs: triage spec for $ticket (draft + BLOCKED.md)"
+                result false 2 "triage blocked — draft spec written" 0.02
+                exit 0
+        esac
+        ;;
 esac
 
 case "$prompt" in
@@ -105,7 +127,11 @@ case "$prompt" in
                 result false 6 "stub phase complete" 0.05; exit 0
             fi
             commit "feat(pkg): stub implementation for UC-1 ($ticket)"
-            result false 6 "stub phase complete" 0.05
+            if [ "${AISDLC_STUB:-ok}" = "keyleak" ]; then
+                result false 6 "stub phase complete sk-ant-api03-abcdefABCDEF0123456789abcdefABCDEF0123456789" 0.05
+            else
+                result false 6 "stub phase complete" 0.05
+            fi
         fi
         ;;
     /qa*)
