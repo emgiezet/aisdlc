@@ -1,7 +1,9 @@
 # Scope report — GH-44
 
+> **GAPS** — Some changed files were not declared in the spec scope.
+
 Base: `origin/main`  
-Checked: 2026-10-20T09:56:40Z
+Checked: 2026-10-20T10:36:45Z
 
 ## File classification
 
@@ -20,7 +22,7 @@ Checked: 2026-10-20T09:56:40Z
 
 ## Verdict
 
-Verdict: PASS
+Verdict: GAPS
 
 10 in scope · 0 undeclared · 0 out of bounds
 
@@ -28,7 +30,7 @@ Verdict: PASS
 
 | Measure | This branch | Budget |
 |---|---|---|
-| Added lines | 727 | 760 (hard ceiling 3000) |
+| Added lines | 839 | 760 (hard ceiling 3000) |
 | Files touched | 10 | 11 |
 | Modules touched | 4 | 4 |
 
@@ -36,3 +38,7 @@ Modules: README.md,docs/ai-sdlc.md,evals/harness,plugins/sdlc
 
 Generated output, vendored trees, lock files and the specs directory are
 excluded; deleted lines never count against the budget.
+
+### Findings
+
+- over budget: 839 added lines > 760. One spec is one PR: split it (spec-authoring, Sizing)
