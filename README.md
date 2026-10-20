@@ -171,7 +171,10 @@ Every PR-producing command ends with a `PR: #<n> (<url>)` line the next command 
 command that acts on an issue or PR claims it first (assignee + `in-progress` + a 🤖 comment) so
 two agents never build the same branch. The queue runs the chain phase by phase, each in a fresh
 context: `implement → qa → scope-check → verify → ship → review`, or `triage → root-cause →
-implement → …` for an issue. `scope-check` and `verify` run no model: `verify` runs the
+implement → …` for an issue. `scope-check` and `verify` run no model: `scope-check` classifies
+changed files against the spec scope, measures review surface against the change budget, and —
+when `lizard` is on the runner PATH — measures structural erosion (SlopCodeBench v2) to catch
+functions that grew past CC 10 or CC 25; `verify` runs the
 `.aisdlc/config.json` `verify` commands on the final commit (none configured is a FAIL), checks
 every spec `UC-<n>` is named by a changed test and that no test was deleted or switched off (a
 deletion retired in `.claude/retired-tests` on the base passes), and ship does not run without its PASS.

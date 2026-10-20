@@ -636,6 +636,120 @@ grep -qF '**out of bounds**' "${D}scope-report.md" 2>/dev/null \
     || bad "scope BLOCKED report" "no **out of bounds** entry found"
 # --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
+# structure check selftest (UC-1, UC-3, UC-4, UC-8 — GH-44)
+# --------------------------------------------------------------------------- #
+
+# Stub lizard lives in a dedicated dir; added to PATH only for UC-1.
+_LIZARD_STUB_DIR="$WORK/lizard-stub-bin"
+mkdir -p "$_LIZARD_STUB_DIR"
+ln -sf "$HARNESS_DIR/stub-lizard" "$_LIZARD_STUB_DIR/lizard"
+
+# --------------------------------------------------------------------------- #
+printf '\nstructure UC-1: CC 8 -> 14 in a Go file → ## Structure, new hotspot, GAPS\n'
+R="$WORK/struct-uc1"
+fresh_repo_scope "$R" \
+    $'- `pkg/`\n- `specs/SBX-1/`' \
+    "" \
+    ""
+# Pre-create pkg/stub.go at the base so the stub's commit makes it a Modified (M) file.
+# The stub lizard returns CC=8 for the before pass and CC=14 for the after pass.
+mkdir -p "$R/pkg"
+printf 'package pkg\nfunc Stub() string { return "before" }\n' > "$R/pkg/stub.go"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add stub at base"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+# Use verify=true so the UC-1 test doesn't need pkg/stub_test.go to exist
+mkdir -p "$R/.aisdlc"
+printf '{"verify":["true"]}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+PATH="$_LIZARD_STUB_DIR:$PATH" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
+    && ok "UC-1: verdict is GAPS (structure finding promotes PASS)" \
+    || bad "UC-1 verdict" "$(task_field "$R" .scope_verdict)"
+grep -q '## Structure' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-1: ## Structure section present in scope-report.md" \
+    || bad "UC-1 structure section" "## Structure not found"
+grep -q '8 -> 14' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-1: CC 8 -> 14 listed in ## Structure" \
+    || bad "UC-1 CC change" "8 -> 14 not in scope-report.md"
+grep -qF 'new hotspot:' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-1: new hotspot finding present" \
+    || bad "UC-1 new hotspot" "new hotspot: not found in scope-report.md"
+grep -q 'Largest CC increase' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-1: Largest CC increase line present" \
+    || bad "UC-1 largest" "Largest CC increase not found"
+
+# --------------------------------------------------------------------------- #
+printf '\nstructure UC-3: lizard not on PATH → skipped: not installed, no finding\n'
+# This test relies on lizard not being installed in the test environment (the selftest
+# runner has no real lizard, and the stub-lizard is only added for UC-1 via
+# _LIZARD_STUB_DIR). Running with the normal stub PATH naturally exercises the
+# "not installed" path without requiring a fully-enumerated restricted PATH.
+R="$WORK/struct-uc3"
+fresh_repo_scope "$R" \
+    $'- `pkg/`\n- `specs/SBX-1/`' \
+    "" \
+    ""
+mkdir -p "$R/pkg"
+printf 'package pkg\nfunc Stub() string { return "before" }\n' > "$R/pkg/stub.go"
+git -C "$R" add -A && git -C "$R" commit -q -m "feat: add stub at base"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+mkdir -p "$R/.aisdlc"
+printf '{"verify":["true"]}\n' > "$R/.aisdlc/config.json"
+# Run without the lizard stub dir — no lizard binary on PATH in the selftest environment.
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -q '## Structure' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-3: ## Structure section present (skipped message)" \
+    || bad "UC-3 structure section" "## Structure not found"
+grep -qF 'not installed' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-3: section says 'not installed'" \
+    || bad "UC-3 skip message" "$(grep -A1 '## Structure' "${D}scope-report.md" 2>/dev/null | tail -1)"
+# No ### Findings when lizard is absent
+! grep -q '### Findings' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-3: no findings when lizard absent" \
+    || bad "UC-3 no findings" "### Findings unexpectedly present"
+[ "$(task_field "$R" .scope_verdict)" != "BLOCKED" ] \
+    && ok "UC-3: scope-check returns 0 (phase continues)" \
+    || bad "UC-3 phase continues" "task failed when it should continue"
+
+
+# --------------------------------------------------------------------------- #
+printf '\nstructure UC-4: only .md files changed → no ## Structure section\n'
+R="$WORK/struct-uc4"
+fresh_repo_scope "$R" \
+    $'- `specs/SBX-1/`' \
+    "" \
+    ""
+# mdonly stub: implement commits only a .md file; qa adds qa-report.md
+mkdir -p "$R/.aisdlc"
+printf '{"verify":["test -f specs/SBX-1/qa-report.md"]}\n' > "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=mdonly "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+! grep -q '## Structure' "${D}scope-report.md" 2>/dev/null \
+    && ok "UC-4: no ## Structure section when only .md files changed" \
+    || bad "UC-4 no structure" "## Structure section unexpectedly present"
+
+# --------------------------------------------------------------------------- #
+printf '\nstructure UC-8: review.md imports ## Structure findings with correct severity\n'
+# Verify the instruction file has the required import logic (model-free check).
+_REVIEW_MD="$REPO_ROOT/plugins/sdlc/commands/review.md"
+grep -qF 'new hotspot' "$_REVIEW_MD" \
+    && ok "UC-8: review.md imports new hotspot finding" \
+    || bad "UC-8 new hotspot" "new hotspot not found in review.md"
+grep -qF 'hotspot over 25' "$_REVIEW_MD" \
+    && ok "UC-8: review.md imports hotspot over 25 finding" \
+    || bad "UC-8 hotspot over 25" "hotspot over 25 not found in review.md"
+grep -qF '[major]' "$_REVIEW_MD" \
+    && ok "UC-8: review.md has [major] severity for structural findings" \
+    || bad "UC-8 major" "[major] not found in review.md"
+grep -qF '[blocker]' "$_REVIEW_MD" \
+    && ok "UC-8: review.md has [blocker] severity for hotspot over 25" \
+    || bad "UC-8 blocker" "[blocker] not found in review.md (needed for hotspot over 25)"
+
+# --------------------------------------------------------------------------- #
 printf '\nbilling=subscription: null cost, no --max-budget-usd in args\n'
 R="$WORK/billing-sub"
 fresh_repo "$R"

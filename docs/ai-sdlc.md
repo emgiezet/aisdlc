@@ -113,6 +113,32 @@ source would defend as reviewable — it is the outer bound on damage, not a tar
 and module budgets produce `GAPS`, not `BLOCKED`: no primary source justifies blocking on module
 count alone, so it starts a decomposition conversation instead of stopping the run.
 
+### Structural erosion
+
+Size gates measure how much code changed; the structural gate measures whether it got worse. Each
+`scope-check` run invokes `lizard --csv` on the before and after versions of every changed code
+file (Added/Modified/Renamed, extensions: `py js jsx ts tsx go php java kt kts cs rb rs mjs cjs
+mts cts`) and appends a `## Structure` section to `scope-report.md` with:
+
+- **Erosion before and after** — `erosion = Σ(mass, CC>10) / Σ(mass)` where `mass(f) = CC(f) ×
+  sqrt(SLOC(f))`. This is the SlopCodeBench v2 §2.3 metric; the paper found erosion rises in 77%
+  of agent trajectories and agent code erodes 5× faster per checkpoint than human repositories.
+- **Functions newly crossing CC > 10** listed with `CC before -> after` and SLOC.
+- **Largest CC increase** across all changed functions.
+- **Findings** when thresholds are exceeded (default `Erosion delta max: 0.05`,
+  `New hotspots max: 0`).
+
+Finding severity in `/sdlc:review`: `erosion:` and `new hotspot:` findings are `[major]`;
+`hotspot over 25:` findings (any function newly above CC 25, regardless of the max) are
+`[blocker]`. The remedy is always splitting the function or `/sdlc:decompose`, never "try harder
+in review". Structure findings promote a `PASS` verdict to `GAPS`; they never cause `BLOCKED`.
+
+If `lizard` is absent from the runner PATH, `scope-check` writes `skipped: lizard not installed`
+and continues — the gate is advisory when the tool is missing. Raise the thresholds in
+`.claude/sdlc.md` under `## Change budget` for a mechanical refactor that legitimately increases
+function length.
+
+
 ### QA before humans
 
 `auto-qa` re-derives the use cases from the spec *before* reading the implementation. Reading the
@@ -166,7 +192,9 @@ A task is done when **all** of these hold — this is what `/sdlc:qa`, `aisdlc s
 - No file in the spec's `Out:` scope was modified.
 - The contract directory, if this project has one, changed in the same commit as any handler whose contract moved.
 - `qa-report.md` says `PASS`, with an explicit "not verified" section, and a screenshot per UI UC when a browser is configured.
-- `scope-report.md` says `PASS` or `GAPS` (no `BLOCKED`); any `GAPS` entries reviewed and accepted by a human.
+- `scope-report.md` says `PASS` or `GAPS` (no `BLOCKED`); any `GAPS` entries reviewed and
+  accepted by a human. Any `## Structure` `[blocker]` findings (`hotspot over 25:`) must be
+  resolved; `[major]` findings (`erosion:`, `new hotspot:`) require a waiver or a split.
 - The PR is a draft, labelled, with the riskiest changes called out by `file:line`.
 - `/sdlc:review` returned `APPROVED`: no blocker, no unwaived major.
 
