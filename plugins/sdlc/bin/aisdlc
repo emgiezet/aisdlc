@@ -615,7 +615,7 @@ readiness_check() {
 
     local prompt; prompt="$(cat "$rubric"; printf '\n\n---\n\n## Spec to evaluate\n\n'; cat "$spec")"
     local settings; settings="$(state_dir "$repo")/settings.json"
-    # Extra isolation: dedicated dir avoids repo access; sessions and stream files stay contained.
+    # Dedicated cwd avoids project context; temporary sessions and streams stay contained.
     local rdir; rdir="$(mktemp -d)"
     local result="$rdir/result.json" log="$rdir/invoke.log" rc=0
 
@@ -638,16 +638,6 @@ readiness_check() {
 
     local raw; raw="$(jq -r '.result // empty' "$result" 2>/dev/null)"
     rm -rf "$rdir"
-
-    # Fail closed: process error or is_error in result envelope.
-    if [ "$rc" -ne 0 ] || [ "$(jq -r '.is_error // false' "$tmp" 2>/dev/null)" = "true" ]; then
-        rm -f "$tmp"
-        READINESS_REASON='readiness check: model response is not valid {"score":<0-100>,"gaps":[...<=5]}'
-        return 1
-    fi
-
-    # Extract the model's text reply from the result envelope.
-    local raw; raw="$(jq -r '.result // empty' "$tmp" 2>/dev/null)"; rm -f "$tmp"
 
     # Strict parse: exact integer (no fractional part) 0–100, array of ≤5 strings only.
     local score="" gaps_ok=0
