@@ -39,6 +39,7 @@ _sb_repo="$(mktemp -d)"
     printf 'new\n%.0s' {1..7}  > web/app/page.tsx             # 7 added, counts
     printf 'new\n%.0s' {1..99} > vendor/lib/generated.go      # vendored, excluded
     printf '{"a":2,"b":3}\n'   > package-lock.json            # lock file, excluded
+    printf 'dep\n%.0s' {1..20} > uv.lock                       # GH-50 UC-1: uv lock file excluded, 20 lines must not appear in added total
     printf 'spec\n%.0s' {1..50} > specs/T-1/spec.md           # spec artefact, excluded
     : > services/api/old.go                                    # 40 deletions, never counted
     git add -A && git commit -q -m work
@@ -48,16 +49,16 @@ _sb_stats="$(_size_stats "$_sb_repo" "origin/main" "specs")"
 read -r _sb_added _sb_files _sb_mods _sb_modlist <<< "$_sb_stats"
 
 [ "$_sb_added" = "42" ] \
-    && ok "size: added lines count code only (30+5+7)" \
-    || bad "size: added lines" "expected 42, got '$_sb_added' (stats: $_sb_stats)"
+    && ok "GH-50 UC-2: size: added lines count code only (30+5+7)" \
+    || bad "GH-50 UC-2: size: added lines" "expected 42, got '$_sb_added' (stats: $_sb_stats)"
 
 [ "$_sb_files" = "4" ] \
-    && ok "size: files touched include the emptied file, exclude vendor/lock/specs" \
-    || bad "size: files touched" "expected 4, got '$_sb_files' (stats: $_sb_stats)"
+    && ok "GH-50 UC-2: size: files touched include the emptied file, exclude vendor/lock/specs" \
+    || bad "GH-50 UC-2: size: files touched" "expected 4, got '$_sb_files' (stats: $_sb_stats)"
 
 [ "$_sb_mods" = "3" ] \
-    && ok "size: module = first two path segments" \
-    || bad "size: modules touched" "expected 3, got '$_sb_mods' (list: $_sb_modlist)"
+    && ok "GH-50 UC-2: size: module = first two path segments" \
+    || bad "GH-50 UC-2: size: modules touched" "expected 3, got '$_sb_mods' (list: $_sb_modlist)"
 
 case "$_sb_modlist" in
     *services/api*) ok "size: module list names the real directories" ;;

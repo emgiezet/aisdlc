@@ -119,7 +119,19 @@ case "$prompt" in
         mkdir -p "specs/$ticket"
         printf 'stub PR body\n' > "specs/$ticket/pr-body.md"
         commit "docs: PR body ($ticket)"
-        result false 6 "stub ship done\\nPR: #7 (specs/$ticket/pr-body.md)" 0.05
+        if [ "${AISDLC_STUB:-ok}" = "localpr" ]; then
+            # GH-60: mirror what the local tracker's create-pr operation does — append one
+            # JSON PR record to .aisdlc/tracker/prs.jsonl relative to cwd (the worktree).
+            mkdir -p ".aisdlc/tracker"
+            _now="$(date -u +%FT%TZ)"
+            jq -nc --arg b "$(git branch --show-current 2>/dev/null || echo '')" \
+                --arg t "$ticket" --arg p "specs/$ticket/pr-body.md" --arg d "$_now" \
+                '{number:1,branch:$b,baseRefName:"master",title:$t,labels:[],state:"open",isDraft:false,createdAt:$d,verdict:null,reviews:[],body_path:$p,url:"local#1",author:"local-user",assignees:[],mergeCommit:null}' \
+                >> ".aisdlc/tracker/prs.jsonl"
+            result false 6 "stub ship done\\nPR: #1 (specs/$ticket/pr-body.md)" 0.05
+        else
+            result false 6 "stub ship done\\nPR: #7 (specs/$ticket/pr-body.md)" 0.05
+        fi
         ;;
     /review*)
         result false 2 "Verdict: APPROVED" 0.02

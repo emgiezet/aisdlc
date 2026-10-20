@@ -225,6 +225,34 @@ spec_frontmatter_field() {
     ' "$spec"
 }
 
+# GH-53: Check that every token in depends-on: has a PASS verify-report in the base tree.
+check_depends_on() {
+    local spec="$1" unmet="" first
+    local deps_str
+    deps_str="$(spec_frontmatter_field "$spec" "depends-on")"
+    [ -z "$deps_str" ] && return 0
+    local -a deps
+    read -r -a deps <<< "$deps_str"
+    local specs_root
+    specs_root="$(dirname "$(dirname "$spec")")"
+    local token
+    for token in "${deps[@]}"; do
+        local report="$specs_root/$token/verify-report.md"
+        if [ ! -f "$report" ]; then
+            unmet="${unmet:+$unmet }$token"
+            continue
+        fi
+        first="$(head -1 "$report")"
+        if [ "$first" != "PASS" ]; then
+            unmet="${unmet:+$unmet }$token"
+        fi
+    done
+    if [ -n "$unmet" ]; then
+        printf 'depends-on not met: %s' "$unmet"; return 1
+    fi
+    return 0
+}
+
 check_spec() {
     local spec="$1" repo="${2:-}" status open
     status="$(spec_status "$spec")"
@@ -254,6 +282,10 @@ check_spec() {
     open="$(spec_open_questions "$spec")"
     if [ "${open:-0}" -gt 0 ]; then
         printf '%s unresolved open question(s) in the spec' "$open"; return 1
+    fi
+    local dep_reason
+    if ! dep_reason="$(check_depends_on "$spec")"; then
+        printf '%s' "$dep_reason"; return 1
     fi
     return 0
 }
@@ -1243,7 +1275,7 @@ _write_scope_report() {
 # Paths that never count against a change budget: generated output, vendored trees, lock
 # files and the pipeline's own artefacts. Growth there is not review surface.
 # Backslashes are doubled: the pattern travels through awk -v, which unescapes once.
-_SIZE_EXCLUDE='(^|/)(vendor|node_modules|dist|build|target|__generated__|__snapshots__)/|(^|/)(package-lock\\.json|yarn\\.lock|pnpm-lock\\.yaml|composer\\.lock|Cargo\\.lock|go\\.sum|poetry\\.lock|Gemfile\\.lock)$|\\.(snap|pb\\.go|pb2\\.py)$|\\.generated\\.[a-z]+$'
+_SIZE_EXCLUDE='(^|/)(vendor|node_modules|dist|build|target|__generated__|__snapshots__)/|(^|/)(package-lock\\.json|yarn\\.lock|pnpm-lock\\.yaml|composer\\.lock|Cargo\\.lock|go\\.sum|poetry\\.lock|Gemfile\\.lock|uv\\.lock)$|\\.(snap|pb\\.go|pb2\\.py)$|\\.generated\\.[a-z]+$'
 
 # Measure the review surface of a branch: added lines, files touched, modules touched.
 # Deleted lines never count — a change that removes code is not a big change to review.
@@ -1601,6 +1633,26 @@ _struct_run_lizard() {
 }
 
 
+# _branch_changes <wt> <base> <task-specdir-relative> [git-diff-options...]
+# Stdout: files changed on the branch (git diff --name-only "${base}...HEAD"), with the
+# task's own spec directory, AGENTS.md, CLAUDE.md, and the .claude/ subtree excluded.
+# The task-specdir-relative arg is matched as a literal path prefix (e.g. specs/SBX-1).
+# Optional trailing arguments are passed verbatim to git diff (e.g. --diff-filter=AMR).
+# Only the named task's spec directory is excluded; sibling tickets remain visible.
+_branch_changes() {
+    local wt="$1" base="$2" task_specdir="$3"; shift 3
+    git -C "$wt" diff --name-only "$@" "${base}...HEAD" 2>/dev/null \
+        | awk -v dir="${task_specdir}" '
+            index($0, dir "/") == 1  { next }
+            $0 == "AGENTS.md"        { next }
+            $0 == "CLAUDE.md"        { next }
+            index($0, ".claude/") == 1 { next }
+            { print }
+        ' \
+        || true
+}
+
+
 # Native scope-check phase: classify the branch's changed files against the spec's
 # declared scope (In:/Out:/Context) and the project's repo-wide out-of-bounds list.
 # Writes specs/<TICKET>/scope-report.md and commits it. Records scope_verdict in
@@ -1616,9 +1668,9 @@ run_scope_check() {
     printf '[%s] scope-check begin (base %s)\n' "$(ts)" "$base" >> "$log"
 
     local changed
-    changed="$(git -C "$wt" diff --name-only "${base}...HEAD" 2>/dev/null || true)"
+    changed="$(_branch_changes "$wt" "$base" "$specs_dir/$ticket")"
 
-    if [ -z "$changed" ]; then
+    if [ -z "$changed" ] && git -C "$wt" diff --quiet "${base}...HEAD" 2>/dev/null; then
         printf '[%s] scope-check: no changed files — PASS\n' "$(ts)" >> "$log"
         mkdir -p "$wt/$specs_dir/$ticket"
         _write_scope_report "$report_wt" "$ticket" "$base" "" "" "" "PASS"
@@ -1630,7 +1682,7 @@ run_scope_check() {
         return 0
     fi
 
-    local in_pats="" out_pats="" prohibited_pats=""
+    local in_pats="" out_pats="" prohibited_pats="" in_verbatim=""
     if [ -f "$spec_file" ]; then
         local in_bullets out_bullets ctx
         in_bullets="$(_scope_bullets "$spec_file" "In")"
@@ -1638,6 +1690,10 @@ run_scope_check() {
         ctx="$(_context_lines "$spec_file")"
         in_pats="$(_path_tokens "${in_bullets}"$'\n'"${ctx}")"
         out_pats="$(_path_tokens "$out_bullets")"
+        # Verbatim In: paths only — exclude globs (* ? [) and directory patterns (trailing /).
+        # A file matching one of these exact paths is exempt from spec-Out matching (step 1)
+        # but not from repo-wide prohibited paths (step 2). GH-54.
+        in_verbatim="$(_path_tokens "$in_bullets" | grep -Ev '[*?[]|/$' || true)"
     fi
     if [ -f "$profile" ]; then
         local oob_b
@@ -1652,9 +1708,15 @@ run_scope_check() {
     local in_files="" undeclared="" oob=""
     while IFS= read -r f; do
         [ -n "$f" ] || continue
-        local classified=0
-        # 1. Spec Out: — explicit out-of-bounds
-        if [ -n "$out_pats" ]; then
+        local classified=0 skip_spec_out=0 vp
+        # 1. Spec Out: — explicit out-of-bounds.  Skip for verbatim In: files (GH-54).
+        if [ -n "$in_verbatim" ]; then
+            while IFS= read -r vp; do
+                [ -n "$vp" ] || continue
+                [ "${f#./}" = "${vp#./}" ] && { skip_spec_out=1; break; }
+            done <<< "$in_verbatim"
+        fi
+        if [ "$skip_spec_out" -eq 0 ] && [ -n "$out_pats" ]; then
             while IFS= read -r pat; do
                 [ -n "$pat" ] || continue
                 _glob_match "$f" "$pat" && {
@@ -1673,15 +1735,7 @@ run_scope_check() {
             done <<< "$prohibited_pats"
         fi
         [ "$classified" -eq 1 ] && continue
-        # 3. Pipeline artefacts written by qa/ship into this task's own spec dir
-        #    (scope-report.md, qa-report.md, qa/*, pr-body.md, BLOCKED.md, …).
-        #    These are already excluded from the size budget and can never be
-        #    pre-declared in the spec; treat them as in scope automatically.
-        case "$f" in "${specs_dir}/${ticket}/"*)
-            in_files="${in_files:+$in_files$'\n'}$f"; classified=1 ;;
-        esac
-        [ "$classified" -eq 1 ] && continue
-        # 4. In scope (spec In: + Context)
+        # 3. In scope (spec In: + Context)
         if [ -n "$in_pats" ]; then
             while IFS= read -r pat; do
                 [ -n "$pat" ] || continue
@@ -1867,10 +1921,9 @@ run_verify() {
         done <<< "$cmds"
     fi
 
-    # Files this branch touched, excluding the harness's own bookkeeping (same rule as scope-check).
+    # Files this branch touched, excluding the harness's own bookkeeping (via _branch_changes).
     local changed deleted tests=""
-    changed="$(git -C "$wt" diff --name-only --diff-filter=AMR "${base}...HEAD" 2>/dev/null \
-        | grep -v "^$specs_dir/$ticket/" | grep -vE '^(AGENTS\.md|CLAUDE\.md|\.claude/)' || true)"
+    changed="$(_branch_changes "$wt" "$base" "$specs_dir/$ticket" --diff-filter=AMR)"
     local f
     while IFS= read -r f; do
         [ -n "$f" ] && _is_test_path "$f" && tests="${tests:+$tests$'\n'}$f"
@@ -1988,6 +2041,25 @@ execute_task() {
         fi
         return 1
     fi
+
+    # GH-60: for local-tracker repos, symlink the canonical tracker directory into the
+    # worktree so that ship's create-pr writes to $repo/.aisdlc/tracker/, not to
+    # $wt/.aisdlc/tracker/ (which is deleted with the worktree on clean/retry).
+    if [ "$(tracker_kind "$repo")" = "local" ]; then
+        if ! { mkdir -p "$repo/.aisdlc/tracker" "$wt/.aisdlc" && ln -sfn "$repo/.aisdlc/tracker" "$wt/.aisdlc/tracker"; }; then
+            local _ln_err="local tracker symlink failed: $wt/.aisdlc/tracker → $repo/.aisdlc/tracker"
+            printf '[%s] %s\n' "$(ts)" "$_ln_err" >> "$log"
+            task_set "$repo" "$id" --arg e "$_ln_err" '.error = $e'
+            set_status "$repo" "$id" failed
+            say "  ✗ $id — $_ln_err"
+            if [ -n "$issue_n" ]; then
+                tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: local tracker symlink failed"
+            fi
+            return 1
+        fi
+        printf '[%s] linked %s → %s\n' "$(ts)" "$wt/.aisdlc/tracker" "$repo/.aisdlc/tracker" >> "$log"
+    fi
+
 
     # For --issue tasks triage writes the spec, so skip seed_spec and the initial gate.
     if [ "$is_issue" != "true" ]; then
@@ -2503,7 +2575,7 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
       --issue <n>       queue issue #<n> as GH-<n>; claims it; phases: $ISSUE_PHASES
       --no-pr           stop after qa; strips ship and review; diff and QA report saved
       --plugin-dir      load the plugin from this checkout (repos without it installed)
-      --force           queue despite a draft spec or open questions (not recommended)
+      --force           queue despite a draft spec, open questions, or unmet depends-on (run-time depends-on gate is never bypassed)
 
   aisdlc pull [N] [flags]       claim the oldest open issue labelled \`$BUILTIN_PULL_LABEL\` (or N) and queue it
       --label <name>    the approval label to select on (default: $BUILTIN_PULL_LABEL)

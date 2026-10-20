@@ -575,11 +575,11 @@ SCOPE_SPEC
 # The stub (ok mode) commits: pkg/stub.go, pkg/stub_test.go, specs/SBX-1/qa-report.md
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: all changed files in scope → PASS\n'
+printf '\nGH-51 UC-1: scope-check: all changed files in scope → PASS\n'
 R="$WORK/scope-pass"
-# In: covers both pkg/ and specs/SBX-1/ — every file the stub commits is in scope.
+# Only pkg/ is declared; the task's own spec directory is excluded from classification.
 fresh_repo_scope "$R" \
-    $'- `pkg/`\n- `specs/SBX-1/`' \
+    $'- `pkg/`' \
     "" \
     ""
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
@@ -599,10 +599,9 @@ grep -q 'Verdict: PASS' "${D}scope-report.md" 2>/dev/null \
     || bad "scope_verdict" "$(task_field "$R" .scope_verdict)"
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: undeclared changed file → GAPS, chain continues\n'
+printf '\nGH-51 UC-2: scope-check: undeclared changed file → GAPS, chain continues\n'
 R="$WORK/scope-gaps"
-# In: covers only pkg/stub.go — pkg/stub_test.go (committed by stub implement) is undeclared;
-# specs/SBX-1/qa-report.md is the task's own spec dir and must NOT be undeclared (regression).
+# Only pkg/stub.go is declared; stub_test.go remains undeclared, unlike harness reports.
 fresh_repo_scope "$R" \
     $'- `pkg/stub.go`' \
     "" \
@@ -619,15 +618,17 @@ grep -q 'Verdict: GAPS' "${D}scope-report.md" 2>/dev/null \
 grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
     && ok "scope GAPS: undeclared files listed in report" \
     || bad "scope GAPS report" "no **undeclared** entry found"
+grep -qF '`specs/SBX-1/qa-report.md`' "${D}scope-report.md" 2>/dev/null \
+    && bad "GH-51 UC-2 scope GAPS report" "specs/SBX-1/qa-report.md appears in report — should be excluded" \
+    || ok "GH-51 UC-2: scope GAPS: specs/SBX-1/qa-report.md not present in report (excluded by _branch_changes)"
 [ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
     && ok "scope GAPS: scope_verdict in task.json" \
     || bad "scope_verdict GAPS" "$(task_field "$R" .scope_verdict)"
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: own spec-dir artefacts are never undeclared → PASS (regression)\n'
+printf '\nscope-check: own spec-dir artefacts are excluded from diff → PASS (regression)\n'
 R="$WORK/scope-own-spec-dir"
-# In: covers pkg/ only — specs/SBX-1/qa-report.md is the task's own spec dir artefact and
-# must be classified as in scope automatically, not flagged as undeclared.
+# Harness reports are excluded even when only pkg/ is declared.
 fresh_repo_scope "$R" \
     $'- `pkg/`' \
     "" \
@@ -636,21 +637,20 @@ fresh_repo_scope "$R" \
 "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 [ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
-    && ok "scope own-spec-dir: verdict is PASS (artefacts not undeclared)" \
+    && ok "scope own-spec-dir: verdict is PASS (artefacts excluded from diff)" \
     || bad "scope own-spec-dir verdict" "$(task_field "$R" .scope_verdict)"
 grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
     && bad "scope own-spec-dir report" "specs/SBX-1/qa-report.md wrongly listed as undeclared" \
-    || ok "scope own-spec-dir: no undeclared entry — own spec-dir artefacts are in scope"
+    || ok "scope own-spec-dir: no undeclared entry — own spec-dir artefacts are excluded from diff"
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship\n'
+printf '\nGH-51 UC-3: scope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship\n'
 R="$WORK/scope-blocked"
-# In: covers only pkg/. Repo-wide prohibition lists specs/SBX-1/qa-report.md (committed
-# by stub qa). ship must NOT run; task must be failed.
+# Prohibit a real source file, not an excluded harness report; ship must not run.
 fresh_repo_scope "$R" \
-    $'- `pkg/`' \
+    $'- `pkg/stub.go`' \
     "" \
-    $'- `specs/SBX-1/qa-report.md`'
+    $'- `pkg/stub_test.go`'
 "$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1   # full pipeline (includes ship+review)
 "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
@@ -667,6 +667,147 @@ grep -qF '**out of bounds**' "${D}scope-report.md" 2>/dev/null \
     && ok "scope BLOCKED: out-of-bounds file listed in report" \
     || bad "scope BLOCKED report" "no **out of bounds** entry found"
 # --------------------------------------------------------------------------- #
+# _branch_changes unit tests (GH-51 UC-4)
+# --------------------------------------------------------------------------- #
+printf '\n_branch_changes: own-specdir excluded, sibling visible, root bookkeeping excluded (GH-51 UC-4)\n'
+_BC_WT="$WORK/bc-wt"
+mkdir -p "$_BC_WT/pkg" "$_BC_WT/specs/SBX-1" "$_BC_WT/specs/SBX-2" "$_BC_WT/src/specs/SBX-1" "$_BC_WT/custom.specs/SBX-1"
+git -C "$_BC_WT" init -q -b master; git -C "$_BC_WT" config user.email bc@localhost; git -C "$_BC_WT" config user.name bc
+printf 'base\n' > "$_BC_WT/pkg/stub.go"; git -C "$_BC_WT" add -A && git -C "$_BC_WT" commit -q -m "base"; git -C "$_BC_WT" update-ref refs/remotes/origin/master HEAD
+printf 'impl\n' > "$_BC_WT/pkg/stub.go";   printf 'qa\n'     > "$_BC_WT/specs/SBX-1/qa-report.md"  # own specdir — must be excluded
+printf 'spec\n' > "$_BC_WT/specs/SBX-2/spec.md"; printf 'nested\n' > "$_BC_WT/src/specs/SBX-1/file.go" # sibling visible; nested prefix visible
+printf 'agents\n' > "$_BC_WT/AGENTS.md";   printf 'claude\n' > "$_BC_WT/CLAUDE.md"                  # root bookkeeping — must be excluded
+printf 'bak\n' > "$_BC_WT/AGENTS.md.bak";  printf 'ts\n'     > "$_BC_WT/CLAUDE.md.ts"               # suffix-named — must remain visible
+printf 'custom\n' > "$_BC_WT/custom.specs/SBX-1/qa.md"                                               # custom specdir (metachar) — must be excluded
+git -C "$_BC_WT" add -A && git -C "$_BC_WT" commit -q -m "branch changes"
+# shellcheck source=plugins/sdlc/bin/aisdlc
+_BC_OUT="$(source "$AISDLC" help >/dev/null 2>&1; _branch_changes "$_BC_WT" "origin/master" "specs/SBX-1")"
+for _f in 'pkg/stub.go' 'specs/SBX-2/spec.md' 'src/specs/SBX-1/file.go'; do
+    printf '%s\n' "$_BC_OUT" | grep -qF "$_f" \
+        && ok "GH-51 UC-4: _branch_changes: $_f visible" \
+        || bad "GH-51 UC-4 _branch_changes" "$_f missing from output"
+done
+printf '%s\n' "$_BC_OUT" | grep -qF 'specs/SBX-1/qa-report.md' \
+    && bad "GH-51 UC-4 _branch_changes" "specs/SBX-1/qa-report.md present — own specdir must be excluded" \
+    || ok "GH-51 UC-4: _branch_changes: specs/SBX-1/qa-report.md excluded (own specdir)"
+for _f in 'AGENTS.md' 'CLAUDE.md'; do
+    printf '%s\n' "$_BC_OUT" | grep -qxF "$_f" \
+        && bad "GH-51 UC-4 _branch_changes" "$_f present — root bookkeeping must be excluded" \
+        || ok "GH-51 UC-4: _branch_changes: $_f excluded (root bookkeeping)"
+done
+for _f in 'AGENTS.md.bak' 'CLAUDE.md.ts'; do
+    printf '%s\n' "$_BC_OUT" | grep -qxF "$_f" \
+        && ok "GH-51 UC-4: _branch_changes: $_f visible (not excluded)" \
+        || bad "GH-51 UC-4 _branch_changes root-file-suffix" "$_f excluded — exact match required"
+done
+# shellcheck source=plugins/sdlc/bin/aisdlc
+_BC_OUT2="$(source "$AISDLC" help >/dev/null 2>&1; _branch_changes "$_BC_WT" "origin/master" "custom.specs/SBX-1")"
+printf '%s\n' "$_BC_OUT2" | grep -qF 'custom.specs/SBX-1/qa.md' \
+    && bad "GH-51 UC-4 _branch_changes metachar" "custom.specs/SBX-1/qa.md present — custom specdir must be excluded (literal, not regex)" \
+    || ok "GH-51 UC-4: _branch_changes: custom.specs/SBX-1/qa.md excluded (metachar-safe literal prefix)"
+printf '%s\n' "$_BC_OUT2" | grep -qF 'specs/SBX-2/spec.md' \
+    && ok "GH-51 UC-4: _branch_changes custom specdir: sibling specs/SBX-2/spec.md still visible" \
+    || bad "GH-51 UC-4 _branch_changes custom specdir" "specs/SBX-2/spec.md missing"
+unset _BC_WT _BC_OUT _BC_OUT2 _f
+printf '\nGH-51 UC-1 boundary: bookkeeping-only changes still enforce the size ceiling\n'
+R="$WORK/gh51-uc5"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_WT5="$(task_field "$R" .worktree)"; _ID5="$(ls "$R"/.aisdlc/tasks/ | head -1)"
+printf '%s\n' {1..3001} > "$_WT5/AGENTS.md"
+git -C "$_WT5" add AGENTS.md && git -C "$_WT5" commit -q -m "bookkeeping"
+"$AISDLC" scope-check "$_ID5" --repo "$R" >/dev/null 2>&1; _SIZE_RC=$?
+[ "$_SIZE_RC" -eq 1 ] && [ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-51 UC-1: bookkeeping-only branch blocked by size ceiling" \
+    || bad "GH-51 UC-1 size boundary" "rc=$_SIZE_RC verdict=$(task_field "$R" .scope_verdict)"
+unset R _WT5 _ID5 _SIZE_RC
+
+# --------------------------------------------------------------------------- #
+# GH-54: verbatim In: exempts from spec-Out; globs/dirs/Context: do not
+# --------------------------------------------------------------------------- #
+
+printf '\nGH-54 UC-1: verbatim In: beats Out: cross-reference → PASS\n'
+R="$WORK/gh54-uc1"
+fresh_repo_scope "$R" \
+    $'- `pkg/stub.go` — implementation\n- `pkg/stub_test.go` — tests\n- `specs/SBX-1/`' \
+    $'- `pkg/stub.go` is referenced here as a cross-reference, not as a prohibition' \
+    ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
+    && ok "GH-54 UC-1: scope_verdict PASS" || bad "GH-54 UC-1 scope_verdict" "$(task_field "$R" .scope_verdict)"
+grep -q 'Verdict: PASS' "${D}scope-report.md" 2>/dev/null \
+    && ok "GH-54 UC-1: report PASS" || bad "GH-54 UC-1 verdict" "$(grep 'Verdict:' "${D}scope-report.md" 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "GH-54 UC-1: task done" || bad "GH-54 UC-1 status" "$(task_field "$R" .status)"
+
+printf '\nGH-54 UC-2: directory-pattern In: does not exempt from Out: → BLOCKED\n'
+R="$WORK/gh54-uc2"
+fresh_repo_scope "$R" $'- `pkg/` — all package files' $'- `pkg/stub.go` — out of bounds' ""
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-54 UC-2: scope_verdict BLOCKED (dir-pattern does not exempt)" \
+    || bad "GH-54 UC-2 scope_verdict" "$(task_field "$R" .scope_verdict)"
+
+printf '\nGH-54 UC-3: glob In: (* ? [...]) does not exempt from Out: → BLOCKED\n'
+for _gh54pat in 'pkg/*.go' 'pkg/stub.?o' 'pkg/stu[b].go'; do
+    R="$WORK/gh54-uc3-${_gh54pat//[^a-zA-Z0-9]/-}"
+    fresh_repo_scope "$R" "- \`${_gh54pat}\` — glob" $'- `pkg/stub.go` — out of bounds' ""
+    "$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+    D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+    [ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+        && ok "GH-54 UC-3 (${_gh54pat}): BLOCKED (glob In: does not exempt)" \
+        || bad "GH-54 UC-3 ${_gh54pat}" "$(task_field "$R" .scope_verdict)"
+done
+
+printf '\nGH-54 UC-4: verbatim In: skips spec-Out but repo-wide prohibited wins → BLOCKED\n'
+R="$WORK/gh54-uc4"
+fresh_repo_scope "$R" \
+    $'- `pkg/stub.go` — implementation\n- `pkg/stub_test.go` — tests\n- `specs/SBX-1/`' \
+    $'- `pkg/stub.go` cross-referenced here' \
+    $'- `pkg/stub.go`'
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-54 UC-4: scope_verdict BLOCKED (prohibited overrides verbatim In:)" \
+    || bad "GH-54 UC-4 scope_verdict" "$(task_field "$R" .scope_verdict)"
+grep -qF '**out of bounds** (prohibited)' "${D}scope-report.md" 2>/dev/null \
+    && ok "GH-54 UC-4: row shows **out of bounds** (prohibited)" \
+    || bad "GH-54 UC-4 report" "$(grep 'out of bounds' "${D}scope-report.md" 2>/dev/null || echo 'no oob line')"
+
+printf '\nGH-54 UC-5: Context: mention only does not exempt from Out: → BLOCKED\n'
+R="$WORK/gh54-uc5"
+fresh_repo_scope "$R" $'- `pkg/stub_test.go` — tests\n- `specs/SBX-1/`' $'- `pkg/stub.go` — out of bounds' ""
+printf '\n## Context\n\n- `pkg/stub.go`: existing file for reference\n' >> "$R/specs/SBX-1/spec.md"
+git -C "$R" add specs/SBX-1/spec.md
+git -C "$R" -c user.name=selftest -c user.email=selftest@localhost commit -q -m "chore: GH-54-UC-5 context"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-54 UC-5: scope_verdict BLOCKED (Context: does not exempt)" \
+    || bad "GH-54 UC-5 scope_verdict" "$(task_field "$R" .scope_verdict)"
+
+printf '\nGH-54 UC-6: verbatim In: beats Out: for one file; undeclared second → GAPS\n'
+R="$WORK/gh54-uc6"
+fresh_repo_scope "$R" $'- `pkg/stub.go` — implementation' $'- `pkg/stub.go` cross-referenced here' ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
+    && ok "GH-54 UC-6: scope_verdict GAPS" || bad "GH-54 UC-6 scope_verdict" "$(task_field "$R" .scope_verdict)"
+grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
+    && ok "GH-54 UC-6: undeclared listed" || bad "GH-54 UC-6 undeclared" "no **undeclared** entry"
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "GH-54 UC-6: task done (GAPS does not stop pipeline)" \
+    || bad "GH-54 UC-6 status" "$(task_field "$R" .status)"
+
 # --------------------------------------------------------------------------- #
 # structure check selftest (UC-1, UC-3, UC-4, UC-8 — GH-44)
 # --------------------------------------------------------------------------- #
@@ -1258,6 +1399,201 @@ TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)"
     && ok "UC-5: null session_id and transcript" || bad "UC-5 nulls" "$(jq '.sessions[0]' "$TF")"
 [ "$(jq '.sessions | length' "$TF")" -ge 1 ] && ok "UC-5: entry present" || bad "UC-5" "no entry"
 [ "$(task_field "$R" .status)" = "done" ] && ok "UC-5: outcome unchanged" || bad "UC-5 status" "$(task_field "$R" .status)"
+
+# --------------------------------------------------------------------------- #
+printf '\nGH-53: depends-on enforcement at add and run time\n'
+
+# Helper: write a spec with optional depends-on into a fresh repo and commit it.
+fresh_repo_dep() {
+    local dir="$1" dep="${2:-}"
+    fresh_repo "$dir"
+    {
+        echo "---"
+        echo "ticket: SBX-1"
+        echo "title: Dep test"
+        echo "status: approved"
+        [ -n "$dep" ] && echo "depends-on: $dep"
+        echo "---"
+        echo
+        echo "| id | actor | action | expected observable result | test |"
+        echo "|----|-------|--------|----------------------------|------|"
+        echo "| UC-1 | caller | calls Stub() | returns a non-empty string | unit |"
+    } > "$dir/specs/SBX-1/spec.md"
+    git -C "$dir" add -A >/dev/null
+    git -C "$dir" commit -q -m "dep spec"
+    git -C "$dir" update-ref refs/remotes/origin/master HEAD
+}
+
+# GH-53 UC-1: add refuses when verify-report.md is absent.
+R="$WORK/dep-uc1"
+fresh_repo_dep "$R" "DEP-a"
+out="$("$AISDLC" add SBX-1 --repo "$R" 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok "GH-53 UC-1: add exits non-zero" || bad "GH-53 UC-1 exit" "expected non-zero, got $rc"
+case "$out" in *DEP-a*) ok "GH-53 UC-1: output names DEP-a" ;; *) bad "GH-53 UC-1 output" "$out" ;; esac
+
+# GH-53 UC-2: add --force queues; run refuses, sets status=refused, no implement.log.
+R="$WORK/dep-uc2"
+fresh_repo_dep "$R" "DEP-a"
+out="$("$AISDLC" add SBX-1 --repo "$R" --no-pr --force 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok "GH-53 UC-2: add --force exits 0" || bad "GH-53 UC-2 add exit" "rc=$rc"
+case "$out" in *WARNING*) ok "GH-53 UC-2: WARNING in output" ;; *) bad "GH-53 UC-2 warning" "$out" ;; esac
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "refused" ] && ok "GH-53 UC-2: status refused" \
+    || bad "GH-53 UC-2 status" "$(task_field "$R" .status)"
+case "$(task_field "$R" .error)" in *DEP-a*) ok "GH-53 UC-2: error names DEP-a" ;; *) bad "GH-53 UC-2 error" "$(task_field "$R" .error)" ;; esac
+D2="$(ls -d "$R"/.aisdlc/tasks/*/ 2>/dev/null | head -1)"
+[ ! -f "${D2:-/nonexistent}/implement.log" ] && ok "GH-53 UC-2: no implement.log in task dir" \
+    || bad "GH-53 UC-2 implement.log" "file exists in task dir"
+
+# GH-53 UC-3: verify-report exists but first line is FAIL — add must refuse.
+R="$WORK/dep-uc3"
+fresh_repo_dep "$R" "DEP-a"
+mkdir -p "$R/specs/DEP-a"
+printf 'FAIL\n' > "$R/specs/DEP-a/verify-report.md"
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "add FAIL verify-report"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+out="$("$AISDLC" add SBX-1 --repo "$R" 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok "GH-53 UC-3: add exits non-zero on FAIL report" || bad "GH-53 UC-3 exit" "rc=$rc"
+case "$out" in *DEP-a*) ok "GH-53 UC-3: output names DEP-a" ;; *) bad "GH-53 UC-3 output" "$out" ;; esac
+
+# GH-53 UC-4: two deps; DEP-a PASS, DEP-b absent — output names DEP-b but not DEP-a.
+R="$WORK/dep-uc4"
+fresh_repo_dep "$R" "DEP-a DEP-b"
+mkdir -p "$R/specs/DEP-a"
+printf 'PASS\n' > "$R/specs/DEP-a/verify-report.md"
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "add DEP-a PASS verify-report"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+out="$("$AISDLC" add SBX-1 --repo "$R" 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok "GH-53 UC-4: add exits non-zero" || bad "GH-53 UC-4 exit" "rc=$rc"
+case "$out" in *DEP-b*) ok "GH-53 UC-4: output names DEP-b" ;; *) bad "GH-53 UC-4 DEP-b" "$out" ;; esac
+case "$out" in *DEP-a*) bad "GH-53 UC-4 DEP-a" "should not mention DEP-a: $out" ;; *) ok "GH-53 UC-4: output omits DEP-a" ;; esac
+
+# GH-53 UC-5: dep PASS committed to base — add exits 0, run completes to done.
+R="$WORK/dep-uc5"
+fresh_repo_dep "$R" "DEP-a"
+mkdir -p "$R/specs/DEP-a"
+printf 'PASS\n' > "$R/specs/DEP-a/verify-report.md"
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "add DEP-a PASS verify-report"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "GH-53 UC-5: add exits 0" || bad "GH-53 UC-5 add" "add failed"
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "GH-53 UC-5: status done" \
+    || bad "GH-53 UC-5 status" "$(task_field "$R" .status)"
+D5="$(ls -d "$R"/.aisdlc/tasks/*/ 2>/dev/null | head -1)"
+[ -f "${D5:-/nonexistent}/implement.log" ] && ok "GH-53 UC-5: implement.log present in task dir" \
+    || bad "GH-53 UC-5 implement.log" "missing from task dir ${D5:-none}"
+
+
+# --------------------------------------------------------------------------- #
+printf '\nGH-60: local tracker symlink — ship writes to repo tracker, not worktree\n'
+
+# UC-1: symlink created and points correctly to repo canonical tracker (tested via retained worktree)
+printf '\nGH-60 UC-1: symlink created and readlink resolves to repo tracker\n'
+R="$WORK/gh60-uc1"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker" "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_TF1="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+_WT1="$(jq -r '.worktree' "$_TF1")"
+[ -L "$_WT1/.aisdlc/tracker" ] && [ "$(readlink "$_WT1/.aisdlc/tracker")" = "$R/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-1: symlink exists and readlink resolves to $R/.aisdlc/tracker" \
+    || bad "GH-60 UC-1" "symlink missing or points elsewhere: $(readlink "$_WT1/.aisdlc/tracker" 2>/dev/null || echo 'not a symlink')"
+unset _TF1 _WT1
+
+# UC-2 + UC-3: localpr stub writes prs.jsonl at repo tracker, inbox sees PR, clean preserves exact record contents
+printf '\nGH-60 UC-2,3: localpr writes prs.jsonl, inbox lists PR, clean preserves exact record contents\n'
+R="$WORK/gh60-uc23"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker" "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+AISDLC_STUB=localpr "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+# UC-2 behavioral assertion: aisdlc inbox lists the shipped PR — capture once to avoid SIGPIPE race
+_INBOX60="$("$AISDLC" inbox --repo "$R" 2>&1)"
+grep -q 'local#1' <<< "$_INBOX60" \
+    && ok "GH-60 UC-2: aisdlc inbox lists PR local#1" \
+    || bad "GH-60 UC-2" "$_INBOX60"
+unset _INBOX60
+jq -e '.number == 1 and .url == "local#1" and .title == "SBX-1"' "$R/.aisdlc/tracker/prs.jsonl" >/dev/null \
+    && ok "GH-60 UC-3: prs.jsonl record contents correct before clean" \
+    || bad "GH-60 UC-3 before" "$(cat "$R/.aisdlc/tracker/prs.jsonl" 2>/dev/null)"
+_WT_23="$(jq -r '.worktree' "$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)")"
+"$AISDLC" clean --all --repo "$R" >/dev/null 2>&1
+[ ! -d "$_WT_23" ] \
+    && ok "GH-60 UC-3: worktree removed after clean" \
+    || bad "GH-60 UC-3 wt" "worktree still exists: $_WT_23"
+jq -e '.number == 1 and .url == "local#1" and .title == "SBX-1"' "$R/.aisdlc/tracker/prs.jsonl" >/dev/null \
+    && ok "GH-60 UC-3: prs.jsonl exact record contents retained at repo tracker after clean" \
+    || bad "GH-60 UC-3 after" "$(cat "$R/.aisdlc/tracker/prs.jsonl" 2>/dev/null)"
+unset _WT_23
+
+# UC-4: tracker dir absent — mkdir creates it, then symlinked (verified via readlink on retained worktree)
+printf '\nGH-60 UC-4: tracker dir absent → created by runner and symlinked\n'
+R="$WORK/gh60-uc4"; fresh_repo "$R"
+mkdir -p "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+# Intentionally no $R/.aisdlc/tracker yet
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ -d "$R/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-4: $R/.aisdlc/tracker/ created by runner" \
+    || bad "GH-60 UC-4 mkdir" "directory absent after run"
+_TF4="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+_WT4="$(jq -r '.worktree' "$_TF4")"
+[ -L "$_WT4/.aisdlc/tracker" ] && [ "$(readlink "$_WT4/.aisdlc/tracker")" = "$R/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-4: absent tracker dir created and symlinked correctly" \
+    || bad "GH-60 UC-4 link" "symlink missing or incorrect"
+unset _TF4 _WT4
+
+# UC-5: symlink creation step fails → task=failed, .error set, run.log records it, worktree kept
+printf '\nGH-60 UC-5: symlink failure → task failed, error set, worktree retained\n'
+R="$WORK/gh60-uc5"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker" "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+# Inject a failing ln wrapper (fails only when called as ln -sfn)
+_LN_BIN="$WORK/gh60-uc5-bin"
+mkdir -p "$_LN_BIN"
+printf '#!/bin/sh\nif [ "${1:-}" = "-sfn" ]; then exit 1; fi\nexec /bin/ln "$@"\n' > "$_LN_BIN/ln"
+chmod +x "$_LN_BIN/ln"
+PATH="$_LN_BIN:$PATH" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] \
+    && ok "GH-60 UC-5: task status is failed" \
+    || bad "GH-60 UC-5 status" "$(task_field "$R" .status)"
+_TF5="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+jq -e '.error' "$_TF5" 2>/dev/null | grep -qi 'symlink' \
+    && ok "GH-60 UC-5: .error field mentions symlink failure" \
+    || bad "GH-60 UC-5 error" "$(jq -r '.error // empty' "$_TF5" 2>/dev/null)"
+_WT5="$(jq -r '.worktree' "$_TF5")"
+[ -d "$_WT5" ] \
+    && ok "GH-60 UC-5: worktree directory retained after symlink failure" \
+    || bad "GH-60 UC-5 wt" "worktree absent: $_WT5"
+_D5="$(dirname "$_TF5")/"
+grep -q 'symlink failed' "$_D5/run.log" 2>/dev/null \
+    && ok "GH-60 UC-5: run.log records symlink failure" \
+    || bad "GH-60 UC-5 log" "$(cat "$_D5/run.log" 2>/dev/null | tail -3)"
+[ ! -f "$_D5/implement.log" ] \
+    && ok "GH-60 UC-5: implement phase never invoked" \
+    || bad "GH-60 UC-5 nophase" "implement.log found — phase ran after symlink failure"
+unset _LN_BIN _TF5 _WT5 _D5
+
+# UC-6: github tracker → no symlink created in worktree, task proceeds normally
+printf '\nGH-60 UC-6: github tracker → no symlink in worktree\n'
+R="$WORK/gh60-uc6"; fresh_repo "$R"
+mkdir -p "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/github.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_TF6="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+_WT6="$(jq -r '.worktree' "$_TF6")"
+[ ! -L "$_WT6/.aisdlc/tracker" ] && [ ! -e "$_WT6/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-6: no symlink or tracker dir created in worktree for github tracker" \
+    || bad "GH-60 UC-6" "unexpected symlink or tracker dir at $_WT6/.aisdlc/tracker"
+unset _TF6 _WT6
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

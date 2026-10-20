@@ -35,7 +35,7 @@ Three consequences shape everything below:
 | `/sdlc:triage`, `/sdlc:root-cause` (issue route) | agent, read-only | `specs/GH-<n>/spec.md` with `kind: bugfix`, root cause in Context |
 | `/sdlc:implement` | agent, unattended | commits per UC, or `BLOCKED.md` |
 | `/sdlc:qa` | agent, unattended | `specs/<TICKET>/qa-report.md`, PASS/GAPS, screenshots for UI UCs |
-| `aisdlc scope-check` | queue, native bash | `specs/<TICKET>/scope-report.md`, PASS/GAPS/BLOCKED — BLOCKED stops before ship |
+| `aisdlc scope-check` | queue, native bash | `specs/<TICKET>/scope-report.md`, PASS/GAPS/BLOCKED — BLOCKED stops before ship (`specs/<TICKET>/`, AGENTS.md, CLAUDE.md, .claude/ are never classified) |
 | `/sdlc:ship` | agent, unattended | draft PR labelled `ai-sdlc` + `review` |
 | `/sdlc:review` | agent, unattended | `APPROVED` → `merge-ready`, or `CHANGES_REQUESTED` and an autofix loop |
 | `/sdlc:continue`, `/sdlc:fix-pr`, `/sdlc:autopilot` | agent, on demand | a stalled PR driven to `merge-ready` |
@@ -57,6 +57,7 @@ again inside the worktree before spending a token.
 
 The section that earns its keep most is `Out:`. It is the only thing standing between "add a
 balance endpoint" and an agent helpfully restructuring the money handling on its way past.
+A file listed verbatim (exact path, no glob characters, no trailing `/`) in `In:` is exempt from `Out:` matching even if `Out:` cross-references it; repo-wide prohibited paths always win regardless.
 
 ### Context is routed, not concatenated
 
@@ -97,8 +98,9 @@ a cliff with size. The numbers behind the defaults:
 
 So the harness budgets the change instead of hoping: **400 added lines, 15 files, 3 modules**, with
 a hard ceiling of **3000 added lines** past which `scope-check` returns `BLOCKED` and the queue
-stops before ship. Deleted lines, generated output, vendored trees, lock files and the specs
-directory never count — removing code is not a large change to review.
+stops before ship. Deleted lines, generated output, vendored trees, lock files (`package-lock.json`,
+`yarn.lock`, `poetry.lock`, `uv.lock`, and similar) and the specs directory never count — removing
+code is not a large change to review.
 
 The budget binds at planning time, not at review time: `/sdlc:spec` estimates the surface from the
 paths in `Context` plus their call sites, and calls `/sdlc:decompose` when the estimate breaks a
@@ -310,6 +312,12 @@ the dispatch that would carry it.
 | Cost per PR climbing | Specs too large; whole-repo context per task | Split specs; check the router loads one playbook |
 | Review queue growing faster than merges | Generation outran review capacity | Queue fewer, larger-value tasks — throughput is merges, not PRs |
 | `BLOCKED` on the same ambiguity repeatedly | The spec template is missing a section your domain needs | Extend the template, not the individual spec |
+| Task status `refused` with `depends-on not met: <TOKEN>` | Dependent slice queued or run before its prerequisite merged | Wait for the prerequisite to merge; its `verify-report.md` must show `PASS` in the base tree |
+| PR record missing after ship or clean | Worktree local tracker `.aisdlc/tracker` not linked to repo canonical | Automatic repo tracker symlinking ensures worktree records land at repo root |
+
+**Limitation — dependencies outside the pipeline:** if a prerequisite was implemented without
+going through this pipeline it has no `verify-report.md`. Remove the `depends-on:` field from
+the dependent spec before queuing it.
 
 ## What stays human
 
