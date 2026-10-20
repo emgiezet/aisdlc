@@ -1,6 +1,10 @@
 ## GH-43-b — Finished tasks are archived — redacted logs, reports, manifest and index — and survive clean
 
-**QA verdict: PASS** · UC coverage: 8/8 automated · Tests: 250 → 257 · Skipped: 0
+**QA verdict: GAPS** · Current runner checks: 218 passed, 0 failed
+
+Conflicts with `main` are resolved. Merge is blocked by five reproduced archive security
+defects and the native scope gate (452/360 added lines, 5/4 files). Local validation,
+Docker ShellCheck and 13 trigger sets pass; details are in `verify-report.md`.
 
 🤖 Written by an agent from `specs/GH-43-b/spec.md`. Review the spec's `Out:` scope first —
 that is where an unattended run is most likely to have overstepped.

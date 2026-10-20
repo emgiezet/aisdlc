@@ -1,7 +1,18 @@
-**Verdict: PASS**
+**Verdict: GAPS**
 
 Ticket: GH-43-b
 Verification map: none
+
+## Current conflict-repair verification
+
+Conflict integration `b2c23c7` preserves both the markdown-only and secret-bearing stub modes.
+Current suites pass: 218 runner checks, local validation, 13 trigger sets, and Docker ShellCheck.
+Independent security review found five publication/redaction blockers, all reproduced with
+synthetic fixtures; see `verify-report.md`. Native scope remains GAPS: 452/360 added lines and
+5/4 files. These failures prevent merge despite green command suites.
+
+The sections below preserve the earlier QA run and its historical counts/line references;
+they are not a current assertion of complete security coverage.
 
 ---
 
