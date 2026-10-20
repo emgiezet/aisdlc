@@ -37,7 +37,7 @@ Out:
 - New model config keys; reuse the `model_roles.smol` path already resolved in `cmd_add`.
 - Auto-committing `readiness.md`; it is written to disk only.
 
-Change budget: 200 added lines, 6 files, 3 modules
+Change budget: 400 added lines, 8 files, 3 modules
 
 ## Context
 

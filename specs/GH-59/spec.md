@@ -33,7 +33,7 @@ Out:
 - Changes to `.claude/sdlc.md` in this repo (template update only; this repo's profile carries no Tolerance yet)
 - Changes to `aisdlc add` CLI flags or any command other than `implement.md`
 
-Change budget: 130 added lines, 4 files, 1 module
+Change budget: 200 added lines, 4 files, 1 module
 
 ## Context
 

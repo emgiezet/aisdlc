@@ -132,3 +132,17 @@ failed for missing archives on empty implementations and local-tracker link fail
 Both now pass. Separate CLI retry/run smokes also observed failed task records, retained
 worktrees, and corresponding failed archive manifests/index entries for both paths.
 
+## Continuation budget approval
+
+After integration exposed missing boundary/concurrency coverage, the user selected
+“Zatwierdź szersze budżety”. Functional scope and verification gates remain unchanged;
+the following corrected limits are now reflected in the approved specs:
+
+| Spec | Added lines | Files | Modules |
+|---|---:|---:|---:|
+| GH-38 | 350 | 6 | 3 |
+| GH-40 | 400 | 8 | 3 |
+| GH-59 | 200 | 4 | 1 |
+| GH-43-d | 500 | 3 | 3 |
+| GH-43-f | 300 | 3 | 3 |
+

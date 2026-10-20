@@ -67,7 +67,7 @@ Out:
 - Pagination, streaming, or output formats other than plain text and pretty JSON.
 - Pruning by cost or status (only by age).
 
-Change budget: 260 added lines, 3 files, 3 modules
+Change budget: 500 added lines, 3 files, 3 modules
 
 ## Context
 
