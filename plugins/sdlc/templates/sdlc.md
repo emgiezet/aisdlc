@@ -71,6 +71,8 @@ Deleted lines, generated output, vendored trees, lock files and the specs direct
 - **Hard ceiling:** 3000
   <!-- past this scope-check returns BLOCKED and the queue stops before ship: nobody reviews
        a diff this wide, so it goes back through /sdlc:decompose -->
+- **Tolerance:** 0%
+  <!-- % above each soft limit scope-check still accepts; absent or 0 = any overshoot is a finding; repo-wide only; ceiling unaffected -->
 - **Erosion delta max:** 0.05
   <!-- SlopCodeBench erosion delta above this triggers an `erosion` finding in scope-report.md;
        0.05 is the default (matches the built-in). Raise it only for a large mechanical refactor. -->

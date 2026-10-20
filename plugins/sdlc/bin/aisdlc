@@ -1337,24 +1337,30 @@ budget_value() {
 # findings, and a mangled byte there is a mangled byte in the pull request.
 _size_eval() {
     local added="$1" n_files="$2" n_mods="$3" modlist="$4" \
-          b_added="$5" b_files="$6" b_mods="$7" ceiling="$8"
-    local out="" rc=0 per_file=0
+          b_added="$5" b_files="$6" b_mods="$7" ceiling="$8" tolerance="$9"
+    local out="" rc=0 per_file=0 lim_added lim_files lim_mods lbl
+    lim_added=$((b_added + b_added * tolerance / 100))
+    lim_files=$((b_files + b_files * tolerance / 100))
+    lim_mods=$((b_mods + b_mods * tolerance / 100))
     [ "$n_files" -gt 0 ] && per_file=$((added / n_files))
-    if [ "$added" -gt "$b_added" ]; then
-        out="${out}over budget: $added added lines > $b_added. One spec is one PR: split it (spec-authoring, Sizing)"$'\n'
+    if [ "$added" -gt "$lim_added" ]; then
+        [ "$tolerance" -gt 0 ] && lbl="$lim_added ($b_added + $tolerance% tolerance)" || lbl="$b_added"
+        out="${out}over budget: $added added lines > $lbl. One spec is one PR: split it (spec-authoring, Sizing)"$'\n'
         rc=1
     fi
-    if [ "$n_files" -gt "$b_files" ]; then
-        out="${out}over budget: $n_files files touched > $b_files"$'\n'
+    if [ "$n_files" -gt "$lim_files" ]; then
+        [ "$tolerance" -gt 0 ] && lbl="$lim_files ($b_files + $tolerance% tolerance)" || lbl="$b_files"
+        out="${out}over budget: $n_files files touched > $lbl"$'\n'
         rc=1
     fi
-    if [ "$n_mods" -gt "$b_mods" ]; then
-        out="${out}over budget: $n_mods modules touched > $b_mods ($modlist)"$'\n'
+    if [ "$n_mods" -gt "$lim_mods" ]; then
+        [ "$tolerance" -gt 0 ] && lbl="$lim_mods ($b_mods + $tolerance% tolerance)" || lbl="$b_mods"
+        out="${out}over budget: $n_mods modules touched > $lbl ($modlist)"$'\n'
         rc=1
     fi
     # Shotgun surgery: many modules, thin edits in each. One behaviour smeared across the
     # tree; the fix is a seam of its own, in its own slice, not a wider pull request.
-    if [ "$n_mods" -gt "$b_mods" ] && [ "$per_file" -lt 10 ]; then
+    if [ "$n_mods" -gt "$lim_mods" ] && [ "$per_file" -lt 10 ]; then
         out="${out}shotgun surgery: $n_mods modules, ~$per_file added lines per file. Extract the shared seam as its own slice, then move one caller group per slice"$'\n'
         rc=1
     fi
@@ -1369,13 +1375,15 @@ _size_eval() {
 # Append the size section to a scope report. ${10} is the newline-separated findings list.
 _write_size_section() {
     local out="$1" added="$2" files="$3" mods="$4" modlist="$5" \
-          b_added="$6" b_files="$7" b_mods="$8" ceiling="$9" findings="${10}"
+          b_added="$6" b_files="$7" b_mods="$8" ceiling="$9" findings="${10}" tolerance="${11}"
+    local sfx=""
+    [ "$tolerance" -gt 0 ] && sfx=" +$tolerance%"
     {
         printf '\n## Size\n\n'
         printf '| Measure | This branch | Budget |\n|---|---|---|\n'
-        printf '| Added lines | %s | %s (hard ceiling %s) |\n' "$added" "$b_added" "$ceiling"
-        printf '| Files touched | %s | %s |\n' "$files" "$b_files"
-        printf '| Modules touched | %s | %s |\n' "$mods" "$b_mods"
+        printf '| Added lines | %s | %s%s (hard ceiling %s) |\n' "$added" "$b_added" "$sfx" "$ceiling"
+        printf '| Files touched | %s | %s%s |\n' "$files" "$b_files" "$sfx"
+        printf '| Modules touched | %s | %s%s |\n' "$mods" "$b_mods" "$sfx"
         printf '\nModules: %s\n' "${modlist:-none}"
         printf '\nGenerated output, vendored trees, lock files and the specs directory are\n'
         printf 'excluded; deleted lines never count against the budget.\n'
@@ -1762,16 +1770,18 @@ run_scope_check() {
     n_mods="$(printf '%s' "$stats" | awk '{print $3}')"
     modlist="$(printf '%s' "$stats" | awk '{print $4}')"
 
-    local b_added b_files b_mods ceiling
+    local b_added b_files b_mods ceiling tolerance
     b_added="$(budget_value  "$spec_file" "$profile" 'added lines' 'Added lines'  "$BUILTIN_BUDGET_ADDED")"
     b_files="$(budget_value  "$spec_file" "$profile" 'files'       'Files'        "$BUILTIN_BUDGET_FILES")"
     b_mods="$(budget_value   "$spec_file" "$profile" 'modules'     'Modules'      "$BUILTIN_BUDGET_MODULES")"
     ceiling="$(_budget_profile "$profile" 'Hard ceiling')"
     [ -n "$ceiling" ] || ceiling="$BUILTIN_BUDGET_CEILING"
+    tolerance="$(_budget_profile "$profile" 'Tolerance')"
+    [ -n "$tolerance" ] || tolerance=0
 
     local size_findings="" size_rc=0
     size_findings="$(_size_eval "$added" "$n_files" "$n_mods" "$modlist" \
-        "$b_added" "$b_files" "$b_mods" "$ceiling")"; size_rc=$?
+        "$b_added" "$b_files" "$b_mods" "$ceiling" "$tolerance")"; size_rc=$?
     if [ "$size_rc" -eq 2 ]; then
         verdict="BLOCKED"
     elif [ "$size_rc" -eq 1 ] && [ "$verdict" = "PASS" ]; then
@@ -1781,7 +1791,7 @@ run_scope_check() {
     mkdir -p "$wt/$specs_dir/$ticket"
     _write_scope_report "$report_wt" "$ticket" "$base" "$in_files" "$undeclared" "$oob" "$verdict"
     _write_size_section "$report_wt" "$added" "$n_files" "$n_mods" "$modlist" \
-        "$b_added" "$b_files" "$b_mods" "$ceiling" "$size_findings"
+        "$b_added" "$b_files" "$b_mods" "$ceiling" "$size_findings" "$tolerance"
 
     # Structure check — SlopCodeBench erosion; never causes BLOCKED.
     local erosion_max hotspot_max struct_result struct_body
