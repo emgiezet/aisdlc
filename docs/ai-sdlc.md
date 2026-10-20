@@ -323,6 +323,9 @@ Set `AISDLC_ARCHIVE=off` to disable archiving entirely.
       <task-id>.2/          — second run (after aisdlc retry), etc.
 ```
 
+After cancellation before the first execution, that execution uses `<task-id>.1/`.
+An existing archive directory is never overwritten.
+
 **Redaction:** every archived text file is redacted before its sha256 is recorded.
 Built-in rules: Anthropic/OpenAI API keys (`sk-ant-…` / `sk-…`), GitHub tokens
 (`ghp_`, `gho_`, `ghs_`, `github_pat_`), AWS access key IDs, `Bearer <token>`,
@@ -330,9 +333,13 @@ PEM private key blocks, and `KEY=value` lines whose key contains `TOKEN`, `SECRE
 `PASSWORD`, `API_KEY`, or `PRIVATE`. Each match becomes `[REDACTED:<rule>]`.
 The live task files in `.aisdlc/tasks/` are **not** redacted — only the archive copy is.
 `manifest.json` carries `redactions: {"<rule>": <count>}` across all archived files.
+Temporary raw copies and newly created archive files are owner-only. The manifest uses
+redacted task metadata; generated index records also pass through redaction.
 
-A failed archive write (unwritable root, full disk) logs `archive failed: <reason>` to
-`run.log` and never changes the task's status or the runner's exit code.
+A failed copy or redaction withholds the new archive and index entry. Archive errors
+(including an unwritable root or full disk) log `archive failed: <reason>` to `run.log`
+and never change the task's status or the runner's exit code. Existing archive entries
+remain intact.
 
 ## Failure modes
 

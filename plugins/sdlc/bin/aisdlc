@@ -1964,68 +1964,66 @@ _arc_merge() {
 }
 
 # Copy src to dst with built-in secrets redacted; print JSON {rule:count} to stdout.
-_arc_redact() {
-    local src="$1" dst="$2" t n counts='{}'
-    t="${dst}.rd.$$"
-    cp "$src" "$t" 2>/dev/null || { printf '{}'; return; }
-    # anthropic-key: sk-ant-...
-    n="$(grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+_arc_redact() (
+    local src="$1" dst="$2" scratch t n counts='{}'
+    umask 077
+    scratch="$(mktemp -d "${dst}.redact.XXXXXX")" || return 1
+    trap 'rm -rf -- "$scratch"' EXIT
+    t="$scratch/content"
+    cp "$src" "$t" 2>/dev/null || return 1
+    # A grep exit of 1 means no match; read/transform errors must not publish a file.
+    n="$(grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
-        sed -i -E 's/sk-ant-[A-Za-z0-9_-]{20,}/[REDACTED:anthropic-key]/g' "$t"
-        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"anthropic-key":$n}')"
+        sed -i -E 's/sk-ant-[A-Za-z0-9_-]{20,}/[REDACTED:anthropic-key]/g' "$t" || return 1
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"anthropic-key":$n}')" || return 1
     fi
-    # openai-key: sk-... (sk-ant- already replaced above)
-    n="$(grep -oE 'sk-[A-Za-z0-9_-]{20,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    n="$(grep -oE 'sk-[A-Za-z0-9_-]{20,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
-        sed -i -E 's/sk-[A-Za-z0-9_-]{20,}/[REDACTED:openai-key]/g' "$t"
-        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"openai-key":$n}')"
+        sed -i -E 's/sk-[A-Za-z0-9_-]{20,}/[REDACTED:openai-key]/g' "$t" || return 1
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"openai-key":$n}')" || return 1
     fi
-    # github-token: ghp_, gho_, ghs_, github_pat_
-    n="$(grep -oE '(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]{10,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    n="$(grep -oE '(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]{10,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
-        sed -i -E 's/(ghp_|gho_|ghs_)[A-Za-z0-9_]{10,}/[REDACTED:github-token]/g' "$t"
-        sed -i -E 's/github_pat_[A-Za-z0-9_]{10,}/[REDACTED:github-token]/g' "$t"
-        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"github-token":$n}')"
+        sed -i -E 's/(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]{10,}/[REDACTED:github-token]/g' "$t" || return 1
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"github-token":$n}')" || return 1
     fi
-    # aws-key-id: AKIA[A-Z0-9]{16}
-    n="$(grep -oE 'AKIA[A-Z0-9]{16}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    n="$(grep -oE 'AKIA[A-Z0-9]{16}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
-        sed -i -E 's/AKIA[A-Z0-9]{16}/[REDACTED:aws-key-id]/g' "$t"
-        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"aws-key-id":$n}')"
+        sed -i -E 's/AKIA[A-Z0-9]{16}/[REDACTED:aws-key-id]/g' "$t" || return 1
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"aws-key-id":$n}')" || return 1
     fi
-    # bearer-token: Bearer <token>
-    n="$(grep -oE 'Bearer [A-Za-z0-9._~+/=-]{8,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    n="$(grep -oE 'Bearer [A-Za-z0-9._~+/=-]{8,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
-        sed -i -E 's/Bearer [A-Za-z0-9._~+\/=-]{8,}/[REDACTED:bearer-token]/g' "$t"
-        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"bearer-token":$n}')"
+        sed -i -E 's/Bearer [A-Za-z0-9._~+\/=-]{8,}/[REDACTED:bearer-token]/g' "$t" || return 1
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"bearer-token":$n}')" || return 1
     fi
-    # pem-private-key: multi-line -----BEGIN ... PRIVATE KEY----- blocks
-    n="$(grep -c '-----BEGIN.*PRIVATE KEY-----' "$t" 2>/dev/null || true)"
+    n="$(grep -cE -- '-----BEGIN ([A-Z]+ )*PRIVATE KEY-----' "$t")" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
-        awk '/-----BEGIN [A-Z ]* PRIVATE KEY-----/{p=1;print "[REDACTED:pem-private-key]";next}
-             p && /-----END [A-Z ]* PRIVATE KEY-----/{p=0;next}
-             p{next}{print}' "$t" > "${t}.p" && mv "${t}.p" "$t" || rm -f "${t}.p"
-        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"pem-private-key":$n}')"
+        awk '/-----BEGIN ([A-Z]+ )*PRIVATE KEY-----/{p=1;print "[REDACTED:pem-private-key]";next}
+             p && /-----END ([A-Z]+ )*PRIVATE KEY-----/{p=0;next}
+             p{next}{print}' "$t" > "$scratch/next" || return 1
+        mv "$scratch/next" "$t" || return 1
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"pem-private-key":$n}')" || return 1
     fi
-    # env-secret: KEY=value lines where KEY contains TOKEN, SECRET, PASSWORD, API_KEY, or PRIVATE
-    n="$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE)[A-Za-z0-9_]*[[:space:]]*=.' \
-             "$t" 2>/dev/null || true)"
+    n="$(grep -cE '^([A-Za-z_][A-Za-z0-9_]*)?(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE)[A-Za-z0-9_]*[[:space:]]*=.' \
+             "$t")" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
         sed -i -E \
-            's/^([A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE)[A-Za-z0-9_]*[[:space:]]*=).*/\1[REDACTED:env-secret]/' \
-            "$t"
-        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"env-secret":$n}')"
+            's/^(([A-Za-z_][A-Za-z0-9_]*)?(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE)[A-Za-z0-9_]*[[:space:]]*=).*/\1[REDACTED:env-secret]/' \
+            "$t" || return 1
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"env-secret":$n}')" || return 1
     fi
-    mv "$t" "$dst"
+    mv "$t" "$dst" || return 1
     printf '%s' "$counts"
-}
+)
 
 # Archive a task when it reaches a terminal status (done/failed/refused/cancelled).
 # Must be called BEFORE any worktree removal so BLOCKED.md is still readable.
 # Non-fatal: on any write failure, logs "archive failed: <reason>" and returns 0.
-archive_task() {
+archive_task() (
     local repo="$1" id="$2"
     [ "${AISDLC_ARCHIVE:-}" = "off" ] && return 0
+    umask 077
     local root="${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}"
 
     # repo slug: <basename>-<first 8 hex of sha256 of absolute path>
@@ -2051,24 +2049,36 @@ archive_task() {
     local ym arc_name arc_dir
     ym="$(date -u +%Y-%m)"
     arc_name="$id"
-    [ "${attempts:-1}" -gt 1 ] && arc_name="${id}.${attempts}"
+    if [ "${attempts:-1}" -gt 1 ] || [ -e "${root}/${repo_slug}/${ym}/${id}" ]; then
+        arc_name="${id}.${attempts}"
+    fi
     arc_dir="${root}/${repo_slug}/${ym}/${arc_name}"
 
-    if ! mkdir -p "$arc_dir/phases" "$arc_dir/spec" 2>/dev/null; then
+    if ! mkdir -p "${root}/${repo_slug}/${ym}" 2>/dev/null || ! mkdir "$arc_dir" 2>/dev/null; then
         printf '[%s] archive failed: could not create %s\n' "$(ts)" "$arc_dir" >> "$log" 2>/dev/null || true
         return 0
     fi
+    local _arc_complete=0 _arc_failed=0
+    trap 'if [ "$_arc_complete" -eq 0 ]; then
+        rm -rf -- "$arc_dir"
+        printf "[%s] archive failed: copy, redaction or publication failed\n" "$(ts)" >> "$log" 2>/dev/null || true
+    fi' EXIT
+    mkdir "$arc_dir/phases" "$arc_dir/spec" || return 0
 
     # Inner helper: copy one file with redaction; updates all_counts and files_json via dynamic scope.
     _arc_file() {
         local _as="$1" _ar="$2" _ac _ah _adst
         [ -f "$_as" ] || return 0
         _adst="${arc_dir}/${_ar}"
-        mkdir -p "$(dirname "$_adst")" 2>/dev/null || return 0
-        _ac="$(_arc_redact "$_as" "$_adst")"
-        all_counts="$(_arc_merge "$all_counts" "$_ac")"
-        _ah="$(sha256sum "$_adst" 2>/dev/null | cut -c1-64)"
-        files_json="$(printf '%s' "$files_json" | jq --arg p "$_ar" --arg h "$_ah" '. + {($p): $h}')"
+        [ "$_arc_failed" -eq 0 ] || return 1
+        if ! mkdir -p "$(dirname "$_adst")" 2>/dev/null \
+            || ! _ac="$(_arc_redact "$_as" "$_adst")" \
+            || ! all_counts="$(_arc_merge "$all_counts" "$_ac")" \
+            || ! _ah="$(sha256sum "$_adst" | cut -c1-64)" \
+            || ! files_json="$(printf '%s' "$files_json" | jq --arg p "$_ar" --arg h "$_ah" '. + {($p): $h}')"; then
+            _arc_failed=1
+            return 1
+        fi
     }
 
     local all_counts='{}' files_json='{}'
@@ -2103,6 +2113,7 @@ archive_task() {
     # BLOCKED.md: worktree only — not copied to task dir, must be read before worktree removal
     [ -n "$wt" ] && [ -f "$wt/$specs_dir/$ticket/BLOCKED.md" ] \
         && _arc_file "$wt/$specs_dir/$ticket/BLOCKED.md" "spec/BLOCKED.md"
+    [ "$_arc_failed" -eq 0 ] || return 0
 
     # manifest.json
     local _archived_at _pf
@@ -2111,7 +2122,7 @@ archive_task() {
     if ! jq -n \
         --arg at "$_archived_at" --arg pf "$_pf" --arg ver "$VERSION" \
         --argjson redactions "$all_counts" --argjson files "$files_json" \
-        --slurpfile tf "$tf" \
+        --slurpfile tf "$arc_dir/task.json" \
         '($tf[0]) | {id,ticket,repo,base,branch,pr_url,status,attempts,cost_usd,runtime,
           runtime_version,models:(.models//null),sessions:(.sessions//[]),
           aisdlc_version:$ver,policy_fingerprint:$pf,archived_at:$at,
@@ -2122,19 +2133,23 @@ archive_task() {
     fi
 
     # Append to index.jsonl (flock-ed for parallel safety).
-    local _idx="${root}/index.jsonl" _entry
-    _entry="$(jq -cn \
-        --arg id "$id" --arg tk "$ticket" --arg rp "$repo" --arg rs "$repo_slug" \
-        --arg st "$status" --argjson cost "$(jq '.cost_usd // null' "$tf" 2>/dev/null)" \
-        --arg at "$_archived_at" --arg path "$arc_dir" \
-        '{id:$id,ticket:$tk,repo:$rp,repo_slug:$rs,status:$st,
-          cost_usd:$cost,archived_at:$at,path:$path}')"
+    local _idx="${root}/index.jsonl" _entry _index_counts
+    jq -cn --slurpfile m "$arc_dir/manifest.json" --arg rs "$repo_slug" --arg path "$arc_dir" \
+        '$m[0] | {id,ticket,repo,status,cost_usd,archived_at} + {repo_slug:$rs,path:$path}' \
+        > "$arc_dir/.index.raw" || return 0
+    _index_counts="$(_arc_redact "$arc_dir/.index.raw" "$arc_dir/.index.entry")" || return 0
+    all_counts="$(_arc_merge "$all_counts" "$_index_counts")" || return 0
+    jq --argjson c "$all_counts" '.redactions = $c' "$arc_dir/manifest.json" > "$arc_dir/.manifest" || return 0
+    mv "$arc_dir/.manifest" "$arc_dir/manifest.json" || return 0
+    _entry="$(cat "$arc_dir/.index.entry")" || return 0
+    rm "$arc_dir/.index.raw" "$arc_dir/.index.entry" || return 0
     flock "${root}/index.lock" bash -c 'printf "%s\n" "$1" >> "$2"' _ "$_entry" "$_idx" \
-        2>/dev/null || printf '[%s] archive failed: index append failed\n' "$(ts)" >> "$log" 2>/dev/null || true
+        2>/dev/null || return 0
+    _arc_complete=1
 
     printf '[%s] archived to %s\n' "$(ts)" "$arc_dir" >> "$log" 2>/dev/null || true
     return 0
-}
+)
 
 
 execute_task() {
@@ -2179,6 +2194,7 @@ execute_task() {
         if ! seed_spec "$repo" "$wt" "$ticket" "$log" "$specs_dir"; then
             task_set "$repo" "$id" --arg e "no spec for $ticket in the worktree or the repo" '.error = $e'
             set_status "$repo" "$id" failed
+            archive_task "$repo" "$id"
             say "  ✗ $id — spec missing"
             return 1
         fi

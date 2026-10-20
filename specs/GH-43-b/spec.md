@@ -49,7 +49,10 @@ Out:
 - `cmd_clean` behaviour, worktree-keeping rules, status names and transitions.
 - Remote upload, sync, encryption, a UI.
 
-Change budget: 360 added lines, 4 files, 4 modules
+Change budget: 800 added lines, 5 files, 4 modules
+
+Budget amendment approved by @emgiezet in this session: repair the reproduced security and
+terminal-state blockers, rerun tests/review, and merge only after the required checks pass.
 
 ## Context
 

@@ -750,10 +750,7 @@ grep -q 'Largest CC increase' "${D}scope-report.md" 2>/dev/null \
 
 # --------------------------------------------------------------------------- #
 printf '\nstructure UC-3: lizard not on PATH → skipped: not installed, no finding\n'
-# This test relies on lizard not being installed in the test environment (the selftest
-# runner has no real lizard, and the stub-lizard is only added for UC-1 via
-# _LIZARD_STUB_DIR). Running with the normal stub PATH naturally exercises the
-# "not installed" path without requiring a fully-enumerated restricted PATH.
+# Hide only the optional external tool; do not depend on the host's installed toolchain.
 R="$WORK/struct-uc3"
 fresh_repo_scope "$R" \
     $'- `pkg/`\n- `specs/SBX-1/`' \
@@ -765,9 +762,15 @@ git -C "$R" add -A && git -C "$R" commit -q -m "feat: add stub at base"
 git -C "$R" update-ref refs/remotes/origin/master HEAD
 mkdir -p "$R/.aisdlc"
 printf '{"verify":["true"]}\n' > "$R/.aisdlc/config.json"
-# Run without the lizard stub dir — no lizard binary on PATH in the selftest environment.
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
-"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+(
+    command() {
+        [ "${1:-}" = "-v" ] && [ "${2:-}" = "lizard" ] && return 1
+        builtin command "$@"
+    }
+    export -f command
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+)
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 grep -q '## Structure' "${D}scope-report.md" 2>/dev/null \
     && ok "UC-3: ## Structure section present (skipped message)" \
@@ -1450,6 +1453,69 @@ jq -e --arg id "$_CANCEL_ID" 'select(.id == $id and .status == "cancelled")' \
     "$ARC_CANCEL/index.jsonl" >/dev/null 2>&1 \
     && ok "archive/cancel: index.jsonl entry with status cancelled" \
     || bad "archive/cancel index" "$(cat "$ARC_CANCEL/index.jsonl" 2>/dev/null)"
+
+printf '\narchive: retry after cancellation before first execution is append-only (UC-13)\n'
+_cancel_hash="$(sha256sum "$_CANCEL_DIR/manifest.json")"
+"$AISDLC" retry "$_CANCEL_ID" --repo "$R_CANCEL" >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC_CANCEL" "$AISDLC" run --repo "$R_CANCEL" --once >/dev/null 2>&1
+[ "$_cancel_hash" = "$(sha256sum "$_CANCEL_DIR/manifest.json")" ] \
+    && ok "UC-13: attempt zero archive survives first execution" || bad "UC-13 zero" "original overwritten"
+jq -e '.attempts == 1 and .status == "done"' "${_CANCEL_DIR}.1/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-13: first execution gets separate archive" || bad "UC-13 first" "missing attempt one"
+
+printf '\narchive: missing seed spec is archived as failed (UC-9)\n'
+R="$WORK/arc-missing-spec"; fresh_repo "$R"; _SEC_ROOT="$WORK/arc-missing-root"
+"$AISDLC" add MISSING-1 --force --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$_SEC_ROOT" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_missing_manifest="$(find "$_SEC_ROOT" -name manifest.json 2>/dev/null)"
+jq -e '.status == "failed"' "$_missing_manifest" >/dev/null 2>&1 \
+    && ok "UC-9: seed_spec failure archived" || bad "UC-9 seed" "failed task has no archive"
+
+printf '\narchive: all built-in redaction forms and publication failures (UC-8)\n'
+_SEC="$WORK/arc-security"; mkdir -p "$_SEC"
+cat > "$_SEC/source" <<'SECRETS'
+-----BEGIN PRIVATE KEY-----
+fake-pem-body
+-----END PRIVATE KEY-----
+-----BEGIN RSA PRIVATE KEY-----
+fake-rsa-body
+-----END RSA PRIVATE KEY-----
+TOKEN=fake-token-value
+SECRET=fake-secret-value
+PASSWORD=fake-password-value
+API_KEY=fake-api-value
+PRIVATE_KEY=fake-private-value
+SECRETS
+_sec_counts="$(bash -c 'source "$1"; _arc_redact "$2" "$3"' _ "$AISDLC" "$_SEC/source" "$_SEC/redacted")"
+! grep -q 'fake-' "$_SEC/redacted" && jq -e '.["pem-private-key"] == 2 and .["env-secret"] == 5' <<< "$_sec_counts" >/dev/null 2>&1 \
+    && ok "UC-8: PEM and bare secret assignments redacted and counted" || bad "UC-8 forms" "secret survived or count wrong"
+printf 'sk-ant-api03-abcdefABCDEF0123456789abcdefABCDEF0123456789\n' > "$_SEC/token"
+if bash -c 'source "$1"; sed() { return 1; }; _arc_redact "$2" "$3"' _ \
+    "$AISDLC" "$_SEC/token" "$_SEC/failed" >/dev/null 2>&1; then
+    bad "UC-8 fail closed" "redaction error reported success"
+else
+    [ ! -e "$_SEC/failed" ] && ok "UC-8: transform failure publishes no destination" || bad "UC-8 failed output" "destination exists"
+fi
+bash -c 'umask 022; source "$1"; marker="$4"; sed() { stat -c "%a" "${@: -1}" > "$marker"; command sed "$@"; }; _arc_redact "$2" "$3"' \
+    _ "$AISDLC" "$_SEC/token" "$_SEC/private" "$_SEC/mode" >/dev/null 2>&1
+[ "$(cat "$_SEC/mode")" = "600" ] && ok "UC-8: raw staging file is private" || bad "UC-8 permissions" "raw staging readable by others"
+
+R="$WORK/arc-metadata"; fresh_repo "$R"; _META_ROOT="$WORK/arc-metadata-root"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_meta_id="$(task_field "$R" .id)"; _meta_tf="$R/.aisdlc/tasks/$_meta_id/task.json"
+jq '.pr_url = "https://ghp_abcdefghijklmnopqrst@github.com/example/repo/pull/1"' "$_meta_tf" > "$_meta_tf.tmp" && mv "$_meta_tf.tmp" "$_meta_tf"
+AISDLC_ARCHIVE="$_META_ROOT" "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
+_meta_manifest="$(find "$_META_ROOT" -name manifest.json)"
+! grep -q 'ghp_abcdefghijklmnopqrst' "$_meta_manifest" \
+    && jq -e '.pr_url | contains("[REDACTED:github-token]")' "$_meta_manifest" >/dev/null 2>&1 \
+    && ok "UC-8: manifest uses redacted metadata" || bad "UC-8 metadata" "manifest restored secret"
+_FAILED_ROOT="$WORK/arc-transform-failed"
+AISDLC_ARCHIVE="$_FAILED_ROOT" bash -c 'sed() { return 1; }; export -f sed; exec "$@"' \
+    _ "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
+[ ! -e "$_FAILED_ROOT/index.jsonl" ] && [ -z "$(find "$_FAILED_ROOT" -type f)" ] \
+    && [ "$(task_field "$R" .status)" = "cancelled" ] \
+    && ok "UC-8: archive failure publishes nothing and preserves task outcome" \
+    || bad "UC-8 publication" "failed redaction published files or changed task outcome"
 unset R_CANCEL ARC_CANCEL _CANCEL_ID _CANCEL_SLUG _CANCEL_DIR
 
 
