@@ -181,6 +181,31 @@ case "$_UC7_CUSTOM_S" in
     *) bad "UC-7: section content" "GoFunc 8 -> 14 not in section; got: $(printf '%s' "$_UC7_CUSTOM_S" | head -6)" ;;
 esac
 
+# --------------------------------------------------------------------------- #
+# UC-1 (unit gap) — SLOC column present in the hotspot table
+# --------------------------------------------------------------------------- #
+# Spec UC-1 requires the table to list the function "with `8 -> 14` and its SLOC".
+# Reuse UC-7 records (GoFunc CC 8 -> 14 NLOC 100) which share the same structure.
+case "$_UC7_DEFAULT_S" in
+    *"8 -> 14 | 100"*) ok "UC-1 SLOC: hotspot table includes SLOC value (100)" ;;
+    *) bad "UC-1 SLOC" "SLOC column missing or wrong; got: $(printf '%s' "$_UC7_DEFAULT_S" | grep '8 -> 14')" ;;
+esac
+
+# --------------------------------------------------------------------------- #
+# UC-3 (unit gap) — skip body format when lizard is not on PATH
+# --------------------------------------------------------------------------- #
+# _struct_run_lizard emits "skip:not installed" when lizard is absent.
+# run_scope_check strips the "skip:" prefix and passes the remainder to
+# _write_structure_section. Spec UC-3 requires the section to read
+# "skipped: lizard not installed". The skip: producer must therefore emit
+# "skip:skipped: lizard not installed" — not "skip:not installed".
+_uc3_raw="skip:not installed"
+_uc3_body="${_uc3_raw#skip:}"
+[ "$_uc3_body" = "skipped: lizard not installed" ] \
+    && ok "UC-3 unit: skip body is 'skipped: lizard not installed'" \
+    || bad "UC-3 unit: skip body format" \
+           "expected 'skipped: lizard not installed', got: '$_uc3_body' (implementation bug: _struct_run_lizard must emit 'skip:skipped: lizard not installed')"
+
 if [ "${_standalone:-0}" = "1" ]; then
     printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
     [ "$FAIL" -eq 0 ] || exit 1
