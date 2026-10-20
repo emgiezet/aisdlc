@@ -675,11 +675,9 @@ cat > "$_LIZARD_STUB_DIR/lizard" <<'LIZARD_STUB_EOF'
 #   *_test.go files (Go test files): low CC (2) to avoid polluting the largest-CC-
 #   increase result with the added-file entry.
 #
-# Lizard CSV format (1.24.1):
-#   NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
+# Lizard CSV format (1.24.1): no header; fields 6-9 double-quoted:
+#   NLOC,CCN,token,PARAM,length,"location","file","function","long_name",start,end
 set -uo pipefail
-
-printf 'NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end\n'
 
 for f in "$@"; do
     case "$f" in
@@ -695,7 +693,7 @@ for f in "$@"; do
                     esac
                     ;;
             esac
-            printf '%d,%d,100,2,30,%s:GoFunc,%s,GoFunc,GoFunc,1,30\n' \
+            printf '%d,%d,100,2,30,"%s:GoFunc","%s","GoFunc","GoFunc",1,30\n' \
                 "$nloc" "$cc" "$f" "$f"
             ;;
     esac

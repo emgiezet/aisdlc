@@ -42,13 +42,11 @@ _st_r2() { awk -v v="$1" 'BEGIN { printf "%.2f\n", v+0 }'; }
 #   mass(A)=5*sqrt(4)=10, mass(B)=12*sqrt(9)=36; total=46, hot=36 → 36/46 = 0.78
 # Delta = 0.78 > 0.05 (default max) → erosion finding naming both values
 
-_UC2_BEFORE='NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
-4,5,50,0,10,foo.go:FuncA,foo.go,FuncA,FuncA,1,10
-9,5,80,1,20,foo.go:FuncB,foo.go,FuncB,FuncB,11,30'
+_UC2_BEFORE='4,5,50,0,10,"foo.go:FuncA","foo.go","FuncA","FuncA",1,10
+9,5,80,1,20,"foo.go:FuncB","foo.go","FuncB","FuncB",11,30'
 
-_UC2_AFTER='NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
-4,5,50,0,10,foo.go:FuncA,foo.go,FuncA,FuncA,1,10
-9,12,100,1,20,foo.go:FuncB,foo.go,FuncB,FuncB,11,30'
+_UC2_AFTER='4,5,50,0,10,"foo.go:FuncA","foo.go","FuncA","FuncA",1,10
+9,12,100,1,20,"foo.go:FuncB","foo.go","FuncB","FuncB",11,30'
 
 _UC2_RECORDS="$(_struct_analyze "$_UC2_BEFORE" "$_UC2_AFTER" "" "")"
 
@@ -81,8 +79,7 @@ esac
 
 _UC5_BEFORE=''   # no functions before this revision
 
-_UC5_AFTER='NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
-100,27,300,3,50,bar.go:BigFunc,bar.go,BigFunc,BigFunc,1,50'
+_UC5_AFTER='100,27,300,3,50,"bar.go:BigFunc","bar.go","BigFunc","BigFunc",1,50'
 
 _UC5_RECORDS="$(_struct_analyze "$_UC5_BEFORE" "$_UC5_AFTER" "" "")"
 
@@ -111,11 +108,9 @@ esac
 # BigOld: CC=30 before AND CC=30 after — NOT newly crossing any threshold.
 # Also: erosion before = after (same mass) → delta = 0 → no erosion finding.
 
-_UC6_BEFORE='NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
-80,30,200,2,40,baz.go:BigOld,baz.go,BigOld,BigOld,1,40'
+_UC6_BEFORE='80,30,200,2,40,"baz.go:BigOld","baz.go","BigOld","BigOld",1,40'
 
-_UC6_AFTER='NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
-80,30,200,2,40,baz.go:BigOld,baz.go,BigOld,BigOld,1,40'
+_UC6_AFTER='80,30,200,2,40,"baz.go:BigOld","baz.go","BigOld","BigOld",1,40'
 
 _UC6_RECORDS="$(_struct_analyze "$_UC6_BEFORE" "$_UC6_AFTER" "" "")"
 
@@ -151,13 +146,11 @@ esac
 #   Default thresholds (0.05 / 0): delta > 0.05 → erosion finding; count=1 > 0 → new hotspot finding
 #   Custom thresholds (0.5  / 1): delta 0.41 < 0.5 → no erosion finding; count=1 ≤ 1 → no new hotspot
 
-_UC7_BEFORE='NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
-10000,2,500,0,200,qux.go:FuncHuge,qux.go,FuncHuge,FuncHuge,1,200
-100,8,150,2,40,qux.go:GoFunc,qux.go,GoFunc,GoFunc,201,240'
+_UC7_BEFORE='10000,2,500,0,200,"qux.go:FuncHuge","qux.go","FuncHuge","FuncHuge",1,200
+100,8,150,2,40,"qux.go:GoFunc","qux.go","GoFunc","GoFunc",201,240'
 
-_UC7_AFTER='NLOC,CCN,token,PARAM,length,location,file,function,long_name,start,end
-10000,2,500,0,200,qux.go:FuncHuge,qux.go,FuncHuge,FuncHuge,1,200
-100,14,200,2,50,qux.go:GoFunc,qux.go,GoFunc,GoFunc,201,250'
+_UC7_AFTER='10000,2,500,0,200,"qux.go:FuncHuge","qux.go","FuncHuge","FuncHuge",1,200
+100,14,200,2,50,"qux.go:GoFunc","qux.go","GoFunc","GoFunc",201,250'
 
 _UC7_RECORDS="$(_struct_analyze "$_UC7_BEFORE" "$_UC7_AFTER" "" "")"
 
@@ -219,6 +212,113 @@ _uc3_body="${_uc3_raw#skip:}"
     || bad "UC-3 unit: skip body format" \
            "expected 'skipped: lizard not installed', got: '$_uc3_body' (raw: '$_uc3_raw')"
 
+
+# --------------------------------------------------------------------------- #
+# NF — _budget_profile_float: reads float/int from ## Change budget section
+# --------------------------------------------------------------------------- #
+_bpf_tmp="$(mktemp)"
+cat > "$_bpf_tmp" << 'PROFILE'
+# Project profile
+
+## Change budget
+
+- **Erosion delta max:** 0.5
+- **New hotspots max:** 1
+
+## Other section
+PROFILE
+
+[ "$(_budget_profile_float "$_bpf_tmp" 'Erosion delta max')" = "0.5" ] \
+    && ok "NF _budget_profile_float: Erosion delta max returns 0.5" \
+    || bad "NF _budget_profile_float: Erosion delta max" \
+           "expected 0.5, got $(_budget_profile_float "$_bpf_tmp" 'Erosion delta max')"
+
+[ "$(_budget_profile_float "$_bpf_tmp" 'New hotspots max')" = "1" ] \
+    && ok "NF _budget_profile_float: New hotspots max returns 1" \
+    || bad "NF _budget_profile_float: New hotspots max" \
+           "expected 1, got $(_budget_profile_float "$_bpf_tmp" 'New hotspots max')"
+
+_bpf_missing="$(_budget_profile_float "$_bpf_tmp" 'Nonexistent label')"
+[ -z "$_bpf_missing" ] \
+    && ok "NF _budget_profile_float: missing label returns empty (built-in default applies)" \
+    || bad "NF _budget_profile_float: missing label" "expected empty, got '$_bpf_missing'"
+
+rm -f "$_bpf_tmp"
+
+# --------------------------------------------------------------------------- #
+# NF lizard unparseable — stub lizard exits 0, prints garbage; skip detected
+# --------------------------------------------------------------------------- #
+_nf_tmp="$(mktemp -d)"
+git -C "$_nf_tmp" init -q
+git -C "$_nf_tmp" config user.email "test@test"
+git -C "$_nf_tmp" config user.name "test"
+git -C "$_nf_tmp" commit -q --allow-empty -m "base"
+_nf_base="$(git -C "$_nf_tmp" rev-parse HEAD)"
+printf 'package main\n' > "$_nf_tmp/main.go"
+git -C "$_nf_tmp" add main.go
+git -C "$_nf_tmp" commit -q -m "add go file"
+# Stub lizard on restricted PATH: exits 0 but prints garbage (no CSV header)
+_nf_bin="$(mktemp -d)"
+printf '#!/bin/sh\nprintf "this is not lizard csv output\\n"\nexit 0\n' > "$_nf_bin/lizard"
+chmod +x "$_nf_bin/lizard"
+_nf_restricted_path="$_nf_bin:$(dirname "$(command -v git)"):$(dirname "$(command -v awk)")"
+_nf_raw="$(PATH="$_nf_restricted_path" _struct_run_lizard "$_nf_tmp" "$_nf_base" "")"
+rm -rf "$_nf_tmp" "$_nf_bin"
+_nf_body="${_nf_raw#skip:}"
+[ "$_nf_body" = "skipped: lizard failed (unparseable output)" ] \
+    && ok "NF lizard unparseable: garbage output yields 'skipped: lizard failed (unparseable output)'" \
+    || bad "NF lizard unparseable" \
+           "expected 'skipped: lizard failed (unparseable output)', got: '$_nf_body' (raw: '$_nf_raw')"
+
+# --------------------------------------------------------------------------- #
+# NF lizard real format — real lizard 1.24.x output accepted; function parsed
+# --------------------------------------------------------------------------- #
+# Exact Facts example row (no header, fields 6-9 double-quoted):
+#   6,2,19,1,6,"f@3-8@/tmp/x/a.go","/tmp/x/a.go","f","f x int",3,8
+# Two-row variant adds g (CC=12, NLOC=1) → hotspot; f's mass changes erosion ratio.
+# If f is read correctly (CCN=2, NLOC=6): erosion = 12/(12+2*sqrt(6)) ≈ 0.71
+# If f is silently dropped:              erosion = 12/12 = 1.00  (detects mis-parse)
+
+_nfr_tmp="$(mktemp -d)"
+git -C "$_nfr_tmp" init -q
+git -C "$_nfr_tmp" config user.email "test@test"
+git -C "$_nfr_tmp" config user.name "test"
+git -C "$_nfr_tmp" commit -q --allow-empty -m "base"
+_nfr_base="$(git -C "$_nfr_tmp" rev-parse HEAD)"
+printf 'package main\n' > "$_nfr_tmp/main.go"
+git -C "$_nfr_tmp" add main.go
+git -C "$_nfr_tmp" commit -q -m "add go file"
+# Stub lizard: exits 0, outputs real-format single row (exact Facts example)
+_nfr_bin="$(mktemp -d)"
+printf '#!/bin/sh\nprintf '"'"'6,2,19,1,6,"f@3-8@main.go","main.go","f","f x int",3,8\n'"'"'\nexit 0\n' \
+    > "$_nfr_bin/lizard"
+chmod +x "$_nfr_bin/lizard"
+_nfr_restricted_path="$_nfr_bin:$(dirname "$(command -v git)"):$(dirname "$(command -v awk)")"
+_nfr_raw="$(PATH="$_nfr_restricted_path" _struct_run_lizard "$_nfr_tmp" "$_nfr_base" "")"
+rm -rf "$_nfr_tmp" "$_nfr_bin"
+# Must not be a skip — real format should be accepted
+case "$_nfr_raw" in
+    skip:*) bad "NF lizard real format: validation" \
+                "real lizard row incorrectly rejected: '$_nfr_raw'" ;;
+    *)       ok "NF lizard real format: header-less quoted row accepted (not skipped)" ;;
+esac
+
+# Direct _struct_analyze test: two real-format rows, no header.
+# f: CCN=2, NLOC=6 (exact Facts row); g: CCN=12, NLOC=1 (hotspot)
+_nfr_two_rows='6,2,19,1,6,"f@3-8@/tmp/x/a.go","/tmp/x/a.go","f","f x int",3,8
+1,12,5,0,2,"g@9-10@/tmp/x/a.go","/tmp/x/a.go","g","g",9,10'
+_nfr_records="$(_struct_analyze "" "$_nfr_two_rows" "" "")"
+# new_hotspot for g confirms CCN column is parsed
+[ "$(_st_count "$_nfr_records" new_hotspot)" -ge 1 ] \
+    && ok "NF lizard real format: CCN column parsed (g CC=12 yields new_hotspot)" \
+    || bad "NF lizard real format: CCN column" \
+           "expected >=1 new_hotspot, got $(_st_count "$_nfr_records" new_hotspot)"
+# erosion_after ≈ 0.71 only when f's NLOC=6 and CCN=2 are correctly parsed
+_nfr_ae="$(_st_field "$_nfr_records" erosion_after)"
+[ "$(_st_r2 "$_nfr_ae")" = "0.71" ] \
+    && ok "NF lizard real format: f CCN=2 NLOC=6 is read (erosion 0.71 confirms f's mass)" \
+    || bad "NF lizard real format: f not correctly read" \
+           "expected erosion_after 0.71, got $(_st_r2 "$_nfr_ae") (raw: $_nfr_ae)"
 if [ "${_standalone:-0}" = "1" ]; then
     printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
     [ "$FAIL" -eq 0 ] || exit 1

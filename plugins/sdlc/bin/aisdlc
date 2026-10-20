@@ -1404,8 +1404,8 @@ _struct_analyze() {
     {
         nloc = $1+0; cc = $2+0
         file = $7; long_name = $9
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", file)
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", long_name)
+        gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", file)
+        gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", long_name)
         pfx = (pass == "before") ? bpfx : apfx
         if (pfx != "" && index(file, pfx) == 1) file = substr(file, length(pfx)+1)
         sub(/^\//, "", file)
@@ -1553,6 +1553,13 @@ _struct_run_lizard() {
             printf 'skip:skipped: lizard failed (%d)' "$_ec"
             return 0
         fi
+        # Valid CSV: empty output (no functions found), or every non-empty line either is a
+        # tolerated header or starts with five integers then a double-quoted field (lizard 1.24.x)
+        if printf '%s\n' "$before_csv" | grep -qEv '^[[:space:]]*$|^NLOC,|^[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,"'; then
+            rm -rf "$tmp"
+            printf 'skip:skipped: lizard failed (unparseable output)'
+            return 0
+        fi
     fi
 
     # After pass (all code files at HEAD)
@@ -1561,6 +1568,13 @@ _struct_run_lizard() {
     if [ "$_ec" -ne 0 ]; then
         rm -rf "$tmp"
         printf 'skip:skipped: lizard failed (%d)' "$_ec"
+        return 0
+    fi
+    # Valid CSV: empty output (no functions found), or every non-empty line either is a
+    # tolerated header or starts with five integers then a double-quoted field (lizard 1.24.x)
+    if printf '%s\n' "$after_csv" | grep -qEv '^[[:space:]]*$|^NLOC,|^[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,"'; then
+        rm -rf "$tmp"
+        printf 'skip:skipped: lizard failed (unparseable output)'
         return 0
     fi
 
