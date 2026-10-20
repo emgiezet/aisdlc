@@ -1,10 +1,12 @@
 ## GH-43-b — Finished tasks are archived — redacted logs, reports, manifest and index — and survive clean
 
-**QA verdict: GAPS** · Current runner checks: 218 passed, 0 failed
+**QA verdict: PASS** · Current runner checks: 226 passed, 0 failed
 
-Conflicts with `main` are resolved. Merge is blocked by five reproduced archive security
-defects and the native scope gate (452/360 added lines, 5/4 files). Local validation,
-Docker ShellCheck and 13 trigger sets pass; details are in `verify-report.md`.
+Conflicts with `main` and the reproduced security/lifecycle blockers are repaired.
+Local validation, Docker ShellCheck and 13 trigger sets pass. Native scope is PASS:
+547/800 added lines, 5/5 files, 4/4 modules under the user-approved budget amendment.
+Independent security re-review approved; GitHub CI and lifecycle review remain merge gates.
+Details and runtime smoke evidence are in `verify-report.md`.
 
 🤖 Written by an agent from `specs/GH-43-b/spec.md`. Review the spec's `Out:` scope first —
 that is where an unattended run is most likely to have overstepped.
