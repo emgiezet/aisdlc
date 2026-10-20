@@ -1150,5 +1150,104 @@ jq -e --arg id "$_ARC6_ID" --arg p "$_ARC6_DIR" \
     && ok "UC-7: index has id, status done, correct path" \
     || bad "UC-7 entry" "$(cat "$ARC6/index.jsonl" 2>/dev/null)"
 
+printf '\narchive: anthropic key in phase log is redacted; live log unchanged (UC-8)\n'
+R="$WORK/arc-uc8"; ARC8="$WORK/arc-uc8-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC8" AISDLC_STUB=keyleak "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-8: task done" || bad "UC-8 pre" "status $(task_field "$R" .status)"
+_ARC8_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC8_DIR="$ARC8/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC8_ID"
+grep -q '\[REDACTED:anthropic-key\]' "$_ARC8_DIR/phases/implement.log" 2>/dev/null \
+    && ok "UC-8: archived log has [REDACTED:anthropic-key]" \
+    || bad "UC-8 redacted" "$(grep 'sk-ant\|REDACT' "$_ARC8_DIR/phases/implement.log" 2>/dev/null | head -1)"
+grep -q 'sk-ant-' "$R/.aisdlc/tasks/$_ARC8_ID/implement.log" 2>/dev/null \
+    && ok "UC-8: live log unchanged (key still present)" \
+    || bad "UC-8 live" "key not in live log"
+jq -e '(.redactions["anthropic-key"] // 0) >= 1' "$_ARC8_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-8: manifest.redactions[anthropic-key] >= 1" \
+    || bad "UC-8 count" "$(jq '.redactions' "$_ARC8_DIR/manifest.json" 2>/dev/null)"
+
+printf '\narchive: failed task archived with status failed and BLOCKED.md (UC-9)\n'
+R_ARC9="$WORK/arc-uc9"; ARC9="$WORK/arc-uc9-root"
+fresh_repo "$R_ARC9"
+"$AISDLC" add SBX-1 --repo "$R_ARC9" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC9" AISDLC_STUB=blocked "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
+[ "$(task_field "$R_ARC9" .status)" = "failed" ] && ok "UC-9: task failed" || bad "UC-9 pre" "status $(task_field "$R_ARC9" .status)"
+_ARC9_ID="$(ls -1 "$R_ARC9/.aisdlc/tasks" | head -1)"
+_ARC9_DIR="$ARC9/$(arc_slug "$R_ARC9")/$(date -u +%Y-%m)/$_ARC9_ID"
+[ -d "$_ARC9_DIR" ] && ok "UC-9: archive dir created for failed task" || bad "UC-9 dir" "missing"
+jq -e '.status == "failed"' "$_ARC9_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-9: manifest status is failed" || bad "UC-9 status" "$(jq -r '.status' "$_ARC9_DIR/manifest.json" 2>/dev/null)"
+[ -f "$_ARC9_DIR/spec/BLOCKED.md" ] \
+    && ok "UC-9: spec/BLOCKED.md in archive" || bad "UC-9 BLOCKED.md" "missing"
+
+printf '\narchive: refused task archives BLOCKED.md before worktree removal (UC-10)\n'
+R="$WORK/arc-uc10"; ARC10="$WORK/arc-uc10-root"
+fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker/issues" "$R/.claude"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ARCISSUE'
+---
+number: 42
+title: archive test issue
+state: open
+labels: [bug]
+assignees: []
+---
+## Comments
+ARCISSUE
+printf -- '- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
+AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" add --issue 42 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "refused" ] \
+    && ok "UC-10: task refused" || bad "UC-10 status" "$(task_field "$R" .status)"
+_ARC10_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC10_DIR="$ARC10/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC10_ID"
+[ -d "$_ARC10_DIR" ] && ok "UC-10: archive dir for refused task" || bad "UC-10 dir" "missing"
+[ -f "$_ARC10_DIR/spec/BLOCKED.md" ] \
+    && ok "UC-10: spec/BLOCKED.md copied before worktree removal" || bad "UC-10 BLOCKED.md" "missing"
+
+printf '\narchive: clean --all leaves archive byte-identical (UC-11)\n'
+before_arc_lines="$(wc -l < "$ARC6/index.jsonl" | tr -d ' ')"
+before_arc_files="$(find "$ARC6" -type f | sort | sha256sum)"
+"$AISDLC" clean --all --repo "$R_ARC6" >/dev/null 2>&1
+after_arc_lines="$(wc -l < "$ARC6/index.jsonl" | tr -d ' ')"
+after_arc_files="$(find "$ARC6" -type f | sort | sha256sum)"
+[ "$before_arc_lines" = "$after_arc_lines" ] \
+    && ok "UC-11: index.jsonl unchanged after clean --all" || bad "UC-11 index" "changed"
+[ "$before_arc_files" = "$after_arc_files" ] \
+    && ok "UC-11: archive files unchanged after clean --all" || bad "UC-11 files" "changed"
+
+printf '\narchive: AISDLC_ARCHIVE=off creates no archive and no index (UC-12)\n'
+R="$WORK/arc-uc12"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE=off "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-12: task completes" || bad "UC-12 pre" "status $(task_field "$R" .status)"
+_ARC12_SLUG="$(arc_slug "$R")"
+_ARC12_DEFAULT="${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive"
+[ ! -d "$_ARC12_DEFAULT/$_ARC12_SLUG" ] \
+    && ok "UC-12: no archive dir created with AISDLC_ARCHIVE=off" \
+    || bad "UC-12 dir" "archive created at default root"
+unset _ARC12_SLUG _ARC12_DEFAULT
+
+printf '\narchive: retry creates <id>.<attempts> dir; first archive unchanged (UC-13)\n'
+# Reuse UC-9 repo (failed task, worktree kept) — retry it so it reaches done.
+_ARC13_FIRST="$_ARC9_DIR"
+_first_snap="$(find "$_ARC13_FIRST" -type f | sort | sha256sum)"
+"$AISDLC" retry "$_ARC9_ID" --repo "$R_ARC9" >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC9" "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
+[ "$(task_field "$R_ARC9" .status)" = "done" ] \
+    && ok "UC-13: retried task reaches done" || bad "UC-13 status" "$(task_field "$R_ARC9" .status)"
+_ARC13_SECOND="$ARC9/$(arc_slug "$R_ARC9")/$(date -u +%Y-%m)/${_ARC9_ID}.2"
+[ -d "$_ARC13_SECOND" ] \
+    && ok "UC-13: second archive dir <id>.2 created" || bad "UC-13 retry dir" "missing: $_ARC13_SECOND"
+_after_snap="$(find "$_ARC13_FIRST" -type f | sort | sha256sum)"
+[ "$_first_snap" = "$_after_snap" ] \
+    && ok "UC-13: first archive dir unchanged after retry" || bad "UC-13 unchanged" "first archive modified"
+_arc13_lines="$(jq -s --arg id "$_ARC9_ID" '[.[] | select(.id == $id)] | length' "$ARC9/index.jsonl" 2>/dev/null)"
+[ "${_arc13_lines:-0}" -ge 2 ] \
+    && ok "UC-13: two index.jsonl entries for the id" || bad "UC-13 index" "$_arc13_lines entries"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
