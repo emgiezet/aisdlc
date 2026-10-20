@@ -100,7 +100,10 @@ phase before ship). Import its findings as follows:
 - Any `## Size` finding → `[major] over change budget: <measure> (<n> vs <budget>)`, and
   `[blocker]` when the hard ceiling was passed or the finding names shotgun surgery. The fix is
   never "reviewers should try harder": it is `/sdlc:decompose <TICKET>` and a stack of slices.
-
+- Any `## Structure` finding `erosion:` or `new hotspot:` → `[major] structural erosion: <finding
+  text> — split the function or run /sdlc:decompose`
+- Any `## Structure` finding `hotspot over 25:` → `[blocker] structural erosion: <finding text>
+  — split the function or run /sdlc:decompose`
 
 ---
 
