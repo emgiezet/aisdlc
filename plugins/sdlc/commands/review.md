@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, SlashCommand
 
 # /sdlc:review
 
-`$ARGUMENTS`: `<pr#> [--autofix] [--force]`. Read `.claude/sdlc.md` for the Tracker descriptor,
+`$ARGUMENTS`: `<pr#> [--autofix] [--adversarial] [--force]`. Read `.claude/sdlc.md` for the Tracker descriptor,
 profile label, and spec directory.
 
 Every tracker action is a bold operation (**get-pr**). Execute it exactly as the descriptor
@@ -24,6 +24,8 @@ Stop with a one-line reason if:
 
 **auth-check**: failure is not a stop; record it as a Phase 3 signal.
 
+Set **adversarial mode** if `--adversarial` is present, OR the profile (`.claude/sdlc.md`) contains
+``- **review-adversarial:** `true` ``. Absent or false: one pass only.
 ---
 
 ## Phase 2: Claim [GATE]
@@ -105,6 +107,17 @@ phase before ship). Import its findings as follows:
 - Any `## Structure` finding `hotspot over 25:` → `[blocker] structural erosion: <finding text>
   — split the function or run /sdlc:decompose`
 
+**Adversarial pass** — if adversarial mode is active and this is a **code review** (not spec-only),
+dispatch a second `code-reviewer` agent with `Adversarial: true`. Omit the first pass's findings
+and verdict; include the same `Ticket`, `PR`, `Phase-3 signals`, and `Diff` fields. The agent
+reads `## Adversarial mode` and returns an independent ranked findings list and `Verdict:` line.
+
+**Merge rule:**
+1. **Verdict:** `CHANGES_REQUESTED` wins over `APPROVED`; both `APPROVED` → `APPROVED`,
+   unless the imported scope/slop-guard findings require a stricter verdict under `code-review`.
+2. **Findings:** identify by `(file, line)`. A match in both passes appears once at the higher severity, without a tag.
+   Adversarial-only findings carry `(adversarial)` appended to the description. Rank into one list.
+
 ---
 
 ## Phase 6: Verdict + labels [REQUIRED]
@@ -146,7 +159,8 @@ Fix in this order; push each category as a separate commit (never `--force`; nev
    - `infra`: record `⚠ NEEDS HUMAN: infra failure in <check>`; **unlabel-pr** `review`; **unlabel-pr** `merge-ready`; **unlabel-pr** `changes-requested`; **label-pr** `blocked`; stop.
    - Never skip, comment-out, or lower a threshold.
 
-After each push, re-dispatch Phase 5 (`code-reviewer`). On `APPROVED`: proceed to Phase 8.
+After each push, re-dispatch Phase 5 (`code-reviewer`). When adversarial mode is active, re-dispatch
+repeats both passes; the merged verdict governs the autofix loop. On `APPROVED`: proceed to Phase 8.
 
 Stop immediately on `⚠ NEEDS HUMAN`: **unlabel-pr** `review`; **unlabel-pr** `merge-ready`; **unlabel-pr** `changes-requested`; **label-pr** `blocked`; do not loop further.
 
@@ -175,6 +189,14 @@ Findings: <n> blocker · <n> major · <n> minor · <n> nit
 
 Verdict: APPROVED | CHANGES_REQUESTED
 PR: #<n> (<url>)
+```
+
+Only when the second pass actually ran (never for spec-only PRs), include counts above merged totals:
+
+```
+Pass 1: <n> blocker · <n> major · <n> minor · <n> nit
+Pass 2 (adversarial): <n> blocker · <n> major · <n> minor · <n> nit
+Findings: <n> blocker · <n> major · <n> minor · <n> nit
 ```
 
 The last two lines are C4 chain markers. Print them exactly, last, once.

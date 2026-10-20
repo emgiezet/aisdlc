@@ -89,6 +89,12 @@ Deleted lines, generated output, vendored trees, lock files and the specs direct
 - **Domain glossary skill:** `none`
   <!-- name of a skill holding this product's vocabulary, if the project has one -->
 
+## Review
+
+- **review-adversarial:** `false`
+  <!-- true enables a second independent adversarial pass after the primary code-reviewer;
+       the stricter of the two verdicts wins. Has no effect on spec-only PRs. -->
+
 ## Stacks and verification
 
 One row per stack actually present. These are the exact commands CI runs — `/sdlc:implement`
