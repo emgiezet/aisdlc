@@ -240,18 +240,6 @@ UC-3|no-object-parameters|function send(opts: object): void { void opts; } expor
 UC-4|no-unsafe-dictionary-type|const cache: { [key: string]: unknown } = {}; export { cache };
 MAINT007_CASES
 
-it_project eslint-anti-slop-007-good; _fast_proj="$_IT_CUR_PROJ"
-if it_skip_unless_tool eslint-stack; then
-    it_commit "$_fast_proj" package.json '{"type":"module"}'
-    it_commit "$_fast_proj" app.ts 'export {};'
-    it_modify "$_fast_proj" app.ts \
-        "$(cat "${_IT_FIXTURES}/ts/good/AP-TS-MAINT-007.ts")"
-    _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
-        it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
-    it_expect_silent "$_fast_out" \
-        "UC-7: eslint AP-TS-MAINT-007 good fixture (concrete types -> no AP-TS-MAINT-007)"
-fi
-
 # --------------------------------------------------------------------------- #
 # anti-slop Reflect.get / Reflect.apply → AP-TS-MAINT-008
 # Table loop: each row is its own it_project; assertions are independent (UC-5..6)
@@ -274,14 +262,16 @@ UC-5|no-reflect-get|const obj = { id: "u" }; const v = Reflect.get(obj, "id"); e
 UC-6|no-reflect-apply|declare function fn(x: string): string; const r = Reflect.apply(fn, null, ["a"]); export { r };
 MAINT008_CASES
 
-it_project eslint-anti-slop-008-good; _fast_proj="$_IT_CUR_PROJ"
-if it_skip_unless_tool eslint-stack; then
-    it_commit "$_fast_proj" package.json '{"type":"module"}'
-    it_commit "$_fast_proj" app.ts 'export {};'
-    it_modify "$_fast_proj" app.ts \
-        "$(cat "${_IT_FIXTURES}/ts/good/AP-TS-MAINT-008.ts")"
-    _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
-        it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
-    it_expect_silent "$_fast_out" \
-        "UC-7: eslint AP-TS-MAINT-008 good fixture (direct access -> no AP-TS-MAINT-008)"
-fi
+for _ap in 007 008; do
+    it_project "eslint-anti-slop-${_ap}-good"; _fast_proj="$_IT_CUR_PROJ"
+    if it_skip_unless_tool eslint-stack; then
+        it_commit "$_fast_proj" package.json '{"type":"module"}'
+        it_commit "$_fast_proj" app.ts 'export {};'
+        it_modify "$_fast_proj" app.ts \
+            "$(cat "${_IT_FIXTURES}/ts/good/AP-TS-MAINT-${_ap}.ts")"
+        _fast_out=$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \
+            it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
+        it_expect_silent "$_fast_out" \
+            "UC-7: AP-TS-MAINT-${_ap} concrete types and direct access stay quiet"
+    fi
+done
