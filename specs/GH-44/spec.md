@@ -57,7 +57,7 @@ Out:
 - `plugins/slop-guard/**`, including decision D33.
 - This repo's own `.claude/sdlc.md`; `/sdlc:update` proposes the new profile fields.
 
-Change budget: 760 added lines, 11 files, 4 modules
+Change budget: 860 added lines, 11 files, 4 modules
 
 ## Context
 
