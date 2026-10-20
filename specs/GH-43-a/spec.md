@@ -39,7 +39,7 @@ Out:
 - Cost accounting, `collapse_result`, the 0-turn and `is_error` failure rules, `cmd_clean`.
 - Reading or validating the transcript file itself; the path is recorded, not checked.
 
-Change budget: 110 added lines, 4 files, 3 modules
+Change budget: 130 added lines, 5 files, 3 modules
 
 ## Context
 

@@ -21,15 +21,18 @@ through `Reflect.get` / `Reflect.apply`. The code type-checks and carries no evi
 ## Scope
 
 In:
-- `rules/catalog.yaml`: `AP-TS-MAINT-007` "unknown or object in a type contract" and
+- `plugins/slop-guard/rules/catalog.yaml`: `AP-TS-MAINT-007` "unknown or object in a type contract" and
   `AP-TS-MAINT-008` "Reflect.get / Reflect.apply instead of typed access" — severity `warn`,
   category `maintainability`, `cwe: []`, original text, own `bad`/`good`.
-- `rules/mapping/eslint.yaml`: `anti-slop/no-unknown-parameters`, `no-unknown-returns`,
+- `plugins/slop-guard/rules/mapping/eslint.yaml`: `anti-slop/no-unknown-parameters`, `no-unknown-returns`,
   `no-unknown-type-aliases`, `no-object-parameters`, `no-unsafe-dictionary-type` →
   `AP-TS-MAINT-007`; `anti-slop/no-reflect-get`, `no-reflect-apply` → `AP-TS-MAINT-008`.
-- `configs/baseline/eslint.config.mjs`: those seven rules at `warn` in the TypeScript block.
-- Regenerated `skills/ts-react-antipatterns/`; fixtures `tests/fixtures/ts/{bad,good}/AP-TS-MAINT-00{7,8}.ts`;
-  their cases in `tests/integration/fast.sh`; `CHANGELOG.md` entry.
+- `plugins/slop-guard/configs/baseline/eslint.config.mjs`: those seven rules at `warn` in the TypeScript block.
+- `plugins/slop-guard/skills/ts-react-antipatterns/`: regenerated.
+- `plugins/slop-guard/tests/fixtures/ts/` bad and good fixtures: `AP-TS-MAINT-007.ts` and
+  `AP-TS-MAINT-008.ts` in each of `bad/` and `good/`.
+- `plugins/slop-guard/tests/integration/fast.sh`: fixture cases for `AP-TS-MAINT-007` and `AP-TS-MAINT-008`.
+- `plugins/slop-guard/CHANGELOG.md` `## Unreleased` entry.
 
 Out:
 - D36 and its table (written in `GH-42-a`), the package pin, the plugin registration.
@@ -37,7 +40,7 @@ Out:
 - Changing `AP-TS-MAINT-001` or the `@typescript-eslint/no-explicit-any` mapping.
 - Rule options beyond the port's defaults.
 
-Change budget: 210 added lines, 12 files, 1 modules
+Change budget: 320 added lines, 14 files, 1 modules
 
 ## Context
 

@@ -21,18 +21,21 @@ they pass while the real wiring is broken. D36 (`GH-42-a`) assigns them `AP-TS-P
 ## Scope
 
 In:
-- `rules/catalog.yaml`: `AP-TS-PERF-005` "Reducer copies its accumulator on every step" (category
+- `plugins/slop-guard/rules/catalog.yaml`: `AP-TS-PERF-005` "Reducer copies its accumulator on every step" (category
   `performance`, severity `warn`) and `AP-TS-MAINT-009` "Module mocking instead of a dependency
   seam" (category `maintainability`, severity `warn`); `cwe: []`, original text, own `bad`/`good`.
   `AP-TS-PERF-005`'s summary names the spread form (`{...acc}`) as prevention-only: ESLint has no
   port of Oxlint's `no-accumulating-spread`.
-- `rules/mapping/eslint.yaml`: `anti-slop/no-reduce-accumulator-copy` → `AP-TS-PERF-005`;
+- `plugins/slop-guard/rules/mapping/eslint.yaml`: `anti-slop/no-reduce-accumulator-copy` → `AP-TS-PERF-005`;
   `anti-slop/no-module-mocking` → `AP-TS-MAINT-009`.
-- `configs/baseline/eslint.config.mjs`: `no-reduce-accumulator-copy` at `warn` in the TypeScript
+- `plugins/slop-guard/configs/baseline/eslint.config.mjs`: `no-reduce-accumulator-copy` at `warn` in the TypeScript
   block; `no-module-mocking` at `warn` in a block matching test files
   (`**/*.{test,spec}.{js,ts,jsx,tsx}`, `**/__tests__/**`), so the relaxed block does not hide it.
-- Regenerated `skills/ts-react-antipatterns/`; fixtures `tests/fixtures/ts/{bad,good}/AP-TS-PERF-005.ts`
-  and `AP-TS-MAINT-009.test.ts`; their cases in `tests/integration/fast.sh`; `CHANGELOG.md` entry.
+- `plugins/slop-guard/skills/ts-react-antipatterns/`: regenerated.
+- `plugins/slop-guard/tests/fixtures/ts/` bad and good fixtures: `AP-TS-PERF-005.ts` and
+  `AP-TS-MAINT-009.test.ts` in each of `bad/` and `good/`.
+- `plugins/slop-guard/tests/integration/fast.sh`: fixture cases for `AP-TS-PERF-005` and `AP-TS-MAINT-009`.
+- `plugins/slop-guard/CHANGELOG.md` `## Unreleased` entry.
 
 Out:
 - D36, the package pin, the plugin registration — `GH-42-a`. `AP-TS-MAINT-007/008` — `GH-42-b`.
@@ -40,7 +43,7 @@ Out:
 - A JavaScript-only (`.js`) mocking rule beyond what the baseline TS/JS file globs already cover.
 - `plugins/sdlc/skills/dense-testing/` — its mocking guidance is not changed here.
 
-Change budget: 190 added lines, 12 files, 1 modules
+Change budget: 300 added lines, 14 files, 1 modules
 
 ## Context
 
