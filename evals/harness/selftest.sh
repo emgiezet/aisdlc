@@ -1108,5 +1108,47 @@ TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)"
 [ "$(jq '.sessions | length' "$TF")" -ge 1 ] && ok "UC-5: entry present" || bad "UC-5" "no entry"
 [ "$(task_field "$R" .status)" = "done" ] && ok "UC-5: outcome unchanged" || bad "UC-5 status" "$(task_field "$R" .status)"
 
+# --------------------------------------------------------------------------- #
+# archive tests — UC-6 through UC-13 (GH-43-b)
+# --------------------------------------------------------------------------- #
+
+# Helper: archive slug for a repo absolute path.
+arc_slug() { local p; p="$(cd "$1" && pwd)"; printf '%s-%s' "$(basename "$p")" "$(printf '%s' "$p" | sha256sum | cut -c1-8)"; }
+
+printf '\narchive: done task writes archive dir, manifest, task.json, phases, spec (UC-6)\n'
+R_ARC6="$WORK/arc-uc6"; ARC6="$WORK/arc-uc6-root"
+fresh_repo "$R_ARC6"
+"$AISDLC" add SBX-1 --repo "$R_ARC6" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC6" "$AISDLC" run --repo "$R_ARC6" --once >/dev/null 2>&1
+[ "$(task_field "$R_ARC6" .status)" = "done" ] && ok "UC-6: task done" || bad "UC-6 pre" "status $(task_field "$R_ARC6" .status)"
+_ARC6_ID="$(ls -1 "$R_ARC6/.aisdlc/tasks" | head -1)"
+_ARC6_SLUG="$(arc_slug "$R_ARC6")"
+_ARC6_DIR="$ARC6/$_ARC6_SLUG/$(date -u +%Y-%m)/$_ARC6_ID"
+[ -d "$_ARC6_DIR" ] && ok "UC-6: archive dir created" || bad "UC-6 dir" "not found: $_ARC6_DIR"
+[ -f "$_ARC6_DIR/manifest.json" ] && ok "UC-6: manifest.json present" || bad "UC-6 manifest" "missing"
+[ -f "$_ARC6_DIR/task.json" ] && ok "UC-6: task.json present" || bad "UC-6 task.json" "missing"
+[ -f "$_ARC6_DIR/phases/implement.log" ] && ok "UC-6: phases/implement.log present" || bad "UC-6 impl.log" "missing"
+[ -f "$_ARC6_DIR/spec/spec.md" ] && ok "UC-6: spec/spec.md present" || bad "UC-6 spec.md" "missing"
+[ -f "$_ARC6_DIR/spec/qa-report.md" ] && ok "UC-6: spec/qa-report.md present" || bad "UC-6 qa-report" "missing"
+# Every file in manifest.files has sha256sum that matches.
+_arc6_hash_ok=1; _arc6_bad=""
+while IFS= read -r _ent; do
+    _rel="$(printf '%s' "$_ent" | jq -r '.key')"; _exp="$(printf '%s' "$_ent" | jq -r '.value')"
+    _act="$(sha256sum "$_ARC6_DIR/$_rel" 2>/dev/null | cut -c1-64)"
+    [ "$_exp" = "$_act" ] || { _arc6_hash_ok=0; _arc6_bad="$_rel"; break; }
+done < <(jq -c '.files | to_entries[]' "$_ARC6_DIR/manifest.json" 2>/dev/null)
+[ "$_arc6_hash_ok" -eq 1 ] && ok "UC-6: sha256sum of every file matches manifest.files" \
+    || bad "UC-6 sha256" "mismatch on $_arc6_bad"
+
+printf '\narchive: index.jsonl gains exactly one line with id, status, path (UC-7)\n'
+[ -f "$ARC6/index.jsonl" ] && ok "UC-7: index.jsonl created" || bad "UC-7 index" "missing"
+[ "$(wc -l < "$ARC6/index.jsonl" | tr -d ' ')" -eq 1 ] \
+    && ok "UC-7: exactly one line" || bad "UC-7 lines" "$(wc -l < "$ARC6/index.jsonl" | tr -d ' ') lines"
+jq -e --arg id "$_ARC6_ID" --arg p "$_ARC6_DIR" \
+    'select(.id == $id and .status == "done" and .path == $p)' \
+    "$ARC6/index.jsonl" >/dev/null 2>&1 \
+    && ok "UC-7: index has id, status done, correct path" \
+    || bad "UC-7 entry" "$(cat "$ARC6/index.jsonl" 2>/dev/null)"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

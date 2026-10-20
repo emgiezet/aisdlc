@@ -1674,6 +1674,190 @@ run_verify() {
     [ "$verdict" = "PASS" ]
 }
 
+# --------------------------------------------------------------------------- #
+# archive — write task artefacts to a local, redacted store on terminal status
+# --------------------------------------------------------------------------- #
+
+# Merge two JSON {rule:count} objects by adding values for matching keys.
+_arc_merge() {
+    jq -n --argjson a "${1:-{\}}" --argjson b "${2:-{\}}" \
+        '[$a,$b] | map(to_entries[]) | group_by(.key) |
+         map({key:.[0].key,value:([.[].value]|add)}) | from_entries'
+}
+
+# Copy src to dst with built-in secrets redacted; print JSON {rule:count} to stdout.
+_arc_redact() {
+    local src="$1" dst="$2" t n counts='{}'
+    t="${dst}.rd.$$"
+    cp "$src" "$t" 2>/dev/null || { printf '{}'; return; }
+    # anthropic-key: sk-ant-...
+    n="$(grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${n:-0}" -gt 0 ]; then
+        sed -i -E 's/sk-ant-[A-Za-z0-9_-]{20,}/[REDACTED:anthropic-key]/g' "$t"
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"anthropic-key":$n}')"
+    fi
+    # openai-key: sk-... (sk-ant- already replaced above)
+    n="$(grep -oE 'sk-[A-Za-z0-9_-]{20,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${n:-0}" -gt 0 ]; then
+        sed -i -E 's/sk-[A-Za-z0-9_-]{20,}/[REDACTED:openai-key]/g' "$t"
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"openai-key":$n}')"
+    fi
+    # github-token: ghp_, gho_, ghs_, github_pat_
+    n="$(grep -oE '(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]{10,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${n:-0}" -gt 0 ]; then
+        sed -i -E 's/(ghp_|gho_|ghs_)[A-Za-z0-9_]{10,}/[REDACTED:github-token]/g' "$t"
+        sed -i -E 's/github_pat_[A-Za-z0-9_]{10,}/[REDACTED:github-token]/g' "$t"
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"github-token":$n}')"
+    fi
+    # aws-key-id: AKIA[A-Z0-9]{16}
+    n="$(grep -oE 'AKIA[A-Z0-9]{16}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${n:-0}" -gt 0 ]; then
+        sed -i -E 's/AKIA[A-Z0-9]{16}/[REDACTED:aws-key-id]/g' "$t"
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"aws-key-id":$n}')"
+    fi
+    # bearer-token: Bearer <token>
+    n="$(grep -oE 'Bearer [A-Za-z0-9._~+/=-]{8,}' "$t" 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${n:-0}" -gt 0 ]; then
+        sed -i -E 's/Bearer [A-Za-z0-9._~+\/=-]{8,}/[REDACTED:bearer-token]/g' "$t"
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"bearer-token":$n}')"
+    fi
+    # pem-private-key: multi-line -----BEGIN ... PRIVATE KEY----- blocks
+    n="$(grep -c '-----BEGIN.*PRIVATE KEY-----' "$t" 2>/dev/null || true)"
+    if [ "${n:-0}" -gt 0 ]; then
+        awk '/-----BEGIN [A-Z ]* PRIVATE KEY-----/{p=1;print "[REDACTED:pem-private-key]";next}
+             p && /-----END [A-Z ]* PRIVATE KEY-----/{p=0;next}
+             p{next}{print}' "$t" > "${t}.p" && mv "${t}.p" "$t" || rm -f "${t}.p"
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"pem-private-key":$n}')"
+    fi
+    # env-secret: KEY=value lines where KEY contains TOKEN, SECRET, PASSWORD, API_KEY, or PRIVATE
+    n="$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE)[A-Za-z0-9_]*[[:space:]]*=.' \
+             "$t" 2>/dev/null || true)"
+    if [ "${n:-0}" -gt 0 ]; then
+        sed -i -E \
+            's/^([A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE)[A-Za-z0-9_]*[[:space:]]*=).*/\1[REDACTED:env-secret]/' \
+            "$t"
+        counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"env-secret":$n}')"
+    fi
+    mv "$t" "$dst"
+    printf '%s' "$counts"
+}
+
+# Archive a task when it reaches a terminal status (done/failed/refused/cancelled).
+# Must be called BEFORE any worktree removal so BLOCKED.md is still readable.
+# Non-fatal: on any write failure, logs "archive failed: <reason>" and returns 0.
+archive_task() {
+    local repo="$1" id="$2"
+    [ "${AISDLC_ARCHIVE:-}" = "off" ] && return 0
+    local root="${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}"
+
+    # repo slug: <basename>-<first 8 hex of sha256 of absolute path>
+    local abs_path sha8 repo_slug
+    abs_path="$(cd "$repo" && pwd)"
+    sha8="$(printf '%s' "$abs_path" | sha256sum | cut -c1-8)"
+    repo_slug="$(basename "$abs_path")-${sha8}"
+
+    local dir tf log
+    dir="$(task_dir "$repo" "$id")"
+    tf="$(task_file "$repo" "$id")"
+    log="$dir/run.log"
+
+    local ticket specs_dir wt status attempts
+    ticket="$(jq -r '.ticket // empty' "$tf" 2>/dev/null)"
+    specs_dir="$(jq -r '.specs_dir // empty' "$tf" 2>/dev/null)"
+    [ -n "$specs_dir" ] || specs_dir="$BUILTIN_SPECS_DIR"
+    wt="$(jq -r '.worktree // empty' "$tf" 2>/dev/null)"
+    status="$(jq -r '.status // empty' "$tf" 2>/dev/null)"
+    attempts="$(jq -r '.attempts // 1' "$tf" 2>/dev/null)"
+
+    # Archive dir: <root>/<slug>/<YYYY-MM>/<id>/ or <id>.<attempts>/ for retries.
+    local ym arc_name arc_dir
+    ym="$(date -u +%Y-%m)"
+    arc_name="$id"
+    [ "${attempts:-1}" -gt 1 ] && arc_name="${id}.${attempts}"
+    arc_dir="${root}/${repo_slug}/${ym}/${arc_name}"
+
+    if ! mkdir -p "$arc_dir/phases" "$arc_dir/spec" 2>/dev/null; then
+        printf '[%s] archive failed: could not create %s\n' "$(ts)" "$arc_dir" >> "$log" 2>/dev/null || true
+        return 0
+    fi
+
+    # Inner helper: copy one file with redaction; updates all_counts and files_json via dynamic scope.
+    _arc_file() {
+        local _as="$1" _ar="$2" _ac _ah _adst
+        [ -f "$_as" ] || return 0
+        _adst="${arc_dir}/${_ar}"
+        mkdir -p "$(dirname "$_adst")" 2>/dev/null || return 0
+        _ac="$(_arc_redact "$_as" "$_adst")"
+        all_counts="$(_arc_merge "$all_counts" "$_ac")"
+        _ah="$(sha256sum "$_adst" 2>/dev/null | cut -c1-64)"
+        files_json="$(printf '%s' "$files_json" | jq --arg p "$_ar" --arg h "$_ah" '. + {($p): $h}')"
+    }
+
+    local all_counts='{}' files_json='{}'
+
+    # task.json
+    _arc_file "$tf" "task.json"
+
+    # Phase logs and json files from task dir (all *.log and *.json except task/manifest)
+    local _f _bn
+    for _f in "$dir"/*.log "$dir"/*.json; do
+        [ -f "$_f" ] || continue
+        _bn="$(basename "$_f")"
+        case "$_bn" in task.json|manifest.json) continue ;; esac
+        _arc_file "$_f" "phases/$_bn"
+    done
+
+    # spec.md: worktree copy first (may have agent edits), then repo fallback
+    local _ss=""
+    [ -n "$wt" ] && [ -f "$wt/$specs_dir/$ticket/spec.md" ] && _ss="$wt/$specs_dir/$ticket/spec.md"
+    [ -z "$_ss" ] && [ -f "$repo/$specs_dir/$ticket/spec.md" ] && _ss="$repo/$specs_dir/$ticket/spec.md"
+    [ -n "$_ss" ] && _arc_file "$_ss" "spec/spec.md"
+
+    # Report files: task dir first (already copied there on success/scope/verify), then worktree
+    local _n _src
+    for _n in qa-report.md scope-report.md verify-report.md pr-body.md; do
+        _src=""
+        [ -f "$dir/$_n" ] && _src="$dir/$_n"
+        [ -z "$_src" ] && [ -n "$wt" ] && [ -f "$wt/$specs_dir/$ticket/$_n" ] && _src="$wt/$specs_dir/$ticket/$_n"
+        [ -n "$_src" ] && _arc_file "$_src" "spec/$_n"
+    done
+
+    # BLOCKED.md: worktree only — not copied to task dir, must be read before worktree removal
+    [ -n "$wt" ] && [ -f "$wt/$specs_dir/$ticket/BLOCKED.md" ] \
+        && _arc_file "$wt/$specs_dir/$ticket/BLOCKED.md" "spec/BLOCKED.md"
+
+    # manifest.json
+    local _archived_at _pf
+    _archived_at="$(ts)"
+    _pf="$(policy_fingerprint "$repo")"
+    if ! jq -n \
+        --arg at "$_archived_at" --arg pf "$_pf" --arg ver "$VERSION" \
+        --argjson redactions "$all_counts" --argjson files "$files_json" \
+        --slurpfile tf "$tf" \
+        '($tf[0]) | {id,ticket,repo,base,branch,pr_url,status,attempts,cost_usd,runtime,
+          runtime_version,models:(.models//null),sessions:(.sessions//[]),
+          aisdlc_version:$ver,policy_fingerprint:$pf,archived_at:$at,
+          redactions:$redactions,files:$files}' \
+        > "$arc_dir/manifest.json" 2>/dev/null; then
+        printf '[%s] archive failed: manifest write failed\n' "$(ts)" >> "$log" 2>/dev/null || true
+        return 0
+    fi
+
+    # Append to index.jsonl (flock-ed for parallel safety).
+    local _idx="${root}/index.jsonl" _entry
+    _entry="$(jq -cn \
+        --arg id "$id" --arg tk "$ticket" --arg rp "$repo" --arg rs "$repo_slug" \
+        --arg st "$status" --argjson cost "$(jq '.cost_usd // null' "$tf" 2>/dev/null)" \
+        --arg at "$_archived_at" --arg path "$arc_dir" \
+        '{id:$id,ticket:$tk,repo:$rp,repo_slug:$rs,status:$st,
+          cost_usd:$cost,archived_at:$at,path:$path}')"
+    flock "${root}/index.lock" bash -c 'printf "%s\n" "$1" >> "$2"' _ "$_entry" "$_idx" \
+        2>/dev/null || printf '[%s] archive failed: index append failed\n' "$(ts)" >> "$log" 2>/dev/null || true
+
+    printf '[%s] archived to %s\n' "$(ts)" "$arc_dir" >> "$log" 2>/dev/null || true
+    return 0
+}
+
 
 execute_task() {
     local repo="$1" id="$2"
@@ -1704,6 +1888,7 @@ execute_task() {
     if ! git -C "$repo" worktree add -b "$branch" "$wt" "$base" >> "$log" 2>&1; then
         task_set "$repo" "$id" --arg e "worktree creation failed — see run.log" '.error = $e'
         set_status "$repo" "$id" failed
+        archive_task "$repo" "$id"
         say "  ✗ $id — could not create worktree"
         if [ -n "$issue_n" ]; then
             tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: worktree creation failed"
@@ -1727,6 +1912,7 @@ execute_task() {
             task_set "$repo" "$id" --arg e "$reason" '.error = $e'
             set_status "$repo" "$id" refused
             say "  ⊘ $id — $reason"
+            archive_task "$repo" "$id"
             git -C "$repo" worktree remove --force "$wt" >> "$log" 2>&1
             return 1
         fi
@@ -1749,6 +1935,7 @@ execute_task() {
                 task_set "$repo" "$id" --arg e "$reason" '.error = $e'
                 set_status "$repo" "$id" refused
                 say "  ⊘ $id — $reason"
+                archive_task "$repo" "$id"
                 git -C "$repo" worktree remove --force "$wt" >> "$log" 2>&1
                 if [ -n "$issue_n" ]; then
                     tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: $reason"
@@ -1815,6 +2002,7 @@ execute_task() {
         fi
         task_set "$repo" "$id" --arg e "$err" '.error = $e'
         set_status "$repo" "$id" failed
+        archive_task "$repo" "$id"
         say "  ✗ $id — $failed failed${hint} · worktree kept at $wt"
         say "    aisdlc logs $id"
         # Release whichever lock this run holds: the PR after a verified hand-off, else the issue.
@@ -1863,6 +2051,7 @@ execute_task() {
 
     set_status "$repo" "$id" "done"
     local cost; cost="$(task_get "$repo" .cost_usd "$id")"
+    archive_task "$repo" "$id"
     say "  ✓ $id — done (\$${cost:-?})${pr_url:+ · $pr_url}"
 
     if [ "$(task_get "$repo" .no_pr "$id")" = "true" ]; then
@@ -2136,6 +2325,7 @@ cmd_cancel() {
         mv "$1/queue.jsonl.tmp" "$1/queue.jsonl"
     ' _ "$dir" "$id"
     set_status "$repo" "$id" cancelled
+    archive_task "$repo" "$id"
     say "cancelled $id (a running phase finishes on its own)"
 }
 
