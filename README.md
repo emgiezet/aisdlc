@@ -533,7 +533,7 @@ slop-guard's own configuration; linter and type-checker thresholds are recorded 
 routine dependency add proceeds with a note — it asks only when the package name resembles a popular
 one. Pinning and licence review stay with `slopguard deps-check` at the stop gate (AP-AGENT-009).
 
-Both session banners shrink once they have been read. The nine always-on rules print in full the
+Both session banners shrink once they have been read. The ten always-on rules print in full the
 first time a repository starts a session and become a one-line pointer afterwards
 (`SLOPGUARD_DIGEST=full` forces the long form back); the AI SDLC pipeline banner collapses to four
 lines as soon as `CLAUDE.md` and `.claude/sdlc.md` exist, and stays long only for a repository that

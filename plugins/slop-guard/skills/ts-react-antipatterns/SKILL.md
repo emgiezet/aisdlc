@@ -24,6 +24,6 @@ Checks run automatically after each edit. Findings reference the IDs below.
 
 ## Warnings
 - AP-TS-PERF-004 — Cancel fetches on cleanup with `AbortController`; prefer a data-fetching library.
-- AP-TS-MAINT-001 — Validate external data at the boundary (e.g. zod); avoid `any`, `!`, and unsafe `as` casts.
+- AP-TS-MAINT-001 — Validate external data at the boundary (e.g. zod); avoid `any`, `!`, unsafe `as`, and never `as unknown as T`.
 
 Details for any ID: `reference/<ID>.md`

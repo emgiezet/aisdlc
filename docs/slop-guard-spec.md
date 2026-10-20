@@ -2045,7 +2045,7 @@ Tabele poniżej to minimalny zakres wersji 1.0.
 | AP-TS-PERF-002 | Indeks tablicy jako `key` w listach dynamicznych | stabilny identyfikator | — | react/no-array-index-key | warn | nie |
 | AP-TS-PERF-003 | Komponenty definiowane wewnątrz komponentów; nowe obiekty w `value` contextu | komponenty na poziomie modułu; `useMemo` | — | react/no-unstable-nested-components, jsx-no-constructed-context-values | error | tak |
 | AP-TS-PERF-004 | `fetch` w `useEffect` bez anulowania / bez obsługi wyścigów | `AbortController`, biblioteka data-fetching | — | skill | warn | tak |
-| AP-TS-MAINT-001 | `any`, `!`, `as` na danych z zewnątrz | walidacja na granicy (np. zod), zawężanie typów | 20 | typescript-eslint no-explicit-any, no-non-null-assertion, no-unsafe-* | warn | tak |
+| AP-TS-MAINT-001 | `any`, `!`, `as` na danych z zewnątrz; podwójny cast `x as unknown as T` | walidacja na granicy (np. zod), zawężanie typów; schema.parse zwraca już typ | 20 | typescript-eslint no-explicit-any, no-non-null-assertion, no-unsafe-*; og `slopguard.ts.double-cast` (error) | warn | tak |
 | AP-TS-MAINT-002 | Niezłapane promise'y | `await`/`.catch`/`void` z uzasadnieniem | 755 | no-floating-promises, no-misused-promises | error | tak |
 | AP-TS-MAINT-003 | `@ts-ignore` | `@ts-expect-error` z opisem | — | ban-ts-comment | error | tak |
 | AP-TS-MAINT-004 | Niewyczerpujący `switch` na unii | `switch-exhaustiveness-check` + `never` | — | typescript-eslint | error | nie |
@@ -2124,8 +2124,9 @@ Tabele poniżej to minimalny zakres wersji 1.0.
 | AP-AGENT-007 | Zmiany poza zakresem zadania przy okazji naprawiania findings (formatowanie całych plików, refaktory) | skill + raport Stop (liczba zmienionych linii poza hunkami z findings) |
 | AP-AGENT-008 | Użycie API biblioteki lub frameworku bez sprawdzenia dokumentacji wersji w Context7 | pre-write `additionalContext` (pierwsza edycja plików frameworku w sesji); raport Stop `warn` przy `require_docs_lookup=true` (Etap 4) |
 | AP-AGENT-009 | Nowa zależność dodana bez weryfikacji aktualności; wersja przypięta do `@latest`, `*` lub mutowalnego tagu | pre-bash ask (dodanie zależności); `slopguard deps-check` warn/error wg `dependency_freshness` |
+| AP-AGENT-011 | „Naprawa" findingu przez zniknięcie ostrzeżenia: przesunięcie casta, zamiana szerokiego typu na wyprowadzony przy dalej niewalidowanym wejściu, usunięcie guarda przy dalej niesparsowanym dispatchu, komentarz „already validated" | skill (digest `session-start`); nie do wykrycia hookiem — finding jest rozwiązany, gdy program potrafi pokazać gwarancję (parse/zawężenie u źródła, obsłużona i przetestowana ścieżka błędu) |
 
-Reguły AP-AGENT-* muszą być w kontekście zawsze, a skill bez `paths` ładuje do kontekstu tylko opis (pełna treść dopiero po wywołaniu). Blok wstrzykiwany przez `session-start` jest ograniczony do **maks. 15 linii i 1500 znaków** — ta granica obejmuje AP-AGENT-001 do AP-AGENT-009 i każdy przyszły wpis. Dlatego:
+Reguły AP-AGENT-* muszą być w kontekście zawsze, a skill bez `paths` ładuje do kontekstu tylko opis (pełna treść dopiero po wywołaniu). Blok wstrzykiwany przez `session-start` jest ograniczony do **maks. 15 linii i 1500 znaków** — ta granica obejmuje AP-AGENT-001 do AP-AGENT-011 i każdy przyszły wpis (AP-AGENT-010 jest kontrolą sesyjną bramki Stop z §7.6, nie wpisem katalogu). Dlatego:
 - skrót AP-AGENT-* jest wstrzykiwany przez `session-start` na stdout — stdout `SessionStart` trafia do kontekstu;
 - pełna wersja jest w skillu `agent-discipline`.
 
