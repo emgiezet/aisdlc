@@ -37,7 +37,7 @@ Three consequences shape everything below:
 | `/sdlc:qa` | agent, unattended | `specs/<TICKET>/qa-report.md`, PASS/GAPS, screenshots for UI UCs |
 | `aisdlc scope-check` | queue, native bash | `specs/<TICKET>/scope-report.md`, PASS/GAPS/BLOCKED — BLOCKED stops before ship (`specs/<TICKET>/`, AGENTS.md, CLAUDE.md, .claude/ are never classified) |
 | `/sdlc:ship` | agent, unattended | draft PR labelled `ai-sdlc` + `review` |
-| `/sdlc:review` | agent, unattended | `APPROVED` → `merge-ready`, or `CHANGES_REQUESTED` and an autofix loop |
+| `/sdlc:review` | agent, unattended | `APPROVED` → `merge-ready`, or `CHANGES_REQUESTED` and an autofix loop; approved spec stays read-only during code-review autofix. Required scope gaps and every change-budget finding escalate as `⚠ NEEDS HUMAN` (PR labelled `blocked`) |
 | `/sdlc:continue`, `/sdlc:fix-pr`, `/sdlc:autopilot` | agent, on demand | a stalled PR driven to `merge-ready` |
 | `/sdlc:merge` | **human only** | the decision that still cannot be delegated, now with its gates checked |
 | `/sdlc:close-fixed`, `/sdlc:changelog`, `/sdlc:retro` | agent, on a schedule | closed issues, a changelog PR, a ranked list of what the harness cost |
@@ -269,6 +269,8 @@ Setting `billing: subscription` makes the difference explicit:
 The zero-turn failure check is **unaffected**: a phase that completes with `num_turns == 0` is
 still a hard failure regardless of billing mode. That guard is what prevents a silent no-op from
 being reported as a successful PR; billing mode has no bearing on whether Claude ran.
+A companion guard runs after `implement`: if the phase exits cleanly but the branch diff is empty
+(excluding `specs/<TICKET>/` and agent-config paths), the runner fails immediately with `phase 'implement' failed — it changed no file; see implement.json for why` and does not run later phases.
 
 ### model_roles
 

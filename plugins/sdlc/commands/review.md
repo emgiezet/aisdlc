@@ -129,7 +129,17 @@ If verdict is `APPROVED`: skip autofix.
 Fix in this order; push each category as a separate commit (never `--force`; never bypass `guard`):
 
 1. **Conflicts** — merge or rebase onto the base branch; resolve.
-2. **Findings** — address every `blocker` and `major` from Phase 5.
+2. **Findings** — for **code review** (`specs/<TICKET>/spec.md` is read-only at all times):
+
+   | Finding class | Autofix action |
+   |---|---|
+   | `[major] scope gap: <file>` — change is extraneous | remove its changes from the diff: restore the base version of an existing file; delete only a branch-added file; re-review |
+   | `[major] scope gap: <file>` — change is required by the deliverable | emit `⚠ NEEDS HUMAN: scope gap: <file> — widen the spec or waive`; stop |
+   | `[major] over change budget: <details>` | emit `⚠ NEEDS HUMAN: over change budget: <details> — widen the spec or waive`; stop |
+   | `[blocker] over change budget: <details>` (including hard-ceiling breaches) | emit `⚠ NEEDS HUMAN: over change budget: <details> — widen the spec or waive`; stop |
+   | all other `blocker` / `major` findings | fix in code as before |
+
+   For **spec-only review**: autofix edits the spec directly; no `⚠ NEEDS HUMAN` for scope findings (behaviour unchanged from pre-fix).
 3. **CI** — after findings are pushed, **get-pr-checks** `{n}`; for each failing check classify
    `real-bug | test-bug | flake | infra`:
    - `flake`: **get-run-failed-logs** `{run-id}`; **rerun-check** `{run-id}`; if it fails again → treat as `real-bug`.

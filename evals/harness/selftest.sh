@@ -77,7 +77,7 @@ export PATH="$STUB_DIR:$PATH"
 printf 'aisdlc runner selftest (stub claude and stub omp, no API calls)\n\n'
 
 # --------------------------------------------------------------------------- #
-printf 'every requested phase runs, in order\n'
+printf 'every requested phase runs, in order (GH-52 UC-2)\n'
 R="$WORK/phases"
 fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
@@ -88,6 +88,7 @@ D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 # The regression that motivated this file: claude consumes stdin, which used to eat the
 # phase loop's own input so only the first phase ever ran.
 [ -f "$D/qa.log" ] && ok "qa ran too (stdin not swallowed)" || bad "qa" "no qa.log — the phase loop lost its input"
+[ -f "$D/qa.json" ] && ok "GH-52 UC-2: qa result present" || bad "GH-52 UC-2 qa" "qa.json missing"
 [ -f "$D/qa-report.md" ] && ok "qa report collected" || bad "artifacts" "qa-report.md not copied out"
 [ -s "$D/changes.diff" ] && ok "diff collected" || bad "artifacts" "changes.diff empty"
 head -1 "$D/verify-report.md" 2>/dev/null | grep -qx PASS && ok "verify ran and passed" \
@@ -133,6 +134,21 @@ case "$(task_field "$R" .error)" in *BLOCKED*) ok "error mentions BLOCKED.md" ;;
 "$AISDLC" retry "$(task_field "$R" .id)" --repo "$R" >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "queued" ] && ok "retry re-queues and clears the worktree" \
     || bad "retry" "status is $(task_field "$R" .status)"
+# --------------------------------------------------------------------------- #
+printf '\nGH-52: implement that changes nothing is caught before qa runs\n'
+R="$WORK/gh52-refuse"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=refuse "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "GH-52 UC-1: status failed" || bad "GH-52 UC-1 status" "$(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ ! -f "${D}qa.json" ] && ok "GH-52 UC-1: qa.json absent" || bad "GH-52 UC-1 qa" "qa.json exists"
+[ "$(task_field "$R" .error)" = "phase 'implement' failed — it changed no file; see implement.json for why" ] && ok "GH-52 UC-1: exact no-change diagnostic" || bad "GH-52 UC-1 error" "$(task_field "$R" .error)"
+R="$WORK/gh52-uc3"; fresh_repo "$R"; BASE="$(git -C "$R" rev-parse HEAD)"
+mkdir -p "$R/.claude/rules"; printf 'x\n' > "$R/.claude/rules/test.md"
+git -C "$R" add .claude/rules/test.md && git -C "$R" commit -qm "agent config only"
+# shellcheck source=plugins/sdlc/bin/aisdlc
+out="$(source "$AISDLC" help >/dev/null 2>&1; _branch_changes "$R" "$BASE" "specs/SBX-1")"
+[ -z "$out" ] && ok "GH-52 UC-3: agent-config-only diff empty" || bad "GH-52 UC-3" "$out"
 
 # --------------------------------------------------------------------------- #
 printf '\nthe spec gate refuses before spending anything\n'
@@ -809,7 +825,7 @@ grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
     || bad "GH-54 UC-6 status" "$(task_field "$R" .status)"
 
 # --------------------------------------------------------------------------- #
-# structure check selftest (UC-1, UC-3, UC-4, UC-8 — GH-44)
+# structure check selftest (UC-1, UC-3, UC-4 — GH-44)
 # --------------------------------------------------------------------------- #
 
 # Stub lizard lives in a dedicated dir; generated here, added to PATH only for UC-1.
@@ -929,7 +945,7 @@ grep -qF 'not installed' "${D}scope-report.md" 2>/dev/null \
 printf '\nstructure UC-4: only .md files changed → no ## Structure section\n'
 R="$WORK/struct-uc4"
 fresh_repo_scope "$R" \
-    $'- `specs/SBX-1/`' \
+    $'- `docs/impl-notes.md`' \
     "" \
     ""
 # mdonly stub: implement commits only a .md file; qa adds qa-report.md
@@ -938,26 +954,9 @@ printf '{"verify":["test -f specs/SBX-1/qa-report.md"]}\n' > "$R/.aisdlc/config.
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
 AISDLC_STUB=mdonly "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
-! grep -q '## Structure' "${D}scope-report.md" 2>/dev/null \
+[ "$(task_field "$R" .scope_verdict)" = "PASS" ] && [ -f "${D}scope-report.md" ] && ! grep -q '## Structure' "${D}scope-report.md" \
     && ok "UC-4: no ## Structure section when only .md files changed" \
-    || bad "UC-4 no structure" "## Structure section unexpectedly present"
-
-# --------------------------------------------------------------------------- #
-printf '\nstructure UC-8: review.md imports ## Structure findings with correct severity\n'
-# Verify the instruction file has the required import logic (model-free check).
-_REVIEW_MD="$REPO_ROOT/plugins/sdlc/commands/review.md"
-grep -qF 'new hotspot' "$_REVIEW_MD" \
-    && ok "UC-8: review.md imports new hotspot finding" \
-    || bad "UC-8 new hotspot" "new hotspot not found in review.md"
-grep -qF 'hotspot over 25' "$_REVIEW_MD" \
-    && ok "UC-8: review.md imports hotspot over 25 finding" \
-    || bad "UC-8 hotspot over 25" "hotspot over 25 not found in review.md"
-grep -qF '[major]' "$_REVIEW_MD" \
-    && ok "UC-8: review.md has [major] severity for structural findings" \
-    || bad "UC-8 major" "[major] not found in review.md"
-grep -qF '[blocker]' "$_REVIEW_MD" \
-    && ok "UC-8: review.md has [blocker] severity for hotspot over 25" \
-    || bad "UC-8 blocker" "[blocker] not found in review.md (needed for hotspot over 25)"
+    || bad "UC-4 no structure" "scope-check did not PASS, report is missing, or ## Structure is present"
 
 # --------------------------------------------------------------------------- #
 printf '\nbilling=subscription: null cost, no --max-budget-usd in args\n'

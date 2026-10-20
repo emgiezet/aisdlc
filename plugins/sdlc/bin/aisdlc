@@ -2118,6 +2118,17 @@ execute_task() {
         elif ! run_phase "$repo" "$id" "$phase" "$wt" "$ticket"; then
             failed="$phase"; break
         fi
+        # GH-52: fail immediately if implement exited cleanly but changed no real file.
+        if [ "$phase" = "implement" ]; then
+            if [ -z "$(_branch_changes "$wt" "$base" "$specs_dir/$ticket")" ]; then
+                local _e="phase 'implement' failed — it changed no file; see implement.json for why"
+                task_set "$repo" "$id" --arg e "$_e" '.error = $e'
+                set_status "$repo" "$id" failed
+                say "  ✗ $id — implement changed no file · worktree kept at $wt"
+                [ -n "$issue_n" ] && tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: $_e"
+                return 1
+            fi
+        fi
 
         # After ship: parse PR URL, claim the PR, and release the issue lock.
         if [ "$phase" = "ship" ]; then

@@ -75,14 +75,22 @@ case "${AISDLC_STUB:-ok}" in
                 ;;
         esac
         ;;
+    refuse)
+        case "$prompt" in
+            /implement*)
+                mkdir -p "specs/$ticket"
+                printf '# BLOCKED\n' > "specs/$ticket/BLOCKED.md"
+                commit "chore($ticket): BLOCKED"
+                result false 3 "stopped" 0.04; exit 0 ;;
+        esac ;;
 esac
 
 case "$prompt" in
     /implement*)
         if [ "${AISDLC_STUB:-ok}" = "mdonly" ]; then
             # mdonly: commit only a .md file so _struct_code_files() finds nothing
-            mkdir -p "specs/$ticket"
-            printf '# Implementation notes for %s\n\nStub notes.\n' "$ticket" > "specs/$ticket/impl-notes.md"
+            mkdir -p docs
+            printf '# Implementation notes for %s\n\nStub notes.\n' "$ticket" > "docs/impl-notes.md"
             commit "docs($ticket): implementation notes"
             result false 6 "stub phase complete" 0.05
         else
