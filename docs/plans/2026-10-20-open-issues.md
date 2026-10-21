@@ -169,3 +169,11 @@ Measured after repairs: GH-43-f 444 added lines (approved 300), GH-38 362 (appro
 The user answered “limity trzeba podnieść do 4000”: both specs now allow 4000 added lines,
 with file and module limits unchanged. The profile hard ceiling (3000) still applies to scope-check.
 
+## Review-driven spec corrections
+
+PR #66 code review found GH-43-e's UC-25 fixture described `BLOCKED.md`'s *first line* as the
+cause; real files written by `implement.md` always start with the `# BLOCKED — <TICKET>`
+heading, so retro reads the `**Stopped at:**` line. The spec's UC-25 now carries the real
+format; the live-mode Phase 4 rule changed identically (deliberate — one cause rule, both modes).
+GH-42-c UC-1 was corrected earlier under “TypeScript detector corrections”.
+
