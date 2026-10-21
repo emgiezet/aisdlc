@@ -152,8 +152,9 @@ Harness file per class (from `harness-eval` § "Diagnosing a failure"):
 
 ## Phase 4: Metrics [UC-3]
 
-Compute from `task.json` files only. Read `BLOCKED.md` for the top-three blocked tasks to
-extract the first line of each (archive: `<path>/spec/BLOCKED.md` from Phase 0 step 6; live: `head -1 specs/<ticket>/BLOCKED.md` in the task's repo).
+Compute from `task.json` files only. Read `BLOCKED.md` for the top-three blocked tasks; the
+cause is its `**Stopped at:**` line — the first line is always the `# BLOCKED — <TICKET>` heading
+(archive: `<path>/spec/BLOCKED.md` from Phase 0 step 6; live: `grep -m1 '^\*\*Stopped at:\*\*' specs/<ticket>/BLOCKED.md`).
 
 ```
 $ per merged PR:    <sum cost_usd over merged done tasks with non-null cost> ÷ their count
@@ -161,7 +162,7 @@ $ per merged PR:    <sum cost_usd over merged done tasks with non-null cost> ÷ 
                     (print "n/a" when no merged tasks have non-null cost_usd)
 First-pass PASS %:  <clean count> / <total finished> × 100
 BLOCKED rate %:     <blocked count> / <total finished> × 100
-  Top causes:       <first line of BLOCKED.md for the 3 highest-cost blocked tasks>
+  Top causes:       <`**Stopped at:**` line of BLOCKED.md for the 3 highest-cost blocked tasks>
 Generated / merged: <total finished> / <merged count (archive: verified; live: pr_url non-null)>
 ```
 
