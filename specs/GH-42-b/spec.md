@@ -40,6 +40,9 @@ In:
   of the five bad declarations.
 - `plugins/slop-guard/tests/fixtures/ts/good/AP-TS-MAINT-008.ts`: direct property access and
   typed function call replacing each Reflect call.
+- `plugins/slop-guard/tests/fixtures/ts/good/AP-TS-MAINT-005.ts` and `good/AP-TS-MAINT-006.ts`:
+  declare the external boundary as an `unknown` value, not an `unknown`-returning function,
+  so the new `no-unknown-returns` rule does not report GH-42-a's compliant fixtures.
 - `plugins/slop-guard/tests/integration/fast.sh`: two new test blocks — one for AP-TS-MAINT-007
   (five `it_expect_ap` assertions, `CONFIG_SOURCE=full`) and one for AP-TS-MAINT-008 (two
   assertions, `CONFIG_SOURCE=full`); a paired good-fixture block confirms no spurious findings.
@@ -61,7 +64,7 @@ Out:
 - Effect entry point `@spacemansh/anti-slop/eslint/effect`.
 - Oxlint.
 
-Change budget: 273 added lines, 12 files, 2 modules
+Change budget: 273 added lines, 14 files, 2 modules
 
 ## Context
 
