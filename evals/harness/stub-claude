@@ -19,6 +19,10 @@
 #   selfretire  deltest, and the branch adds its own .claude/retired-tests entry for it
 #   dirty     implement commits the test but leaves the code change uncommitted
 #   mdonly    implement commits only a .md file (for testing structure check with non-code changes)
+#
+# AISDLC_STUB_READINESS: when set and the prompt is NOT a phase command (does not start with /),
+#   the stub returns the variable's value as the model result text verbatim (readiness JSON).
+#   This lets selftest exercise readiness_check without a real model.
 set -uo pipefail
 [ "${1:-}" = "--version" ] && { printf 'Claude stub 1.0.0\n'; exit 0; }
 printf 'stub-claude args: %s\n' "$*" >&2
@@ -75,6 +79,14 @@ case "${AISDLC_STUB:-ok}" in
                 ;;
         esac
         ;;
+    refuse)
+        case "$prompt" in
+            /implement*)
+                mkdir -p "specs/$ticket"
+                printf '# BLOCKED\n' > "specs/$ticket/BLOCKED.md"
+                commit "chore($ticket): BLOCKED"
+                result false 3 "stopped" 0.04; exit 0 ;;
+        esac ;;
     keyleak)
         # Like ok but implement embeds a fake Anthropic key in its result, which lands in the log.
         case "$prompt" in
@@ -99,12 +111,30 @@ case "${AISDLC_STUB:-ok}" in
         ;;
 esac
 
+# GH-40: readiness check invocations are plain-text prompts (not starting with /).
+# AISDLC_STUB_READINESS — return as model result text (readiness JSON).
+# READINESS_ERROR_ENVELOPE — set is_error in envelope (tests envelope fail-closed).
+# READINESS_FAIL_EXIT — exit code to use (tests process-exit fail-closed).
+case "$prompt" in
+    /*) ;;
+    *)
+        if [ -n "${AISDLC_STUB_READINESS:-}" ]; then
+            jq -cn --arg r "$AISDLC_STUB_READINESS" \
+                --argjson err "${READINESS_ERROR_ENVELOPE:-false}" \
+                '{"type":"result","subtype":"success","is_error":$err,"num_turns":1,
+                  "result":$r,"session_id":"stub-readiness","total_cost_usd":0.01}'
+            exit "${READINESS_FAIL_EXIT:-0}"
+        fi
+        ;;
+esac
+
+
 case "$prompt" in
     /implement*)
         if [ "${AISDLC_STUB:-ok}" = "mdonly" ]; then
             # mdonly: commit only a .md file so _struct_code_files() finds nothing
-            mkdir -p "specs/$ticket"
-            printf '# Implementation notes for %s\n\nStub notes.\n' "$ticket" > "specs/$ticket/impl-notes.md"
+            mkdir -p docs
+            printf '# Implementation notes for %s\n\nStub notes.\n' "$ticket" > "docs/impl-notes.md"
             commit "docs($ticket): implementation notes"
             result false 6 "stub phase complete" 0.05
         else
@@ -145,7 +175,19 @@ case "$prompt" in
         mkdir -p "specs/$ticket"
         printf 'stub PR body\n' > "specs/$ticket/pr-body.md"
         commit "docs: PR body ($ticket)"
-        result false 6 "stub ship done\\nPR: #7 (specs/$ticket/pr-body.md)" 0.05
+        if [ "${AISDLC_STUB:-ok}" = "localpr" ]; then
+            # GH-60: mirror what the local tracker's create-pr operation does — append one
+            # JSON PR record to .aisdlc/tracker/prs.jsonl relative to cwd (the worktree).
+            mkdir -p ".aisdlc/tracker"
+            _now="$(date -u +%FT%TZ)"
+            jq -nc --arg b "$(git branch --show-current 2>/dev/null || echo '')" \
+                --arg t "$ticket" --arg p "specs/$ticket/pr-body.md" --arg d "$_now" \
+                '{number:1,branch:$b,baseRefName:"master",title:$t,labels:[],state:"open",isDraft:false,createdAt:$d,verdict:null,reviews:[],body_path:$p,url:"local#1",author:"local-user",assignees:[],mergeCommit:null}' \
+                >> ".aisdlc/tracker/prs.jsonl"
+            result false 6 "stub ship done\\nPR: #1 (specs/$ticket/pr-body.md)" 0.05
+        else
+            result false 6 "stub ship done\\nPR: #7 (specs/$ticket/pr-body.md)" 0.05
+        fi
         ;;
     /review*)
         result false 2 "Verdict: APPROVED" 0.02

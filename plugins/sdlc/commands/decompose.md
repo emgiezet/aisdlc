@@ -60,7 +60,8 @@ nothing, and the third one carries every risk the first two deferred.
 For each slice, write `<specs>/<TICKET>-<a|b|c…>/spec.md` in the `spec-authoring` format, with:
 
 - **Frontmatter** — `ticket: <TICKET>-a`, `status: draft`, `stacks:`, and `depends-on: <TICKET>-a`
-  when the slice cannot ship first.
+  when the slice cannot ship first. `check_spec` enforces `depends-on` at both queue time
+  (`aisdlc add`) and run time (before the implement phase); the run-time gate is not bypassable.
 - **UC ids that never move.** A use case keeps the id it had in the source spec: `UC-3` stays
   `UC-3` in whichever slice implements it. Ids are the traceability chain into test names and
   QA reports; renumbering them per slice breaks it. A UC that splits becomes `UC-3a`, `UC-3b`.

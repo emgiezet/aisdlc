@@ -68,5 +68,10 @@ case "$*" in
         for a in "$@"; do case "$a" in */labels/*) state_del labels "${a##*/labels/}" ;; esac; done
         printf '[]\n'
         ;;
+    *"/pulls?state=open"*"--paginate"*)
+        # --paginate prints each page's array in turn; $STUB_GH_PULLS holds those pages.
+        [ -z "${STUB_GH_PULLS_FAIL:-}" ] || exit 1
+        cat "${STUB_GH_PULLS:?stub-gh needs STUB_GH_PULLS}"
+        ;;
     *) printf 'stub-gh: unhandled call: %s\n' "$*" >&2; exit 1 ;;
 esac

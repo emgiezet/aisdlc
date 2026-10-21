@@ -225,6 +225,34 @@ spec_frontmatter_field() {
     ' "$spec"
 }
 
+# GH-53: Check that every token in depends-on: has a PASS verify-report in the base tree.
+check_depends_on() {
+    local spec="$1" unmet="" first
+    local deps_str
+    deps_str="$(spec_frontmatter_field "$spec" "depends-on")"
+    [ -z "$deps_str" ] && return 0
+    local -a deps
+    read -r -a deps <<< "$deps_str"
+    local specs_root
+    specs_root="$(dirname "$(dirname "$spec")")"
+    local token
+    for token in "${deps[@]}"; do
+        local report="$specs_root/$token/verify-report.md"
+        if [ ! -f "$report" ]; then
+            unmet="${unmet:+$unmet }$token"
+            continue
+        fi
+        first="$(head -1 "$report")"
+        if [ "$first" != "PASS" ]; then
+            unmet="${unmet:+$unmet }$token"
+        fi
+    done
+    if [ -n "$unmet" ]; then
+        printf 'depends-on not met: %s' "$unmet"; return 1
+    fi
+    return 0
+}
+
 check_spec() {
     local spec="$1" repo="${2:-}" status open
     status="$(spec_status "$spec")"
@@ -254,6 +282,10 @@ check_spec() {
     open="$(spec_open_questions "$spec")"
     if [ "${open:-0}" -gt 0 ]; then
         printf '%s unresolved open question(s) in the spec' "$open"; return 1
+    fi
+    local dep_reason
+    if ! dep_reason="$(check_depends_on "$spec")"; then
+        printf '%s' "$dep_reason"; return 1
     fi
     return 0
 }
@@ -544,6 +576,101 @@ tracker_release() {
 }
 
 # --------------------------------------------------------------------------- #
+# readiness
+# --------------------------------------------------------------------------- #
+#
+# Optional add-time quality gate. Disabled when readiness_min is absent or null in
+# .aisdlc/config.json. When enabled, invokes the smol model with the spec and a rubric,
+# expects JSON {"score":<0-100>,"gaps":[…≤5]}, and fails if score < readiness_min.
+#
+# Side effects: sets globals READINESS_SCORE READINESS_REASON.
+#   READINESS_SCORE  — the model's integer score, or empty when the gate did not run.
+#   READINESS_REASON — why a below-threshold or invalid spec was refused.
+# Returns 0: feature disabled or score >= threshold.
+# Returns 1: below threshold (writes specs/<ticket>/readiness.md), parse failure, or missing rubric.
+readiness_check() {
+    local repo="$1" spec="$2" model="$3" budget="$4" billing="$5" runtime="$6"
+    local specs_dir="$7" ticket="$8"
+    READINESS_SCORE=""; READINESS_REASON=""
+
+    # Feature is off when readiness_min is absent or null.
+    local cfg rmin
+    cfg="$(state_dir "$repo")/config.json"
+    rmin="$(jq -r 'if (.readiness_min // null) == null then "" else (.readiness_min | tostring) end' \
+        "$cfg" 2>/dev/null)"
+    [ -z "$rmin" ] && return 0
+    # Smol model: model_roles.smol when configured, else the task's default model.
+    local smol="$model"
+    local mr_smol; mr_smol="$(jq -r '.model_roles.smol // empty' "$cfg" 2>/dev/null)"
+    [ -n "$mr_smol" ] && smol="$mr_smol"
+
+    # Rubric loaded at runtime so operators can edit without touching the binary.
+    local rubric="$PLUGIN_ROOT/prompts/readiness.md"
+    if [ ! -f "$rubric" ]; then
+        READINESS_REASON="readiness rubric not found: $rubric"; return 1
+    fi
+
+    local prompt; prompt="$(cat "$rubric"; printf '\n\n---\n\n## Spec to evaluate\n\n'; cat "$spec")"
+    local settings; settings="$(state_dir "$repo")/settings.json"
+    # Dedicated cwd avoids project context; temporary sessions and streams stay contained.
+    local rdir; rdir="$(mktemp -d)"
+    local result="$rdir/result.json" log="$rdir/invoke.log" rc=0
+
+    case "$runtime" in
+        claude)
+            invoke_claude "$prompt" "$smol" "$budget" "$settings" "$rdir" "$result" "$log" "false" "$billing" "true" || rc=$?
+            collapse_result "$result"
+            ;;
+        omp)
+            invoke_omp "$prompt" "$smol" "$budget" "$rdir" "$result" "$log" "$billing" "true" || rc=$?
+            ;;
+    esac
+
+    # Fail closed: process error or is_error in result envelope.
+    if [ "$rc" -ne 0 ] || [ "$(jq -r '.is_error // false' "$result" 2>/dev/null)" = "true" ]; then
+        rm -rf "$rdir"
+        READINESS_REASON='readiness check: model response is not valid {"score":<0-100>,"gaps":[...<=5]}'
+        return 1
+    fi
+
+    local raw; raw="$(jq -r '.result // empty' "$result" 2>/dev/null)"
+    rm -rf "$rdir"
+
+    # Strict parse: exact integer (no fractional part) 0–100, array of ≤5 strings only.
+    local score="" gaps_ok=0
+    score="$(printf '%s' "$raw" | \
+        jq -re '.score | select(type == "number") | select(. == floor) |
+                select(. >= 0 and . <= 100) | tostring' \
+        2>/dev/null)" || true
+    if [ -n "$score" ]; then
+        gaps_ok="$(printf '%s' "$raw" | \
+            jq -r 'if (.gaps | type) == "array" and (.gaps | length) <= 5
+                      and (.gaps | all(type == "string")) then "1" else "0" end' \
+            2>/dev/null)" || gaps_ok=0
+    fi
+
+    if [ -z "$score" ] || [ "${gaps_ok:-0}" != "1" ]; then
+        READINESS_REASON='readiness check: model response is not valid {"score":<0-100>,"gaps":[...<=5]}'
+        return 1
+    fi
+
+    READINESS_SCORE="$score"
+
+    if [ "$score" -ge "$rmin" ]; then
+        return 0
+    fi
+
+    # Below threshold: write readiness.md with gap list for the operator.
+    local rmd="$repo/$specs_dir/$ticket/readiness.md"
+    { printf '# Readiness report: %s\n\nScore: %s / %s required\n\n## Gaps\n\n' \
+          "$ticket" "$score" "$rmin"
+      printf '%s' "$raw" | jq -r '.gaps[] | "- " + .' 2>/dev/null; } > "$rmd"
+    READINESS_REASON="readiness score $score < $rmin — spec needs improvement (see $rmd)"
+    return 1
+}
+
+
+# --------------------------------------------------------------------------- #
 # add
 # --------------------------------------------------------------------------- #
 
@@ -596,6 +723,8 @@ cmd_add() {
     local specs_dir
     specs_dir="$(resolve_default "$repo" specs_dir "" "${AISDLC_SPECS_DIR:-}" "$BUILTIN_SPECS_DIR")"
 
+    READINESS_SCORE=""   # set by readiness_check; cleared here so --issue tasks start clean
+
     if [ -n "$issue_n" ]; then
         # --issue: check and claim the issue; triage will write the spec in-worktree.
         local kind claim_status
@@ -610,12 +739,27 @@ cmd_add() {
             || die "could not claim issue $issue_n"
     else
         # Normal spec gate — skip for --issue (triage writes the spec in-worktree).
-        local spec="$repo/$specs_dir/$ticket/spec.md" reason
+        local spec="$repo/$specs_dir/$ticket/spec.md" reason spec_passed=0
         if ! reason="$(check_spec "$spec" "$repo")"; then
             if [ "$force" -eq 1 ]; then
                 say "aisdlc: WARNING — $reason (queued anyway because of --force)"
             else
                 die "$reason"
+            fi
+        else
+            spec_passed=1
+        fi
+        # Readiness gate — only when check_spec passed cleanly; --force bypass of check_spec
+        # skips readiness per spec (scoring a known-flawed spec adds noise, not signal).
+        READINESS_SCORE=""; READINESS_REASON=""
+        if [ "$spec_passed" -eq 1 ]; then
+            if ! readiness_check "$repo" "$spec" "$model" "$budget" "$billing" "$runtime" \
+                    "$specs_dir" "$ticket"; then
+                if [ "$force" -eq 1 ]; then
+                    say "aisdlc: WARNING — $READINESS_REASON (queued anyway because of --force)"
+                else
+                    die "$READINESS_REASON"
+                fi
             fi
         fi
     fi
@@ -658,13 +802,15 @@ cmd_add() {
           --argjson budget "$budget" --argjson no_pr "$no_pr" --argjson plugin_dir "$plugin_dir" \
           --argjson is_issue "$is_issue_flag" --argjson cost_init "$cost_init" \
           --argjson models_obj "$models_arg" \
+          --argjson rs_score "${READINESS_SCORE:-null}" \
           '({id:$id, ticket:$ticket, repo:$repo, model:$model, base:$base, specs_dir:$sd,
             billing:$billing, runtime:$runtime,
             phases:($phases|split(" ")|map(select(length>0))), budget:$budget,
             no_pr:($no_pr==1), plugin_dir:($plugin_dir==1), is_issue:($is_issue==1),
             status:"queued", attempts:0, cost_usd:$cost_init, created:$t, updated:$t,
             branch:null, worktree:null, pr_url:null, error:null}
-           | if $models_obj != null then . + {models: $models_obj} else . end)' > "$dir/task.json"
+           | if $models_obj != null then . + {models: $models_obj} else . end
+           | if $rs_score != null then . + {readiness_score: $rs_score} else . end)' > "$dir/task.json"
 
     flock "$(state_dir "$repo")/queue.lock" \
         bash -c "printf '%s\n' \"$id\" >> \"$(state_dir "$repo")/queue.jsonl\""
@@ -897,12 +1043,17 @@ omp_result() {
 # `--approval-mode yolo` because nobody is there to answer a prompt; the guard is the floor, as
 # it is for claude under bypassPermissions.
 invoke_omp() {
-    local prompt="$1" model="$2" budget="$3" wt="$4" out="$5" log="$6" billing="${7:-api}"
+    local prompt="$1" model="$2" budget="$3" wt="$4" out="$5" log="$6" billing="${7:-api}" data_only="$8"
     local sessions; sessions="$(dirname "$out")/sessions"
 
     local -a args=(-p --mode json --no-title --approval-mode yolo --session-dir "$sessions" --model "$model")
-    local d
-    while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+    if [ "$data_only" = "true" ]; then
+        # Data-only: disable all tools and load no extension-provided tools.
+        args+=(--no-tools --no-extensions)
+    else
+        local d
+        while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+    fi
 
     # omp has no spend cap, so none is claimed. Under api billing the cost is still recorded.
     if [ "$billing" = "subscription" ]; then
@@ -931,7 +1082,7 @@ invoke_omp() {
 
 # One headless invocation. Prints nothing; writes $out and appends to $log.
 invoke_claude() {
-    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}"
+    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}" data_only="${10}"
 
     local -a args=(
         -p "$prompt"
@@ -944,6 +1095,8 @@ invoke_claude() {
     # Subscription billing: omit --max-budget-usd — a spend cap that cannot be enforced
     # reads as a guarantee and is worse than silence.
     [ "$billing" != "subscription" ] && args+=(--max-budget-usd "$budget")
+    # Data-only mode: disable all tools so the model cannot perform side effects.
+    [ "$data_only" = "true" ] && args+=(--tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}')
     if [ "$use_plugin_dir" = "true" ]; then
         local d
         while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
@@ -1015,11 +1168,11 @@ run_claude_phase() {
         alternate="/${PLUGIN_NAME}:${phase} ${ticket}"
     fi
 
-    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
+    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" || rc=$?
     if grep -q '"result":"Unknown command' "$out" 2>/dev/null; then
         printf '[%s] %s not registered — retrying as "%s"\n' "$(ts)" "${primary%% *}" "${alternate%% *}" >> "$log"
         rc=0
-        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" || rc=$?
+        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" || rc=$?
     fi
     return $rc
 }
@@ -1051,7 +1204,7 @@ run_phase() {
                 "$(ts)" "$phase" "$PLUGIN_ROOT" "$phase" >> "$log"
             return 1
         fi
-        invoke_omp "/${PLUGIN_NAME}:${phase} ${ticket}" "$model" "$budget" "$wt" "$out" "$log" "$billing" || rc=$?
+        invoke_omp "/${PLUGIN_NAME}:${phase} ${ticket}" "$model" "$budget" "$wt" "$out" "$log" "$billing" "" || rc=$?
     else
         run_claude_phase || rc=$?
     fi
@@ -1243,7 +1396,7 @@ _write_scope_report() {
 # Paths that never count against a change budget: generated output, vendored trees, lock
 # files and the pipeline's own artefacts. Growth there is not review surface.
 # Backslashes are doubled: the pattern travels through awk -v, which unescapes once.
-_SIZE_EXCLUDE='(^|/)(vendor|node_modules|dist|build|target|__generated__|__snapshots__)/|(^|/)(package-lock\\.json|yarn\\.lock|pnpm-lock\\.yaml|composer\\.lock|Cargo\\.lock|go\\.sum|poetry\\.lock|Gemfile\\.lock)$|\\.(snap|pb\\.go|pb2\\.py)$|\\.generated\\.[a-z]+$'
+_SIZE_EXCLUDE='(^|/)(vendor|node_modules|dist|build|target|__generated__|__snapshots__)/|(^|/)(package-lock\\.json|yarn\\.lock|pnpm-lock\\.yaml|composer\\.lock|Cargo\\.lock|go\\.sum|poetry\\.lock|Gemfile\\.lock|uv\\.lock)$|\\.(snap|pb\\.go|pb2\\.py)$|\\.generated\\.[a-z]+$'
 
 # Measure the review surface of a branch: added lines, files touched, modules touched.
 # Deleted lines never count — a change that removes code is not a big change to review.
@@ -1305,24 +1458,30 @@ budget_value() {
 # findings, and a mangled byte there is a mangled byte in the pull request.
 _size_eval() {
     local added="$1" n_files="$2" n_mods="$3" modlist="$4" \
-          b_added="$5" b_files="$6" b_mods="$7" ceiling="$8"
-    local out="" rc=0 per_file=0
+          b_added="$5" b_files="$6" b_mods="$7" ceiling="$8" tolerance="$9"
+    local out="" rc=0 per_file=0 lim_added lim_files lim_mods lbl
+    lim_added=$((b_added + b_added * tolerance / 100))
+    lim_files=$((b_files + b_files * tolerance / 100))
+    lim_mods=$((b_mods + b_mods * tolerance / 100))
     [ "$n_files" -gt 0 ] && per_file=$((added / n_files))
-    if [ "$added" -gt "$b_added" ]; then
-        out="${out}over budget: $added added lines > $b_added. One spec is one PR: split it (spec-authoring, Sizing)"$'\n'
+    if [ "$added" -gt "$lim_added" ]; then
+        [ "$tolerance" -gt 0 ] && lbl="$lim_added ($b_added + $tolerance% tolerance)" || lbl="$b_added"
+        out="${out}over budget: $added added lines > $lbl. One spec is one PR: split it (spec-authoring, Sizing)"$'\n'
         rc=1
     fi
-    if [ "$n_files" -gt "$b_files" ]; then
-        out="${out}over budget: $n_files files touched > $b_files"$'\n'
+    if [ "$n_files" -gt "$lim_files" ]; then
+        [ "$tolerance" -gt 0 ] && lbl="$lim_files ($b_files + $tolerance% tolerance)" || lbl="$b_files"
+        out="${out}over budget: $n_files files touched > $lbl"$'\n'
         rc=1
     fi
-    if [ "$n_mods" -gt "$b_mods" ]; then
-        out="${out}over budget: $n_mods modules touched > $b_mods ($modlist)"$'\n'
+    if [ "$n_mods" -gt "$lim_mods" ]; then
+        [ "$tolerance" -gt 0 ] && lbl="$lim_mods ($b_mods + $tolerance% tolerance)" || lbl="$b_mods"
+        out="${out}over budget: $n_mods modules touched > $lbl ($modlist)"$'\n'
         rc=1
     fi
     # Shotgun surgery: many modules, thin edits in each. One behaviour smeared across the
     # tree; the fix is a seam of its own, in its own slice, not a wider pull request.
-    if [ "$n_mods" -gt "$b_mods" ] && [ "$per_file" -lt 10 ]; then
+    if [ "$n_mods" -gt "$lim_mods" ] && [ "$per_file" -lt 10 ]; then
         out="${out}shotgun surgery: $n_mods modules, ~$per_file added lines per file. Extract the shared seam as its own slice, then move one caller group per slice"$'\n'
         rc=1
     fi
@@ -1337,13 +1496,15 @@ _size_eval() {
 # Append the size section to a scope report. ${10} is the newline-separated findings list.
 _write_size_section() {
     local out="$1" added="$2" files="$3" mods="$4" modlist="$5" \
-          b_added="$6" b_files="$7" b_mods="$8" ceiling="$9" findings="${10}"
+          b_added="$6" b_files="$7" b_mods="$8" ceiling="$9" findings="${10}" tolerance="${11}"
+    local sfx=""
+    [ "$tolerance" -gt 0 ] && sfx=" +$tolerance%"
     {
         printf '\n## Size\n\n'
         printf '| Measure | This branch | Budget |\n|---|---|---|\n'
-        printf '| Added lines | %s | %s (hard ceiling %s) |\n' "$added" "$b_added" "$ceiling"
-        printf '| Files touched | %s | %s |\n' "$files" "$b_files"
-        printf '| Modules touched | %s | %s |\n' "$mods" "$b_mods"
+        printf '| Added lines | %s | %s%s (hard ceiling %s) |\n' "$added" "$b_added" "$sfx" "$ceiling"
+        printf '| Files touched | %s | %s%s |\n' "$files" "$b_files" "$sfx"
+        printf '| Modules touched | %s | %s%s |\n' "$mods" "$b_mods" "$sfx"
         printf '\nModules: %s\n' "${modlist:-none}"
         printf '\nGenerated output, vendored trees, lock files and the specs directory are\n'
         printf 'excluded; deleted lines never count against the budget.\n'
@@ -1601,6 +1762,26 @@ _struct_run_lizard() {
 }
 
 
+# _branch_changes <wt> <base> <task-specdir-relative> [git-diff-options...]
+# Stdout: files changed on the branch (git diff --name-only "${base}...HEAD"), with the
+# task's own spec directory, AGENTS.md, CLAUDE.md, and the .claude/ subtree excluded.
+# The task-specdir-relative arg is matched as a literal path prefix (e.g. specs/SBX-1).
+# Optional trailing arguments are passed verbatim to git diff (e.g. --diff-filter=AMR).
+# Only the named task's spec directory is excluded; sibling tickets remain visible.
+_branch_changes() {
+    local wt="$1" base="$2" task_specdir="$3"; shift 3
+    git -C "$wt" diff --name-only "$@" "${base}...HEAD" 2>/dev/null \
+        | awk -v dir="${task_specdir}" '
+            index($0, dir "/") == 1  { next }
+            $0 == "AGENTS.md"        { next }
+            $0 == "CLAUDE.md"        { next }
+            index($0, ".claude/") == 1 { next }
+            { print }
+        ' \
+        || true
+}
+
+
 # Native scope-check phase: classify the branch's changed files against the spec's
 # declared scope (In:/Out:/Context) and the project's repo-wide out-of-bounds list.
 # Writes specs/<TICKET>/scope-report.md and commits it. Records scope_verdict in
@@ -1616,9 +1797,9 @@ run_scope_check() {
     printf '[%s] scope-check begin (base %s)\n' "$(ts)" "$base" >> "$log"
 
     local changed
-    changed="$(git -C "$wt" diff --name-only "${base}...HEAD" 2>/dev/null || true)"
+    changed="$(_branch_changes "$wt" "$base" "$specs_dir/$ticket")"
 
-    if [ -z "$changed" ]; then
+    if [ -z "$changed" ] && git -C "$wt" diff --quiet "${base}...HEAD" 2>/dev/null; then
         printf '[%s] scope-check: no changed files — PASS\n' "$(ts)" >> "$log"
         mkdir -p "$wt/$specs_dir/$ticket"
         _write_scope_report "$report_wt" "$ticket" "$base" "" "" "" "PASS"
@@ -1630,7 +1811,7 @@ run_scope_check() {
         return 0
     fi
 
-    local in_pats="" out_pats="" prohibited_pats=""
+    local in_pats="" out_pats="" prohibited_pats="" in_verbatim=""
     if [ -f "$spec_file" ]; then
         local in_bullets out_bullets ctx
         in_bullets="$(_scope_bullets "$spec_file" "In")"
@@ -1638,6 +1819,10 @@ run_scope_check() {
         ctx="$(_context_lines "$spec_file")"
         in_pats="$(_path_tokens "${in_bullets}"$'\n'"${ctx}")"
         out_pats="$(_path_tokens "$out_bullets")"
+        # Verbatim In: paths only — exclude globs (* ? [) and directory patterns (trailing /).
+        # A file matching one of these exact paths is exempt from spec-Out matching (step 1)
+        # but not from repo-wide prohibited paths (step 2). GH-54.
+        in_verbatim="$(_path_tokens "$in_bullets" | grep -Ev '[*?[]|/$' || true)"
     fi
     if [ -f "$profile" ]; then
         local oob_b
@@ -1652,9 +1837,15 @@ run_scope_check() {
     local in_files="" undeclared="" oob=""
     while IFS= read -r f; do
         [ -n "$f" ] || continue
-        local classified=0
-        # 1. Spec Out: — explicit out-of-bounds
-        if [ -n "$out_pats" ]; then
+        local classified=0 skip_spec_out=0 vp
+        # 1. Spec Out: — explicit out-of-bounds.  Skip for verbatim In: files (GH-54).
+        if [ -n "$in_verbatim" ]; then
+            while IFS= read -r vp; do
+                [ -n "$vp" ] || continue
+                [ "${f#./}" = "${vp#./}" ] && { skip_spec_out=1; break; }
+            done <<< "$in_verbatim"
+        fi
+        if [ "$skip_spec_out" -eq 0 ] && [ -n "$out_pats" ]; then
             while IFS= read -r pat; do
                 [ -n "$pat" ] || continue
                 _glob_match "$f" "$pat" && {
@@ -1673,15 +1864,7 @@ run_scope_check() {
             done <<< "$prohibited_pats"
         fi
         [ "$classified" -eq 1 ] && continue
-        # 3. Pipeline artefacts written by qa/ship into this task's own spec dir
-        #    (scope-report.md, qa-report.md, qa/*, pr-body.md, BLOCKED.md, …).
-        #    These are already excluded from the size budget and can never be
-        #    pre-declared in the spec; treat them as in scope automatically.
-        case "$f" in "${specs_dir}/${ticket}/"*)
-            in_files="${in_files:+$in_files$'\n'}$f"; classified=1 ;;
-        esac
-        [ "$classified" -eq 1 ] && continue
-        # 4. In scope (spec In: + Context)
+        # 3. In scope (spec In: + Context)
         if [ -n "$in_pats" ]; then
             while IFS= read -r pat; do
                 [ -n "$pat" ] || continue
@@ -1708,16 +1891,18 @@ run_scope_check() {
     n_mods="$(printf '%s' "$stats" | awk '{print $3}')"
     modlist="$(printf '%s' "$stats" | awk '{print $4}')"
 
-    local b_added b_files b_mods ceiling
+    local b_added b_files b_mods ceiling tolerance
     b_added="$(budget_value  "$spec_file" "$profile" 'added lines' 'Added lines'  "$BUILTIN_BUDGET_ADDED")"
     b_files="$(budget_value  "$spec_file" "$profile" 'files'       'Files'        "$BUILTIN_BUDGET_FILES")"
     b_mods="$(budget_value   "$spec_file" "$profile" 'modules'     'Modules'      "$BUILTIN_BUDGET_MODULES")"
     ceiling="$(_budget_profile "$profile" 'Hard ceiling')"
     [ -n "$ceiling" ] || ceiling="$BUILTIN_BUDGET_CEILING"
+    tolerance="$(_budget_profile "$profile" 'Tolerance')"
+    [ -n "$tolerance" ] || tolerance=0
 
     local size_findings="" size_rc=0
     size_findings="$(_size_eval "$added" "$n_files" "$n_mods" "$modlist" \
-        "$b_added" "$b_files" "$b_mods" "$ceiling")"; size_rc=$?
+        "$b_added" "$b_files" "$b_mods" "$ceiling" "$tolerance")"; size_rc=$?
     if [ "$size_rc" -eq 2 ]; then
         verdict="BLOCKED"
     elif [ "$size_rc" -eq 1 ] && [ "$verdict" = "PASS" ]; then
@@ -1727,7 +1912,7 @@ run_scope_check() {
     mkdir -p "$wt/$specs_dir/$ticket"
     _write_scope_report "$report_wt" "$ticket" "$base" "$in_files" "$undeclared" "$oob" "$verdict"
     _write_size_section "$report_wt" "$added" "$n_files" "$n_mods" "$modlist" \
-        "$b_added" "$b_files" "$b_mods" "$ceiling" "$size_findings"
+        "$b_added" "$b_files" "$b_mods" "$ceiling" "$size_findings" "$tolerance"
 
     # Structure check — SlopCodeBench erosion; never causes BLOCKED.
     local erosion_max hotspot_max struct_result struct_body
@@ -1867,10 +2052,9 @@ run_verify() {
         done <<< "$cmds"
     fi
 
-    # Files this branch touched, excluding the harness's own bookkeeping (same rule as scope-check).
+    # Files this branch touched, excluding the harness's own bookkeeping (via _branch_changes).
     local changed deleted tests=""
-    changed="$(git -C "$wt" diff --name-only --diff-filter=AMR "${base}...HEAD" 2>/dev/null \
-        | grep -v "^$specs_dir/$ticket/" | grep -vE '^(AGENTS\.md|CLAUDE\.md|\.claude/)' || true)"
+    changed="$(_branch_changes "$wt" "$base" "$specs_dir/$ticket" --diff-filter=AMR)"
     local f
     while IFS= read -r f; do
         [ -n "$f" ] && _is_test_path "$f" && tests="${tests:+$tests$'\n'}$f"
@@ -1964,13 +2148,123 @@ _arc_merge() {
 }
 
 # Copy src to dst with built-in secrets redacted; print JSON {rule:count} to stdout.
+# Optional 3rd arg: path to run.log for betterleaks scanner diagnostics.
 _arc_redact() (
-    local src="$1" dst="$2" scratch t n counts='{}'
+    local src="$1" dst="$2" logfile="${3:-}" scratch t n counts='{}'
     umask 077
     scratch="$(mktemp -d "${dst}.redact.XXXXXX")" || return 1
     trap 'rm -rf -- "$scratch"' EXIT
     t="$scratch/content"
     cp "$src" "$t" 2>/dev/null || return 1
+    # --- betterleaks v2 scanner: PATH first, then slop-guard managed resolver ---
+    local bl_cmd=""
+    # 1. PATH: check directly; verify major version is 2 before using.
+    if command -v betterleaks >/dev/null 2>&1; then
+        local _bl_path_bin; _bl_path_bin="$(command -v betterleaks)"
+        local _bl_path_ver
+        _bl_path_ver="$("$_bl_path_bin" --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+        [ "${_bl_path_ver:-0}" -ge 2 ] && bl_cmd="$_bl_path_bin"
+    fi
+    # 2. Managed: source slop-guard's resolver (CLAUDE_PLUGIN_DATA/GROK_PLUGIN_DATA normalization).
+    if [ -z "$bl_cmd" ]; then
+        local _sg_lib="${PLUGIN_ROOT}/../slop-guard/lib/tools.sh"
+        if [ -f "$_sg_lib" ]; then
+            local _sg_managed
+            _sg_managed="$(
+                local _sgpdata="${CLAUDE_PLUGIN_DATA:-}"
+                [ -z "$_sgpdata" ] && _sgpdata="${GROK_PLUGIN_DATA:-}"
+                [ -z "$_sgpdata" ] && \
+                    _sgpdata="${XDG_DATA_HOME:-$HOME/.local/share}/claude/plugins/slop-guard"
+                CLAUDE_PLUGIN_ROOT="$(cd "${_sg_lib%/lib/tools.sh}" && pwd 2>/dev/null || true)"
+                export CLAUDE_PLUGIN_ROOT
+                export CLAUDE_PLUGIN_DATA="$_sgpdata"
+                # shellcheck source=/dev/null
+                . "$_sg_lib" 2>/dev/null && resolve_tool betterleaks 2>/dev/null || true
+            )" || true
+            if [ -n "$_sg_managed" ] && [ -x "$_sg_managed" ]; then
+                local _sg_ver
+                _sg_ver="$("$_sg_managed" --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+                [ "${_sg_ver:-0}" -ge 2 ] && bl_cmd="$_sg_managed"
+            fi
+        fi
+    fi
+    if [ -n "$bl_cmd" ]; then
+        local bl_out bl_rc bl_scan_ok=0 bl_abort=0
+        bl_out="$scratch/bl.jsonl"
+        # --analyze=false --validate=false override BETTERLEAKS_VALIDATE/BETTERLEAKS_ANALYZE env vars.
+        BETTERLEAKS_VALIDATE=false BETTERLEAKS_ANALYZE=false \
+            "$bl_cmd" "$t" --jsonl --analyze=false --validate=false > "$bl_out" 2>/dev/null
+        bl_rc=$?
+        if [ "$bl_rc" -gt 1 ]; then
+            printf '[%s] archive scanner error: betterleaks rc=%s on %s\n' \
+                "$(ts)" "$bl_rc" "$(basename "$dst")" >> "${logfile:-/dev/null}" 2>/dev/null || true
+            return 1
+        fi
+        # Parse JSONL for both rc=0 (completeness/compatibility gate) and rc=1 (findings + gate).
+        # schema_version:"1" is required on every envelope; incompatible output aborts.
+        local _bl_line _bl_rid _bl_val _bl_n
+        while IFS= read -r _bl_line; do
+            [ -n "$_bl_line" ] || continue
+            # Scan metadata envelope: {schema_version:"1",scan:{state:…}}
+            if printf '%s' "$_bl_line" | \
+                jq -e '(.schema_version == "1") and has("scan")' >/dev/null 2>&1; then
+                bl_scan_ok=1
+                local _bl_state
+                _bl_state="$(printf '%s' "$_bl_line" | jq -r '.scan.state // empty' 2>/dev/null)"
+                if [ "${_bl_state:-}" != "complete" ]; then
+                    printf '[%s] archive scanner incomplete: state=%s\n' \
+                        "$(ts)" "${_bl_state:-unknown}" >> "${logfile:-/dev/null}" 2>/dev/null || true
+                    bl_abort=1
+                fi
+                continue
+            fi
+            # Finding envelopes processed only for rc=1.
+            [ "$bl_rc" -eq 1 ] || continue
+            printf '%s' "$_bl_line" | \
+                jq -e '(.schema_version == "1") and has("finding")' >/dev/null 2>&1 || continue
+            # Decoded findings (non-empty encodings array or decode_depth>0): abort archive.
+            # Empty [] encodings array is NOT a decoded finding.
+            if printf '%s' "$_bl_line" | jq -e '
+                ((.finding.encodings // [] | length) > 0) or
+                ((.finding.decode_depth // 0) > 0)
+            ' >/dev/null 2>&1; then
+                _bl_rid="$(printf '%s' "$_bl_line" | \
+                    jq -r '.finding.rule_id // "unknown"' 2>/dev/null)"
+                printf '[%s] archive scanner gap: decoded finding (rule: %s)\n' \
+                    "$(ts)" "$_bl_rid" >> "${logfile:-/dev/null}" 2>/dev/null || true
+                bl_abort=1; continue
+            fi
+            # Replace literal match.value using jq --rawfile (handles multiline; fail-closed).
+            _bl_rid="$(printf '%s' "$_bl_line" | jq -r '.finding.rule_id // empty' 2>/dev/null)"
+            _bl_val="$(printf '%s' "$_bl_line" | jq -r '.finding.match.value // empty' 2>/dev/null)"
+            if [ -n "$_bl_val" ] && [ -n "$_bl_rid" ]; then
+                printf '%s' "$_bl_val" > "$scratch/bl_val"
+                # Count occurrences via split (handles embedded newlines; NUL-free path).
+                _bl_n="$(jq -Rs --rawfile from "$scratch/bl_val" \
+                    'if ($from | length) == 0 then 0 else (split($from) | length - 1) end' \
+                    "$t" 2>/dev/null)" || return 1
+                if [ "${_bl_n:-0}" -gt 0 ]; then
+                    local _bl_key="betterleaks:${_bl_rid}" _bl_to
+                    _bl_to="[REDACTED:betterleaks:${_bl_rid}]"
+                    # Literal substitution: split on value, join with redaction marker.
+                    jq -Rs --rawfile from "$scratch/bl_val" --arg to "$_bl_to" \
+                        'split($from) | join($to)' "$t" > "$scratch/bl_next" \
+                        && mv "$scratch/bl_next" "$t" || return 1
+                    counts="$(jq -n --argjson c "$counts" --argjson n "$_bl_n" \
+                        --arg k "$_bl_key" \
+                        '$c + {($k): (($c[$k] // 0) + $n)}' 2>/dev/null)" || return 1
+                fi
+            fi
+        done < "$bl_out"
+        # Completeness gate: no valid scan metadata record = incompatible or truncated output.
+        if [ "$bl_scan_ok" -eq 0 ]; then
+            printf '[%s] archive scanner incomplete: no scan metadata record\n' \
+                "$(ts)" >> "${logfile:-/dev/null}" 2>/dev/null || true
+            return 1
+        fi
+        [ "$bl_abort" -eq 1 ] && return 1
+    fi
+    # --- end betterleaks ---
     # A grep exit of 1 means no match; read/transform errors must not publish a file.
     n="$(grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
     if [ "${n:-0}" -gt 0 ]; then
@@ -2023,6 +2317,19 @@ _arc_redact() (
 archive_task() (
     local repo="$1" id="$2"
     [ "${AISDLC_ARCHIVE:-}" = "off" ] && return 0
+    # Profile Archive: off — checked second (AISDLC_ARCHIVE=off above is always first).
+    local _arc_profile_val=""
+    if [ -f "$repo/.claude/sdlc.md" ]; then
+        _arc_profile_val="$(grep -oE '\*\*Archive:\*\*[[:space:]]+[^[:space:]]+' \
+            "$repo/.claude/sdlc.md" 2>/dev/null | \
+            sed 's/.*\*\*Archive:\*\*[[:space:]]*//; s/^`\(.*\)`$/\1/' | head -1)"
+    fi
+    [ "${_arc_profile_val:-on}" = "off" ] && return 0
+
+    # archive_transcripts: config key > env > default (on).
+    local _arc_tr_setting
+    _arc_tr_setting="$(resolve_default "$repo" archive_transcripts "" "${AISDLC_ARCHIVE_TRANSCRIPTS:-}" "on")"
+
     umask 077
     local root="${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}"
 
@@ -2072,7 +2379,7 @@ archive_task() (
         _adst="${arc_dir}/${_ar}"
         [ "$_arc_failed" -eq 0 ] || return 1
         if ! mkdir -p "$(dirname "$_adst")" 2>/dev/null \
-            || ! _ac="$(_arc_redact "$_as" "$_adst")" \
+            || ! _ac="$(_arc_redact "$_as" "$_adst" "$log")" \
             || ! all_counts="$(_arc_merge "$all_counts" "$_ac")" \
             || ! _ah="$(sha256sum "$_adst" | cut -c1-64)" \
             || ! files_json="$(printf '%s' "$files_json" | jq --arg p "$_ar" --arg h "$_ah" '. + {($p): $h}')"; then
@@ -2113,6 +2420,115 @@ archive_task() (
     # BLOCKED.md: worktree only — not copied to task dir, must be read before worktree removal
     [ -n "$wt" ] && [ -f "$wt/$specs_dir/$ticket/BLOCKED.md" ] \
         && _arc_file "$wt/$specs_dir/$ticket/BLOCKED.md" "spec/BLOCKED.md"
+
+    # --- Transcript copies (GH-43-c) ---
+    local arc_transcripts
+    if [ "$_arc_tr_setting" = "off" ]; then
+        arc_transcripts='"disabled"'
+    else
+        arc_transcripts='[]'
+        local _tr_rt _tr_phase _tr_sid _tr_src _tr_dst_rel _tr_copied _tr_reason _tr_rec
+        local _tr_adst _tr_ac _tr_ah
+        _tr_rt="$(jq -r '.runtime // "claude"' "$tf" 2>/dev/null)"
+
+        if [ "$_tr_rt" = "claude" ]; then
+            while IFS= read -r _tr_json; do
+                [ -n "$_tr_json" ] || continue
+                _tr_phase="$(printf '%s' "$_tr_json" | jq -r '.phase // empty' 2>/dev/null)"
+                _tr_sid="$(printf '%s' "$_tr_json" | jq -r '.session_id // empty' 2>/dev/null)"
+                _tr_src="$(printf '%s' "$_tr_json" | jq -r '.transcript // empty' 2>/dev/null)"
+                [ -n "$_tr_src" ] || continue
+                _tr_dst_rel="sessions/${_tr_phase}-${_tr_sid}.jsonl"
+                _tr_copied="false"; _tr_reason=""
+                # B4: reject path-traversal in phase/session_id components; fail-closed.
+                if printf '%s' "${_tr_phase}${_tr_sid}" | grep -qE '[/\\]'; then
+                    _arc_failed=1; break
+                fi
+                if [ ! -f "$_tr_src" ]; then
+                    _tr_reason="not found"
+                elif [ ! -r "$_tr_src" ]; then
+                    _tr_reason="unreadable"
+                else
+                    _tr_adst="${arc_dir}/${_tr_dst_rel}"
+                    local _tr_real; _tr_real="$(realpath -m "$_tr_adst" 2>/dev/null)"
+                    local _arc_real; _arc_real="$(realpath -m "$arc_dir" 2>/dev/null)"
+                    if [ -z "$_tr_real" ] || [ -z "$_arc_real" ] || \
+                       [ "${_tr_real#${_arc_real}/}" = "$_tr_real" ]; then
+                        _arc_failed=1; break
+                    fi
+                    if mkdir -p "$(dirname "$_tr_adst")" 2>/dev/null \
+                        && _tr_ac="$(_arc_redact "$_tr_src" "$_tr_adst" "$log")" \
+                        && all_counts="$(_arc_merge "$all_counts" "$_tr_ac")" \
+                        && _tr_ah="$(sha256sum "$_tr_adst" | cut -c1-64)" \
+                        && files_json="$(printf '%s' "$files_json" | \
+                            jq --arg p "$_tr_dst_rel" --arg h "$_tr_ah" '. + {($p): $h}')"; then
+                        _tr_copied="true"
+                    else
+                        _arc_failed=1
+                    fi
+                fi
+                _tr_rec="$(jq -cn \
+                    --arg ph "$_tr_phase" --arg sid "$_tr_sid" --arg src "$_tr_src" \
+                    --arg dst "$_tr_dst_rel" --argjson c "$_tr_copied" --arg r "$_tr_reason" \
+                    '{phase:$ph,session_id:(if $sid=="" then null else $sid end),src:$src,dst_rel:$dst,copied:$c,reason:$r}')"
+                arc_transcripts="$(printf '%s' "$arc_transcripts" | \
+                    jq --argjson e "$_tr_rec" '. + [$e]' 2>/dev/null)" || true
+                [ "$_arc_failed" -eq 0 ] || break
+            done < <(jq -c '.sessions[]? | select(.runtime == "claude" or .runtime == null)' "$tf" 2>/dev/null)
+        elif [ "$_tr_rt" = "omp" ]; then
+            local _sf _obn
+            for _sf in "$dir/sessions"/*.jsonl; do
+                [ -f "$_sf" ] || continue
+                _obn="$(basename "$_sf")"
+                _tr_sid="$(printf '%s' "$_obn" | sed 's/^[^_]*_//; s/\.jsonl$//')"
+                _tr_dst_rel="sessions/omp-${_obn}"
+                _tr_copied="false"; _tr_reason=""
+                # B4: containment check for omp entries too.
+                _tr_adst="${arc_dir}/${_tr_dst_rel}"
+                local _tr_oreal; _tr_oreal="$(realpath -m "$_tr_adst" 2>/dev/null)"
+                local _arc_oreal; _arc_oreal="$(realpath -m "$arc_dir" 2>/dev/null)"
+                if [ -z "$_tr_oreal" ] || [ -z "$_arc_oreal" ] || \
+                   [ "${_tr_oreal#${_arc_oreal}/}" = "$_tr_oreal" ]; then
+                    _arc_failed=1; break
+                fi
+                if [ ! -r "$_sf" ]; then
+                    _tr_reason="unreadable"
+                else
+                    if mkdir -p "$(dirname "$_tr_adst")" 2>/dev/null \
+                        && _tr_ac="$(_arc_redact "$_sf" "$_tr_adst" "$log")" \
+                        && all_counts="$(_arc_merge "$all_counts" "$_tr_ac")" \
+                        && _tr_ah="$(sha256sum "$_tr_adst" | cut -c1-64)" \
+                        && files_json="$(printf '%s' "$files_json" | \
+                            jq --arg p "$_tr_dst_rel" --arg h "$_tr_ah" '. + {($p): $h}')"; then
+                        _tr_copied="true"
+                    else
+                        _arc_failed=1
+                    fi
+                fi
+                _tr_rec="$(jq -cn \
+                    --arg sid "$_tr_sid" --arg src "$_sf" \
+                    --arg dst "$_tr_dst_rel" --argjson c "$_tr_copied" --arg r "$_tr_reason" \
+                    '{phase:null,session_id:(if $sid=="" then null else $sid end),src:$src,dst_rel:$dst,copied:$c,reason:$r}')"
+                arc_transcripts="$(printf '%s' "$arc_transcripts" | \
+                    jq --argjson e "$_tr_rec" '. + [$e]' 2>/dev/null)" || true
+                [ "$_arc_failed" -eq 0 ] || break
+            done
+        fi
+    fi
+    # B1: Redact transcript metadata before embedding in manifest (src paths may carry secrets).
+    if [ "$arc_transcripts" != '"disabled"' ] && [ "$_arc_failed" -eq 0 ]; then
+        local _tr_meta_raw="$arc_dir/.transcripts.raw"
+        local _tr_meta_clean="$arc_dir/.transcripts.clean"
+        printf '%s\n' "$arc_transcripts" > "$_tr_meta_raw"
+        local _tr_meta_mc
+        if _tr_meta_mc="$(_arc_redact "$_tr_meta_raw" "$_tr_meta_clean" "$log")"; then
+            arc_transcripts="$(cat "$_tr_meta_clean")"
+            all_counts="$(_arc_merge "$all_counts" "$_tr_meta_mc")" || _arc_failed=1
+        else
+            _arc_failed=1
+        fi
+        rm -f "$_tr_meta_raw" "$_tr_meta_clean"
+    fi
     [ "$_arc_failed" -eq 0 ] || return 0
 
     # manifest.json
@@ -2122,11 +2538,13 @@ archive_task() (
     if ! jq -n \
         --arg at "$_archived_at" --arg pf "$_pf" --arg ver "$VERSION" \
         --argjson redactions "$all_counts" --argjson files "$files_json" \
+        --argjson tc "$arc_transcripts" \
         --slurpfile tf "$arc_dir/task.json" \
         '($tf[0]) | {id,ticket,repo,base,branch,pr_url,status,attempts,cost_usd,runtime,
-          runtime_version,models:(.models//null),sessions:(.sessions//[]),
+          runtime_version,model:(.model//null),models:(.models//null),sessions:(.sessions//[]),
+          phases:(.phase_log//null),
           aisdlc_version:$ver,policy_fingerprint:$pf,archived_at:$at,
-          redactions:$redactions,files:$files}' \
+          redactions:$redactions,files:$files,transcripts:$tc}' \
         > "$arc_dir/manifest.json" 2>/dev/null; then
         printf '[%s] archive failed: manifest write failed\n' "$(ts)" >> "$log" 2>/dev/null || true
         return 0
@@ -2137,7 +2555,7 @@ archive_task() (
     jq -cn --slurpfile m "$arc_dir/manifest.json" --arg rs "$repo_slug" --arg path "$arc_dir" \
         '$m[0] | {id,ticket,repo,status,cost_usd,archived_at} + {repo_slug:$rs,path:$path}' \
         > "$arc_dir/.index.raw" || return 0
-    _index_counts="$(_arc_redact "$arc_dir/.index.raw" "$arc_dir/.index.entry")" || return 0
+    _index_counts="$(_arc_redact "$arc_dir/.index.raw" "$arc_dir/.index.entry" "$log")" || return 0
     all_counts="$(_arc_merge "$all_counts" "$_index_counts")" || return 0
     jq --argjson c "$all_counts" '.redactions = $c' "$arc_dir/manifest.json" > "$arc_dir/.manifest" || return 0
     mv "$arc_dir/.manifest" "$arc_dir/manifest.json" || return 0
@@ -2189,6 +2607,26 @@ execute_task() {
         return 1
     fi
 
+    # GH-60: for local-tracker repos, symlink the canonical tracker directory into the
+    # worktree so that ship's create-pr writes to $repo/.aisdlc/tracker/, not to
+    # $wt/.aisdlc/tracker/ (which is deleted with the worktree on clean/retry).
+    if [ "$(tracker_kind "$repo")" = "local" ]; then
+        if ! { mkdir -p "$repo/.aisdlc/tracker" "$wt/.aisdlc" && ln -sfn "$repo/.aisdlc/tracker" "$wt/.aisdlc/tracker"; }; then
+            local _ln_err="local tracker symlink failed: $wt/.aisdlc/tracker → $repo/.aisdlc/tracker"
+            printf '[%s] %s\n' "$(ts)" "$_ln_err" >> "$log"
+            task_set "$repo" "$id" --arg e "$_ln_err" '.error = $e'
+            set_status "$repo" "$id" failed
+            archive_task "$repo" "$id"
+            say "  ✗ $id — $_ln_err"
+            if [ -n "$issue_n" ]; then
+                tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: local tracker symlink failed"
+            fi
+            return 1
+        fi
+        printf '[%s] linked %s → %s\n' "$(ts)" "$wt/.aisdlc/tracker" "$repo/.aisdlc/tracker" >> "$log"
+    fi
+
+
     # For --issue tasks triage writes the spec, so skip seed_spec and the initial gate.
     if [ "$is_issue" != "true" ]; then
         if ! seed_spec "$repo" "$wt" "$ticket" "$log" "$specs_dir"; then
@@ -2239,16 +2677,89 @@ execute_task() {
         fi
 
         say "  → $id: $phase"
+
+        # GH-43-f: capture phase_log timing and session provenance.
+        local _ph_started _ph_ended _ph_verdict _ph_sid _ph_sc_before
+        _ph_started="$(ts)"
+        _ph_sid=""
+
+        # Inner helper: append phase_log entry. Non-fatal by design.
+        _ph_log() {
+            task_set "$repo" "$id" \
+                --arg ph "$1" --arg v "$2" --arg sid "$3" \
+                --arg s "$4" --arg e "$5" \
+                '.phase_log += [{name:$ph,verdict:$v,
+                  session_id:(if $sid=="" then null else $sid end),
+                  started:$s,ended:$e}]' 2>/dev/null || true
+        }
+        # Inner helper: detect session_id by comparing sessions count before/after.
+        _ph_sid_detect() {
+            local _before="$1" _pname="$2" _after _last
+            _after="$(jq '.sessions | length' "$(task_file "$repo" "$id")" 2>/dev/null || echo 0)"
+            if [ "${_after:-0}" -gt "${_before:-0}" ]; then
+                _last="$(jq -r '.sessions[-1].phase // empty' "$(task_file "$repo" "$id")" 2>/dev/null)"
+                [ "$_last" = "$_pname" ] && \
+                    jq -r '.sessions[-1].session_id // empty' "$(task_file "$repo" "$id")" 2>/dev/null
+            fi
+        }
+
         if [ "$phase" = "scope-check" ]; then
             run_scope_check "$repo" "$id" "$wt" "$ticket" "$specs_dir" "$base" \
-                || { failed="$phase"; break; }
+                || {
+                    failed="$phase"
+                    _ph_ended="$(ts)"
+                    _ph_verdict="$(task_get "$repo" .scope_verdict "$id" 2>/dev/null)"
+                    _ph_verdict="${_ph_verdict:-FAIL}"
+                    _ph_log "$phase" "$_ph_verdict" "" "$_ph_started" "$_ph_ended"
+                    break
+                }
+            _ph_ended="$(ts)"
+            _ph_verdict="$(task_get "$repo" .scope_verdict "$id" 2>/dev/null)"
+            _ph_verdict="${_ph_verdict:-PASS}"
         elif [ "$phase" = "verify" ]; then
             if ! run_verify "$repo" "$id" "$wt" "$ticket" "$specs_dir" "$base"; then
-                failed="$phase"; break
+                failed="$phase"
+                _ph_ended="$(ts)"
+                _ph_verdict="$(task_get "$repo" .verify_verdict "$id" 2>/dev/null)"
+                _ph_verdict="${_ph_verdict:-FAIL}"
+                _ph_log "$phase" "$_ph_verdict" "" "$_ph_started" "$_ph_ended"
+                break
             fi
-        elif ! run_phase "$repo" "$id" "$phase" "$wt" "$ticket"; then
-            failed="$phase"; break
+            _ph_ended="$(ts)"
+            _ph_verdict="$(task_get "$repo" .verify_verdict "$id" 2>/dev/null)"
+            _ph_verdict="${_ph_verdict:-PASS}"
+        else
+            _ph_sc_before="$(jq '.sessions | length' "$(task_file "$repo" "$id")" 2>/dev/null || echo 0)"
+            if ! run_phase "$repo" "$id" "$phase" "$wt" "$ticket"; then
+                failed="$phase"
+                _ph_ended="$(ts)"
+                _ph_sid="$(_ph_sid_detect "$_ph_sc_before" "$phase")"
+                _ph_log "$phase" "FAIL" "$_ph_sid" "$_ph_started" "$_ph_ended"
+                break
+            fi
+            _ph_ended="$(ts)"
+            _ph_sid="$(_ph_sid_detect "$_ph_sc_before" "$phase")"
+            _ph_verdict="PASS"
         fi
+
+        # GH-52: fail immediately if implement exited cleanly but changed no real file.
+        if [ "$phase" = "implement" ]; then
+            if [ -z "$(_branch_changes "$wt" "$base" "$specs_dir/$ticket")" ]; then
+                local _e="phase 'implement' failed — it changed no file; see implement.json for why"
+                task_set "$repo" "$id" --arg e "$_e" '.error = $e'
+                set_status "$repo" "$id" failed
+                _ph_log "$phase" "FAIL" "$_ph_sid" "$_ph_started" "$_ph_ended"
+                archive_task "$repo" "$id"
+                say "  ✗ $id — implement changed no file · worktree kept at $wt"
+                [ -n "$issue_n" ] && tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: $_e"
+                return 1
+            fi
+        fi
+
+        # Append phase_log entry on PASS (or GAPS for scope-check).
+        _ph_log "$phase" "$_ph_verdict" "$_ph_sid" "$_ph_started" "$_ph_ended"
+
+
 
         # After ship: parse PR URL, claim the PR, and release the issue lock.
         if [ "$phase" = "ship" ]; then
@@ -2368,24 +2879,80 @@ queued_runtimes() {
     done < "$(state_dir "$repo")/queue.jsonl" | sort -u
 }
 
+# Count open PRs labelled <label> for the run-admission cap.
+# Prints the integer count on success. Prints an error detail + returns 1 when the count
+# cannot be obtained (provider failure, invalid local state, unsupported tracker).
+count_open_prs() {
+    local repo="$1" label="$2" kind; kind="$(tracker_kind "$repo")"
+    case "$kind" in
+        local)
+            local f="$repo/.aisdlc/tracker/prs.jsonl"
+            [ -f "$f" ] || { printf '0'; return 0; }
+            jq -rs --arg l "$label" \
+                '[.[] | select(.state=="open" and ((.labels//[]) | index($l) != null))] | length' \
+                "$f" 2>/dev/null || { printf 'cannot parse prs.jsonl'; return 1; }
+            ;;
+        github)
+            local slug prs; slug="$(gh_repo_slug "$repo")"
+            prs="$(gh api "repos/${slug}/pulls?state=open&per_page=100" --paginate 2>/dev/null)" \
+                || { printf 'gh api failed'; return 1; }
+            printf '%s' "$prs" | jq -rs --arg l "$label" \
+                '[.[] | .[] | select(.labels | map(.name) | index($l) != null)] | length' \
+                2>/dev/null || { printf 'cannot parse GitHub pulls'; return 1; }
+            ;;
+        *) printf 'unsupported tracker: %s' "$kind"; return 1 ;;
+    esac
+}
+
 cmd_run() {
-    local repo="." workers="" once=0
+    local repo="." workers="" once=0 max_open_prs="" max_run_usd=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --repo)    repo="$2"; shift 2 ;;
-            --workers) workers="$2"; shift 2 ;;
-            --once)    once=1; workers=1; shift ;;
-            -*)        die "unknown flag for run: $1" ;;
-            *)         die "run takes no positional arguments" ;;
+            --repo)         repo="$2"; shift 2 ;;
+            --workers)      workers="$2"; shift 2 ;;
+            --once)         once=1; workers=1; shift ;;
+            --max-open-prs) max_open_prs="$2"; shift 2 ;;
+            --max-run-usd)  max_run_usd="$2";  shift 2 ;;
+            -*)             die "unknown flag for run: $1" ;;
+            *)              die "run takes no positional arguments" ;;
         esac
     done
     repo="$(resolve_repo "$repo")"
     init_state "$repo"
+    # Resolve caps: CLI flag > config > env > builtin "" (disabled).
+    max_open_prs="$(resolve_default "$repo" max_open_prs "$max_open_prs" "${AISDLC_MAX_OPEN_PRS:-}" "")"
+    max_run_usd="$(resolve_default  "$repo" max_run_usd  "$max_run_usd"  "${AISDLC_MAX_RUN_USD:-}"  "")"
+    [ "$max_open_prs" = "null" ] && max_open_prs=""
+    [ "$max_run_usd"  = "null" ] && max_run_usd=""
+    # UC-8: non-numeric cap value → exit non-zero before any task is popped.
+    if [ -n "$max_open_prs" ]; then
+        case "$max_open_prs" in
+            *[!0-9]*) die "--max-open-prs must be a non-negative integer (got '${max_open_prs}')" ;;
+        esac
+    fi
+    if [ -n "$max_run_usd" ]; then
+        printf '%s' "$max_run_usd" | grep -qE '^[0-9]+(\.[0-9]+)?$' \
+            || die "--max-run-usd must be a number (got '${max_run_usd}')"
+    fi
     [ "$once" -eq 1 ] || workers="$(resolve_default "$repo" workers "$workers" "${AISDLC_WORKERS:-}" "$BUILTIN_WORKERS")"
 
     local pending
     pending="$(wc -l < "$(state_dir "$repo")/queue.jsonl" | tr -d ' ')"
     [ "${pending:-0}" -gt 0 ] || { say "queue is empty"; return 0; }
+
+    # UC-5: all-subscription queues warn and ignore the spend cap.
+    if [ -n "$max_run_usd" ]; then
+        local _asub=1 _qi _qb
+        while read -r _qi; do
+            [ -n "$_qi" ] || continue
+            _qb="$(task_get "$repo" .billing "$_qi" 2>/dev/null)"
+            [ "$_qb" = "subscription" ] || { _asub=0; break; }
+        done < "$(state_dir "$repo")/queue.jsonl"
+        if [ "$_asub" -eq 1 ]; then
+            say "aisdlc: warning: all queued tasks use subscription billing — spend cap cannot be enforced; --max-run-usd ignored"
+            max_run_usd=""
+        fi
+    fi
 
     # Every runtime the queued tasks were added with must be installed, checked before any
     # task is popped: a missing CLI found mid-queue fails a task that was never attempted.
@@ -2394,16 +2961,91 @@ cmd_run() {
 
     say "aisdlc $VERSION — $pending queued, $workers worker(s)$([ "$once" -eq 1 ] && echo ', single task')"
 
+    # Shared files: run-wide spend accumulator + stop-reason record + admission lock.
+    local _rsp _rsf _lbl _adm_lock
+    _rsp="$(state_dir "$repo")/.run-spend.tmp"
+    _rsf="$(state_dir "$repo")/last-run.json"
+    _adm_lock="$(state_dir "$repo")/admission.lock"
+    _lbl="$(resolve_default "$repo" label "" "${AISDLC_LABEL:-}" "$BUILTIN_LABEL")"
+    printf '0\n' > "$_rsp"; : > "${_rsp}.lock"; : > "$_adm_lock"
+    # Clear any stop decision from a prior run so an uncapped run does not inherit it.
+    rm -f "$_rsf"
+
     local -a pids=()
     trap 'say "interrupted — finishing current phases"; kill -TERM "${pids[@]}" 2>/dev/null; wait; exit 130' INT TERM
 
     for _ in $(seq 1 "$workers"); do
         (
             while :; do
-                local id
+                # Admission lock: serializes stop-check, cap-checks, and pop atomically.
+                # Held from the first gate check through pop_task; released BEFORE execute_task
+                # so other workers can proceed to their own admissions while this one executes.
+                local _fd
+                exec {_fd}>"$_adm_lock"
+                flock "$_fd"
+
+                # 1. Propagate any stop decision written by another worker this run.
+                if [ -f "$_rsf" ] && jq -e '.stop_reason' "$_rsf" >/dev/null 2>&1; then
+                    exec {_fd}>&-; break
+                fi
+
+                # 2. Cap checks — fail-closed; write stop record then release.
+                if [ -n "$max_open_prs" ]; then
+                    local _pc
+                    if ! _pc="$(count_open_prs "$repo" "$_lbl")"; then
+                        say "aisdlc: stopped: PR count unavailable — ${_pc}"
+                        jq -cn --arg r "count-unavailable" --arg v "$_pc" \
+                            '{stop_reason:$r,stop_value:$v,accumulated_spend:null}' > "$_rsf"
+                        exec {_fd}>&-; exit 2
+                    fi
+                    if [ "$_pc" -ge "$max_open_prs" ]; then
+                        say "aisdlc: stopped: ${_pc} open PR(s) — --max-open-prs ${max_open_prs} reached"
+                        jq -cn --arg r "max-open-prs" --arg v "$max_open_prs" \
+                            '{stop_reason:$r,stop_value:$v,accumulated_spend:null}' > "$_rsf"
+                        exec {_fd}>&-; break
+                    fi
+                fi
+                if [ -n "$max_run_usd" ]; then
+                    local _acc; _acc="$(cat "$_rsp" 2>/dev/null)"; _acc="${_acc:-0}"
+                    if jq -n --argjson a "$_acc" --argjson c "$max_run_usd" '$a >= $c' 2>/dev/null \
+                            | grep -q true; then
+                        say "aisdlc: stopped: run spend \$${_acc} — --max-run-usd ${max_run_usd} reached"
+                        jq -cn --arg r "max-run-usd" --arg v "$max_run_usd" --arg s "$_acc" \
+                            '{stop_reason:$r,stop_value:$v,accumulated_spend:$s}' > "$_rsf"
+                        exec {_fd}>&-; break
+                    fi
+                fi
+
+                # 3. Pop the next task (still holding admission lock for atomicity).
+                local id _cost_pre
                 id="$(pop_task "$repo")"
+                exec {_fd}>&-   # release BEFORE execute — do not block sibling admissions
                 [ -n "$id" ] || break
+
+                # Snapshot cost before execution; delta = this-run cost only (handles retries).
+                if [ -n "$max_run_usd" ]; then
+                    _cost_pre="$(task_get "$repo" .cost_usd "$id" 2>/dev/null)"
+                    [ "$_cost_pre" = "null" ] && _cost_pre="0"
+                    [ -z "$_cost_pre" ]        && _cost_pre="0"
+                fi
+
                 execute_task "$repo" "$id" || true
+
+                # Accumulate this run's cost delta; filter as positional arg prevents shell
+                # expansion of $a/$b; atomic mv prevents truncation reads across workers.
+                if [ -n "$max_run_usd" ]; then
+                    local _cost_post; _cost_post="$(task_get "$repo" .cost_usd "$id")"
+                    if [ -n "$_cost_post" ] && [ "$_cost_post" != "null" ]; then
+                        local _delta
+                        _delta="$(jq -n --argjson a "$_cost_post" --argjson b "${_cost_pre:-0}" \
+                            '$a - $b' 2>/dev/null || echo 0)"
+                        flock "${_rsp}.lock" bash -c '
+                            p=$(cat "$1" 2>/dev/null); p=${p:-0}
+                            jq -rn --argjson a "$p" --argjson b "$2" "$3" > "${1}.new" \
+                                && mv "${1}.new" "$1"
+                        ' _ "$_rsp" "$_delta" '$a+$b'
+                    fi
+                fi
                 [ "$once" -eq 1 ] && break
             done
         ) &
@@ -2412,7 +3054,13 @@ cmd_run() {
     wait
 
     say ""
+    rm -f "$_rsp" "${_rsp}.lock"
+    local _stop_rc=0
+    if [ -f "$_rsf" ]; then
+        [ "$(jq -r '.stop_reason // empty' "$_rsf" 2>/dev/null)" = "count-unavailable" ] && _stop_rc=1
+    fi
     cmd_status --repo "$repo"
+    return "$_stop_rc"
 }
 
 # --------------------------------------------------------------------------- #
@@ -2439,22 +3087,39 @@ cmd_status() {
     queue_file="$(state_dir "$repo")/queue.jsonl"
     local queued=0
     [ -f "$queue_file" ] && queued="$(wc -l < "$queue_file" | tr -d ' ')"
-    printf '%-34s %-9s %-6s %8s  %s\n' TASK STATUS PHASES COST NOTE
+    printf '%-34s %-9s %-6s %8s  %-5s  %s\n' TASK STATUS PHASES COST READY NOTE
     local f
     while read -r f; do
         [ -n "$f" ] || continue
         # Phases as initials (i·q·s) so the column stays aligned on a narrow terminal.
-        jq -r '[.id, .status, (.phases | map(.[0:1]) | join("·")), ((.cost_usd//0)|tostring),
+        jq -r '[.id, .status, (.phases | map(.[0:1]) | join("·")),
+                (if .cost_usd == null then "n/a" else (.cost_usd|tostring) end),
+                ((.readiness_score // "-") | tostring),
                 (.pr_url // .error // "")] | @tsv' "$f" 2>/dev/null \
-        | while IFS=$'\t' read -r id st ph cost note; do
-            printf '%-34s %-9s %-6s %8s  %s\n' "$id" "$st" "$ph" "\$$cost" "${note:0:56}"
+        | while IFS=$'\t' read -r id st ph cost ready note; do
+            printf '%-34s %-9s %-6s %8s  %-5s  %s\n' "$id" "$st" "$ph" "\$$cost" "$ready" "${note:0:56}"
           done
     done < <(each_task "$repo")
 
     local total
-    total="$(each_task "$repo" | xargs -r jq -s \
-        '(map(.cost_usd // 0) | add // 0) * 100 | round / 100' 2>/dev/null || echo 0)"
+    total="$(each_task "$repo" | xargs -r jq -rs \
+        '[.[] | .cost_usd | select(. != null)] as $api |
+         if ($api | length) == 0 then "n/a"
+         else (($api | add // 0) * 100 | round / 100 | tostring) end' \
+        2>/dev/null || echo 0)"
     printf '\n%s still queued · total spend $%s\n' "${queued:-0}" "$total"
+    local _rsf; _rsf="$(state_dir "$repo")/last-run.json"
+    if [ -f "$_rsf" ]; then
+        local _sr _sv _sp
+        _sr="$(jq -r '.stop_reason // empty' "$_rsf" 2>/dev/null)"
+        _sv="$(jq -r '.stop_value  // empty' "$_rsf" 2>/dev/null)"
+        _sp="$(jq -r '.accumulated_spend // empty' "$_rsf" 2>/dev/null)"
+        case "$_sr" in
+            max-open-prs)     say "last run stopped: open PRs ≥ --max-open-prs ${_sv}" ;;
+            max-run-usd)      say "last run stopped: spend \$${_sp} ≥ --max-run-usd ${_sv}" ;;
+            count-unavailable) say "last run stopped: PR count unavailable — ${_sv}" ;;
+        esac
+    fi
 }
 
 cmd_inbox() {
@@ -2647,6 +3312,188 @@ cmd_clean() {
     say "kept: running tasks$([ "$all" -eq 0 ] && echo ', and failed ones — they are your evidence')"
 }
 
+# --------------------------------------------------------------------------- #
+# archive — read and maintain the local task archive
+# --------------------------------------------------------------------------- #
+
+cmd_archive() {
+    local subcmd="${1:-}" root
+    root="${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}"
+    if [ "${AISDLC_ARCHIVE:-}" = "off" ]; then
+        printf 'archive disabled\n' >&2; return 0
+    fi
+    case "$subcmd" in
+        ls)   shift; _arc_ls   "$root" "$@" ;;
+        show) shift; _arc_show "$root" "$@" ;;
+        grep) shift; _arc_grep "$root" "$@" ;;
+        prune) shift; _arc_prune "$root" "$@" ;;
+        *) printf 'usage: aisdlc archive <ls|show|grep|prune> [flags]\n' >&2; return 1 ;;
+    esac
+}
+
+_arc_ls() {
+    local root="$1"; shift
+    local filter_repo="" filter_status="" filter_since=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --repo)   filter_repo="$2";   shift 2 ;;
+            --status) filter_status="$2"; shift 2 ;;
+            --since)  filter_since="$2";  shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    local idx="${root}/index.jsonl"
+    [ -f "$idx" ] || { printf 'no archive index at %s\n' "$idx" >&2; return 0; }
+    jq -r --arg repo "$filter_repo" --arg st "$filter_status" --arg since "$filter_since" '
+        select(
+            ($repo   == "" or .repo_slug == $repo) and
+            ($st     == "" or .status    == $st)   and
+            ($since  == "" or .archived_at >= $since)
+        )
+        | [.id, .ticket, .repo_slug, .status, (.cost_usd // "n/a" | tostring), .archived_at]
+        | @tsv' "$idx"
+}
+
+_arc_show() {
+    local root="$1" id="${2:-}"
+    [ -n "$id" ] || { printf 'usage: aisdlc archive show <id>\n' >&2; return 1; }
+    local idx="${root}/index.jsonl"
+    [ -f "$idx" ] || { printf 'not found: %s\n' "$id" >&2; return 1; }
+    # Match exact id or id.<n> prefix
+    local base_id="${id%%.*}"
+    local found=0
+    while IFS= read -r line; do
+        local entry_id entry_path
+        entry_id="$(printf '%s' "$line" | jq -r '.id // empty' 2>/dev/null)"
+        [ -n "$entry_id" ] || continue
+        # Match when queried id equals entry id (first attempt) or the full path arc_name matches
+        local entry_arc
+        entry_arc="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null | xargs -I{} basename {} 2>/dev/null)"
+        if [ "$entry_id" = "$base_id" ] && \
+           { [ "$id" = "$entry_id" ] || [ "$id" = "$entry_arc" ] || [ "$entry_arc" = "${base_id}" ] || \
+             printf '%s' "$entry_arc" | grep -qE "^${base_id}(\.[0-9]+)?$"; }; then
+            entry_path="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null)"
+            if [ -f "${entry_path}/manifest.json" ]; then
+                printf '=== %s ===\n' "$entry_arc"
+                jq . "${entry_path}/manifest.json"
+                found=1
+            fi
+        fi
+    done < "$idx"
+    if [ "$found" -eq 0 ]; then
+        printf 'not found: %s\n' "$id" >&2; return 1
+    fi
+    return 0
+}
+
+_arc_grep() {
+    local root="$1" pattern="${2:-}"
+    [ -n "$pattern" ] || { printf 'usage: aisdlc archive grep <pattern>\n' >&2; return 1; }
+    local idx="${root}/index.jsonl"
+    [ -f "$idx" ] || return 0
+    while IFS= read -r line; do
+        local entry_path entry_arc
+        entry_path="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null)"
+        [ -d "$entry_path" ] || continue
+        entry_arc="$(basename "$entry_path")"
+        local parent_slug parent_ym
+        parent_ym="$(basename "$(dirname "$entry_path")")"
+        parent_slug="$(basename "$(dirname "$(dirname "$entry_path")")")"
+        local arc_prefix="${parent_slug}/${parent_ym}/${entry_arc}"
+        # Search phases/*.log, phases/*.json, sessions/*.jsonl only — never manifest/task/spec
+        local f rel
+        for f in "$entry_path/phases"/*.log "$entry_path/phases"/*.json \
+                 "$entry_path/sessions"/*.jsonl; do
+            [ -f "$f" ] || continue
+            rel="${arc_prefix}/$(basename "$(dirname "$f")")/$(basename "$f")"
+            grep -E "$pattern" "$f" 2>/dev/null | while IFS= read -r match; do
+                printf '%s:%s\n' "$rel" "$match"
+            done
+        done
+    done < "$idx"
+    return 0
+}
+
+_arc_prune() {
+    local root="$1"; shift
+    local older_than_days=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --older-than) older_than_days="${2%d}"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [ -n "$older_than_days" ] || { printf 'usage: aisdlc archive prune --older-than <N>d\n' >&2; return 1; }
+    local idx="${root}/index.jsonl"
+    [ -f "$idx" ] || return 0
+
+    local canonical_root
+    canonical_root="$(realpath -m "$root" 2>/dev/null || printf '%s' "$root")"
+    local cutoff_ts now_ts
+    now_ts="$(date -u +%s 2>/dev/null || printf '0')"
+    cutoff_ts=$((now_ts - older_than_days * 86400))
+    local cutoff_iso
+    cutoff_iso="$(date -u -d "@${cutoff_ts}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                  date -u -r "${cutoff_ts}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                  printf '1970-01-01T00:00:00Z')"
+
+    flock "${root}/index.lock" bash -s "$idx" "$canonical_root" "$cutoff_iso" \
+        <<'PRUNE_SCRIPT'
+idx="$1"; canonical_root="$2"; cutoff_iso="$3"
+[ -f "$idx" ] || exit 0
+
+retained_file="$(mktemp)" || exit 1
+tmp_idx="${idx}.prune.$$"
+trap 'rm -f "$retained_file" "$tmp_idx"' EXIT
+: > "$tmp_idx" || exit 1
+
+# First pass: collect canonical paths of retained entries (younger, out-of-root, or symlink-outside).
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    archived_at="$(printf '%s' "$line" | jq -r '.archived_at // empty' 2>/dev/null)"
+    path_val="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null)"
+    canonical_path="$(realpath -m "$path_val" 2>/dev/null || printf '%s' "$path_val")"
+    is_desc=0; case "$canonical_path/" in "${canonical_root}/"*) is_desc=1 ;; esac
+    [ "$canonical_path" = "$canonical_root" ] && is_desc=0
+    if [ "$is_desc" -eq 0 ]; then
+        printf '%s\n' "$canonical_path" >> "$retained_file"
+    elif ! [[ "$archived_at" < "$cutoff_iso" ]]; then
+        printf '%s\n' "$canonical_path" >> "$retained_file"
+    fi
+done < "$idx"
+
+# Second pass: prune prunable entries; retain the rest.
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    archived_at="$(printf '%s' "$line" | jq -r '.archived_at // empty' 2>/dev/null)"
+    path_val="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null)"
+    canonical_path="$(realpath -m "$path_val" 2>/dev/null || printf '%s' "$path_val")"
+    is_desc=0; case "$canonical_path/" in "${canonical_root}/"*) is_desc=1 ;; esac
+    [ "$canonical_path" = "$canonical_root" ] && is_desc=0
+    if [ "$is_desc" -eq 0 ]; then
+        printf '[prune] skipping %s: path not strict descendant of archive root\n' \
+            "$canonical_path" >&2
+        printf '%s\n' "$line" >> "$tmp_idx"
+    elif [[ "$archived_at" < "$cutoff_iso" ]]; then
+        if grep -qxF "$canonical_path" "$retained_file" 2>/dev/null; then
+            printf '[prune] skipping %s: shared path with retained entry\n' \
+                "$canonical_path" >&2
+            printf '%s\n' "$line" >> "$tmp_idx"
+        elif ! rm -rf -- "$canonical_path"; then
+            printf '[prune] keeping %s: delete failed\n' "$canonical_path" >&2
+            printf '%s\n' "$line" >> "$tmp_idx"
+        fi
+    else
+        printf '%s\n' "$line" >> "$tmp_idx"
+    fi
+done < "$idx"
+
+mv "$tmp_idx" "$idx" || exit 1
+trap - EXIT; rm -f "$retained_file"
+PRUNE_SCRIPT
+}
+
+
 # The published version, read from the marketplace manifest on this plugin's own upstream.
 # Network is optional everywhere in this tool: no curl, no route, a moved manifest or a fork
 # that is not on GitHub all mean "unknown" — a version check is never worth failing a run over.
@@ -2709,7 +3556,7 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
       --issue <n>       queue issue #<n> as GH-<n>; claims it; phases: $ISSUE_PHASES
       --no-pr           stop after qa; strips ship and review; diff and QA report saved
       --plugin-dir      load the plugin from this checkout (repos without it installed)
-      --force           queue despite a draft spec or open questions (not recommended)
+      --force           queue despite a draft spec, open questions, or unmet depends-on (run-time depends-on gate is never bypassed)
 
   aisdlc pull [N] [flags]       claim the oldest open issue labelled \`$BUILTIN_PULL_LABEL\` (or N) and queue it
       --label <name>    the approval label to select on (default: $BUILTIN_PULL_LABEL)
@@ -2725,6 +3572,8 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
   aisdlc run [flags]            execute the queue
       --workers <n>     concurrent tasks (default: $BUILTIN_WORKERS)
       --once            run a single task, then exit
+      --max-open-prs <n> stop popping when open PRs with the run label ≥ N (null = unlimited)
+      --max-run-usd <x>  stop popping when run-wide API spend ≥ x USD; all-subscription queues warn and ignore
 
   aisdlc status                 one line per task, with spend
   aisdlc inbox                  open PRs with #, title, Verdict, pipeline label, url
@@ -2733,6 +3582,7 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
   aisdlc retry <id>             discard the worktree and re-queue
   aisdlc cancel <id>            drop a queued task
   aisdlc clean [--all]          remove finished task records and stale worktrees
+  aisdlc archive ls|show|grep|prune  read and maintain the local archive (see Archive section)
   aisdlc version [--check]      installed version; --check asks GitHub for the published one
 
 Phases: $ALL_PHASES (spec tickets); $ISSUE_PHASES (--issue tickets).
@@ -2756,6 +3606,11 @@ config with /$PLUGIN_NAME:init, or by hand:
   .aisdlc/config.json   {"model":"haiku","budget":3,"base":"origin/main",
                          "workers":4,"label":"$BUILTIN_LABEL","specs_dir":"$BUILTIN_SPECS_DIR"}
 
+Optional: add archive_transcripts to suppress session file copies:
+
+  "archive_transcripts": "off"
+
+
 Optional: add model_roles to route cheap phases to a smaller model:
 
   "model_roles": {"smol":"haiku","default":"sonnet","slow":"opus"}
@@ -2769,9 +3624,21 @@ Optional: add model_roles to route cheap phases to a smaller model:
   today's single-model behaviour, byte for byte. Values are opaque strings passed directly
   to claude --model; any name the host understands is valid.
 
+Optional: add readiness_min to score spec quality before queuing:
+
+  "readiness_min": 70
+
+  Config key only — no CLI flag or environment variable. Absent or null disables scoring.
+  When set, \`aisdlc add\` invokes the smol model with the spec and a rubric, expects JSON
+  {"score":<0-100>,"gaps":[…≤5]}, and refuses if score < readiness_min. --force bypasses
+  the check with a warning. On pass, task.json records readiness_score; \`aisdlc status\`
+  shows it in the READY column.
+
 Environment overrides: AISDLC_MODEL, AISDLC_BUDGET, AISDLC_BASE, AISDLC_WORKERS,
 AISDLC_LABEL, AISDLC_SPECS_DIR, AISDLC_PULL_LABEL, AISDLC_LOOP_INTERVAL (config keys
-pull_label and loop_interval).
+pull_label and loop_interval), AISDLC_MAX_OPEN_PRS, AISDLC_MAX_RUN_USD (config keys
+max_open_prs and max_run_usd; absent or null = disabled); AISDLC_ARCHIVE,
+AISDLC_ARCHIVE_TRANSCRIPTS (archive opt-outs).
 
 .aisdlc/settings.json is the permission set each headless phase runs under: editing files
 and using git are allowed because that is the job, force pushes and secrets are denied,
@@ -2802,6 +3669,7 @@ case "${1:-help}" in
     scope-check)    shift; cmd_scope_check "$@" ;;
     retry)          shift; cmd_retry "$@" ;;
     cancel)         shift; cmd_cancel "$@" ;;
+    archive)        shift; cmd_archive "$@" ;;
     clean)          shift; cmd_clean "$@" ;;
     version|--version) shift; cmd_version "$@" ;;
     help|--help|-h) cmd_help ;;

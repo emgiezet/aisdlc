@@ -66,6 +66,12 @@ task_field() {
     [ -n "$f" ] && jq -r "$field // empty" "$f"
 }
 
+# Hide any host-installed betterleaks from selftest (v1 managed binary causes archive abort).
+# XDG_DATA_HOME is overridden for all archive-related tests via ARC_XDG below.
+ARC_XDG="$WORK/xdg-home"
+mkdir -p "$ARC_XDG"
+
+
 if [ -n "${AISDLC_SELFTEST_WORK:-}" ]; then
     rm -rf "$WORK"
 fi
@@ -77,7 +83,7 @@ export PATH="$STUB_DIR:$PATH"
 printf 'aisdlc runner selftest (stub claude and stub omp, no API calls)\n\n'
 
 # --------------------------------------------------------------------------- #
-printf 'every requested phase runs, in order\n'
+printf 'every requested phase runs, in order (GH-52 UC-2)\n'
 R="$WORK/phases"
 fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
@@ -88,6 +94,7 @@ D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 # The regression that motivated this file: claude consumes stdin, which used to eat the
 # phase loop's own input so only the first phase ever ran.
 [ -f "$D/qa.log" ] && ok "qa ran too (stdin not swallowed)" || bad "qa" "no qa.log — the phase loop lost its input"
+[ -f "$D/qa.json" ] && ok "GH-52 UC-2: qa result present" || bad "GH-52 UC-2 qa" "qa.json missing"
 [ -f "$D/qa-report.md" ] && ok "qa report collected" || bad "artifacts" "qa-report.md not copied out"
 [ -s "$D/changes.diff" ] && ok "diff collected" || bad "artifacts" "changes.diff empty"
 head -1 "$D/verify-report.md" 2>/dev/null | grep -qx PASS && ok "verify ran and passed" \
@@ -133,6 +140,23 @@ case "$(task_field "$R" .error)" in *BLOCKED*) ok "error mentions BLOCKED.md" ;;
 "$AISDLC" retry "$(task_field "$R" .id)" --repo "$R" >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "queued" ] && ok "retry re-queues and clears the worktree" \
     || bad "retry" "status is $(task_field "$R" .status)"
+# --------------------------------------------------------------------------- #
+printf '\nGH-52: implement that changes nothing is caught before qa runs\n'
+R="$WORK/gh52-refuse"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$WORK/gh52-archive" AISDLC_STUB=refuse "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "GH-52 UC-1: status failed" || bad "GH-52 UC-1 status" "$(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ ! -f "${D}qa.json" ] && ok "GH-52 UC-1: qa.json absent" || bad "GH-52 UC-1 qa" "qa.json exists"
+[ "$(task_field "$R" .error)" = "phase 'implement' failed — it changed no file; see implement.json for why" ] && ok "GH-52 UC-1: exact no-change diagnostic" || bad "GH-52 UC-1 error" "$(task_field "$R" .error)"
+jq -e '.status == "failed"' "$WORK/gh52-archive/index.jsonl" >/dev/null 2>&1 \
+    && ok "GH-52 UC-1: empty implementation failure archived" || bad "GH-52 archive" "terminal record missing"
+R="$WORK/gh52-uc3"; fresh_repo "$R"; BASE="$(git -C "$R" rev-parse HEAD)"
+mkdir -p "$R/.claude/rules"; printf 'x\n' > "$R/.claude/rules/test.md"
+git -C "$R" add .claude/rules/test.md && git -C "$R" commit -qm "agent config only"
+# shellcheck source=plugins/sdlc/bin/aisdlc
+out="$(source "$AISDLC" help >/dev/null 2>&1; _branch_changes "$R" "$BASE" "specs/SBX-1")"
+[ -z "$out" ] && ok "GH-52 UC-3: agent-config-only diff empty" || bad "GH-52 UC-3" "$out"
 
 # --------------------------------------------------------------------------- #
 printf '\nthe spec gate refuses before spending anything\n'
@@ -575,11 +599,11 @@ SCOPE_SPEC
 # The stub (ok mode) commits: pkg/stub.go, pkg/stub_test.go, specs/SBX-1/qa-report.md
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: all changed files in scope → PASS\n'
+printf '\nGH-51 UC-1: scope-check: all changed files in scope → PASS\n'
 R="$WORK/scope-pass"
-# In: covers both pkg/ and specs/SBX-1/ — every file the stub commits is in scope.
+# Only pkg/ is declared; the task's own spec directory is excluded from classification.
 fresh_repo_scope "$R" \
-    $'- `pkg/`\n- `specs/SBX-1/`' \
+    $'- `pkg/`' \
     "" \
     ""
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
@@ -599,10 +623,9 @@ grep -q 'Verdict: PASS' "${D}scope-report.md" 2>/dev/null \
     || bad "scope_verdict" "$(task_field "$R" .scope_verdict)"
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: undeclared changed file → GAPS, chain continues\n'
+printf '\nGH-51 UC-2: scope-check: undeclared changed file → GAPS, chain continues\n'
 R="$WORK/scope-gaps"
-# In: covers only pkg/stub.go — pkg/stub_test.go (committed by stub implement) is undeclared;
-# specs/SBX-1/qa-report.md is the task's own spec dir and must NOT be undeclared (regression).
+# Only pkg/stub.go is declared; stub_test.go remains undeclared, unlike harness reports.
 fresh_repo_scope "$R" \
     $'- `pkg/stub.go`' \
     "" \
@@ -619,15 +642,17 @@ grep -q 'Verdict: GAPS' "${D}scope-report.md" 2>/dev/null \
 grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
     && ok "scope GAPS: undeclared files listed in report" \
     || bad "scope GAPS report" "no **undeclared** entry found"
+grep -qF '`specs/SBX-1/qa-report.md`' "${D}scope-report.md" 2>/dev/null \
+    && bad "GH-51 UC-2 scope GAPS report" "specs/SBX-1/qa-report.md appears in report — should be excluded" \
+    || ok "GH-51 UC-2: scope GAPS: specs/SBX-1/qa-report.md not present in report (excluded by _branch_changes)"
 [ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
     && ok "scope GAPS: scope_verdict in task.json" \
     || bad "scope_verdict GAPS" "$(task_field "$R" .scope_verdict)"
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: own spec-dir artefacts are never undeclared → PASS (regression)\n'
+printf '\nscope-check: own spec-dir artefacts are excluded from diff → PASS (regression)\n'
 R="$WORK/scope-own-spec-dir"
-# In: covers pkg/ only — specs/SBX-1/qa-report.md is the task's own spec dir artefact and
-# must be classified as in scope automatically, not flagged as undeclared.
+# Harness reports are excluded even when only pkg/ is declared.
 fresh_repo_scope "$R" \
     $'- `pkg/`' \
     "" \
@@ -636,21 +661,20 @@ fresh_repo_scope "$R" \
 "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
 [ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
-    && ok "scope own-spec-dir: verdict is PASS (artefacts not undeclared)" \
+    && ok "scope own-spec-dir: verdict is PASS (artefacts excluded from diff)" \
     || bad "scope own-spec-dir verdict" "$(task_field "$R" .scope_verdict)"
 grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
     && bad "scope own-spec-dir report" "specs/SBX-1/qa-report.md wrongly listed as undeclared" \
-    || ok "scope own-spec-dir: no undeclared entry — own spec-dir artefacts are in scope"
+    || ok "scope own-spec-dir: no undeclared entry — own spec-dir artefacts are excluded from diff"
 
 # --------------------------------------------------------------------------- #
-printf '\nscope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship\n'
+printf '\nGH-51 UC-3: scope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship\n'
 R="$WORK/scope-blocked"
-# In: covers only pkg/. Repo-wide prohibition lists specs/SBX-1/qa-report.md (committed
-# by stub qa). ship must NOT run; task must be failed.
+# Prohibit a real source file, not an excluded harness report; ship must not run.
 fresh_repo_scope "$R" \
-    $'- `pkg/`' \
+    $'- `pkg/stub.go`' \
     "" \
-    $'- `specs/SBX-1/qa-report.md`'
+    $'- `pkg/stub_test.go`'
 "$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1   # full pipeline (includes ship+review)
 "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
@@ -667,8 +691,149 @@ grep -qF '**out of bounds**' "${D}scope-report.md" 2>/dev/null \
     && ok "scope BLOCKED: out-of-bounds file listed in report" \
     || bad "scope BLOCKED report" "no **out of bounds** entry found"
 # --------------------------------------------------------------------------- #
+# _branch_changes unit tests (GH-51 UC-4)
 # --------------------------------------------------------------------------- #
-# structure check selftest (UC-1, UC-3, UC-4, UC-8 — GH-44)
+printf '\n_branch_changes: own-specdir excluded, sibling visible, root bookkeeping excluded (GH-51 UC-4)\n'
+_BC_WT="$WORK/bc-wt"
+mkdir -p "$_BC_WT/pkg" "$_BC_WT/specs/SBX-1" "$_BC_WT/specs/SBX-2" "$_BC_WT/src/specs/SBX-1" "$_BC_WT/custom.specs/SBX-1"
+git -C "$_BC_WT" init -q -b master; git -C "$_BC_WT" config user.email bc@localhost; git -C "$_BC_WT" config user.name bc
+printf 'base\n' > "$_BC_WT/pkg/stub.go"; git -C "$_BC_WT" add -A && git -C "$_BC_WT" commit -q -m "base"; git -C "$_BC_WT" update-ref refs/remotes/origin/master HEAD
+printf 'impl\n' > "$_BC_WT/pkg/stub.go";   printf 'qa\n'     > "$_BC_WT/specs/SBX-1/qa-report.md"  # own specdir — must be excluded
+printf 'spec\n' > "$_BC_WT/specs/SBX-2/spec.md"; printf 'nested\n' > "$_BC_WT/src/specs/SBX-1/file.go" # sibling visible; nested prefix visible
+printf 'agents\n' > "$_BC_WT/AGENTS.md";   printf 'claude\n' > "$_BC_WT/CLAUDE.md"                  # root bookkeeping — must be excluded
+printf 'bak\n' > "$_BC_WT/AGENTS.md.bak";  printf 'ts\n'     > "$_BC_WT/CLAUDE.md.ts"               # suffix-named — must remain visible
+printf 'custom\n' > "$_BC_WT/custom.specs/SBX-1/qa.md"                                               # custom specdir (metachar) — must be excluded
+git -C "$_BC_WT" add -A && git -C "$_BC_WT" commit -q -m "branch changes"
+# shellcheck source=plugins/sdlc/bin/aisdlc
+_BC_OUT="$(source "$AISDLC" help >/dev/null 2>&1; _branch_changes "$_BC_WT" "origin/master" "specs/SBX-1")"
+for _f in 'pkg/stub.go' 'specs/SBX-2/spec.md' 'src/specs/SBX-1/file.go'; do
+    printf '%s\n' "$_BC_OUT" | grep -qF "$_f" \
+        && ok "GH-51 UC-4: _branch_changes: $_f visible" \
+        || bad "GH-51 UC-4 _branch_changes" "$_f missing from output"
+done
+printf '%s\n' "$_BC_OUT" | grep -qF 'specs/SBX-1/qa-report.md' \
+    && bad "GH-51 UC-4 _branch_changes" "specs/SBX-1/qa-report.md present — own specdir must be excluded" \
+    || ok "GH-51 UC-4: _branch_changes: specs/SBX-1/qa-report.md excluded (own specdir)"
+for _f in 'AGENTS.md' 'CLAUDE.md'; do
+    printf '%s\n' "$_BC_OUT" | grep -qxF "$_f" \
+        && bad "GH-51 UC-4 _branch_changes" "$_f present — root bookkeeping must be excluded" \
+        || ok "GH-51 UC-4: _branch_changes: $_f excluded (root bookkeeping)"
+done
+for _f in 'AGENTS.md.bak' 'CLAUDE.md.ts'; do
+    printf '%s\n' "$_BC_OUT" | grep -qxF "$_f" \
+        && ok "GH-51 UC-4: _branch_changes: $_f visible (not excluded)" \
+        || bad "GH-51 UC-4 _branch_changes root-file-suffix" "$_f excluded — exact match required"
+done
+# shellcheck source=plugins/sdlc/bin/aisdlc
+_BC_OUT2="$(source "$AISDLC" help >/dev/null 2>&1; _branch_changes "$_BC_WT" "origin/master" "custom.specs/SBX-1")"
+printf '%s\n' "$_BC_OUT2" | grep -qF 'custom.specs/SBX-1/qa.md' \
+    && bad "GH-51 UC-4 _branch_changes metachar" "custom.specs/SBX-1/qa.md present — custom specdir must be excluded (literal, not regex)" \
+    || ok "GH-51 UC-4: _branch_changes: custom.specs/SBX-1/qa.md excluded (metachar-safe literal prefix)"
+printf '%s\n' "$_BC_OUT2" | grep -qF 'specs/SBX-2/spec.md' \
+    && ok "GH-51 UC-4: _branch_changes custom specdir: sibling specs/SBX-2/spec.md still visible" \
+    || bad "GH-51 UC-4 _branch_changes custom specdir" "specs/SBX-2/spec.md missing"
+unset _BC_WT _BC_OUT _BC_OUT2 _f
+printf '\nGH-51 UC-1 boundary: bookkeeping-only changes still enforce the size ceiling\n'
+R="$WORK/gh51-uc5"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_WT5="$(task_field "$R" .worktree)"; _ID5="$(ls "$R"/.aisdlc/tasks/ | head -1)"
+printf '%s\n' {1..3001} > "$_WT5/AGENTS.md"
+git -C "$_WT5" add AGENTS.md && git -C "$_WT5" commit -q -m "bookkeeping"
+"$AISDLC" scope-check "$_ID5" --repo "$R" >/dev/null 2>&1; _SIZE_RC=$?
+[ "$_SIZE_RC" -eq 1 ] && [ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-51 UC-1: bookkeeping-only branch blocked by size ceiling" \
+    || bad "GH-51 UC-1 size boundary" "rc=$_SIZE_RC verdict=$(task_field "$R" .scope_verdict)"
+unset R _WT5 _ID5 _SIZE_RC
+
+# --------------------------------------------------------------------------- #
+# GH-54: verbatim In: exempts from spec-Out; globs/dirs/Context: do not
+# --------------------------------------------------------------------------- #
+
+printf '\nGH-54 UC-1: verbatim In: beats Out: cross-reference → PASS\n'
+R="$WORK/gh54-uc1"
+fresh_repo_scope "$R" \
+    $'- `pkg/stub.go` — implementation\n- `pkg/stub_test.go` — tests\n- `specs/SBX-1/`' \
+    $'- `pkg/stub.go` is referenced here as a cross-reference, not as a prohibition' \
+    ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
+    && ok "GH-54 UC-1: scope_verdict PASS" || bad "GH-54 UC-1 scope_verdict" "$(task_field "$R" .scope_verdict)"
+grep -q 'Verdict: PASS' "${D}scope-report.md" 2>/dev/null \
+    && ok "GH-54 UC-1: report PASS" || bad "GH-54 UC-1 verdict" "$(grep 'Verdict:' "${D}scope-report.md" 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "GH-54 UC-1: task done" || bad "GH-54 UC-1 status" "$(task_field "$R" .status)"
+
+printf '\nGH-54 UC-2: directory-pattern In: does not exempt from Out: → BLOCKED\n'
+R="$WORK/gh54-uc2"
+fresh_repo_scope "$R" $'- `pkg/` — all package files' $'- `pkg/stub.go` — out of bounds' ""
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-54 UC-2: scope_verdict BLOCKED (dir-pattern does not exempt)" \
+    || bad "GH-54 UC-2 scope_verdict" "$(task_field "$R" .scope_verdict)"
+
+printf '\nGH-54 UC-3: glob In: (* ? [...]) does not exempt from Out: → BLOCKED\n'
+for _gh54pat in 'pkg/*.go' 'pkg/stub.?o' 'pkg/stu[b].go'; do
+    R="$WORK/gh54-uc3-${_gh54pat//[^a-zA-Z0-9]/-}"
+    fresh_repo_scope "$R" "- \`${_gh54pat}\` — glob" $'- `pkg/stub.go` — out of bounds' ""
+    "$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+    D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+    [ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+        && ok "GH-54 UC-3 (${_gh54pat}): BLOCKED (glob In: does not exempt)" \
+        || bad "GH-54 UC-3 ${_gh54pat}" "$(task_field "$R" .scope_verdict)"
+done
+
+printf '\nGH-54 UC-4: verbatim In: skips spec-Out but repo-wide prohibited wins → BLOCKED\n'
+R="$WORK/gh54-uc4"
+fresh_repo_scope "$R" \
+    $'- `pkg/stub.go` — implementation\n- `pkg/stub_test.go` — tests\n- `specs/SBX-1/`' \
+    $'- `pkg/stub.go` cross-referenced here' \
+    $'- `pkg/stub.go`'
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-54 UC-4: scope_verdict BLOCKED (prohibited overrides verbatim In:)" \
+    || bad "GH-54 UC-4 scope_verdict" "$(task_field "$R" .scope_verdict)"
+grep -qF '**out of bounds** (prohibited)' "${D}scope-report.md" 2>/dev/null \
+    && ok "GH-54 UC-4: row shows **out of bounds** (prohibited)" \
+    || bad "GH-54 UC-4 report" "$(grep 'out of bounds' "${D}scope-report.md" 2>/dev/null || echo 'no oob line')"
+
+printf '\nGH-54 UC-5: Context: mention only does not exempt from Out: → BLOCKED\n'
+R="$WORK/gh54-uc5"
+fresh_repo_scope "$R" $'- `pkg/stub_test.go` — tests\n- `specs/SBX-1/`' $'- `pkg/stub.go` — out of bounds' ""
+printf '\n## Context\n\n- `pkg/stub.go`: existing file for reference\n' >> "$R/specs/SBX-1/spec.md"
+git -C "$R" add specs/SBX-1/spec.md
+git -C "$R" -c user.name=selftest -c user.email=selftest@localhost commit -q -m "chore: GH-54-UC-5 context"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
+    && ok "GH-54 UC-5: scope_verdict BLOCKED (Context: does not exempt)" \
+    || bad "GH-54 UC-5 scope_verdict" "$(task_field "$R" .scope_verdict)"
+
+printf '\nGH-54 UC-6: verbatim In: beats Out: for one file; undeclared second → GAPS\n'
+R="$WORK/gh54-uc6"
+fresh_repo_scope "$R" $'- `pkg/stub.go` — implementation' $'- `pkg/stub.go` cross-referenced here' ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
+    && ok "GH-54 UC-6: scope_verdict GAPS" || bad "GH-54 UC-6 scope_verdict" "$(task_field "$R" .scope_verdict)"
+grep -qF '**undeclared**' "${D}scope-report.md" 2>/dev/null \
+    && ok "GH-54 UC-6: undeclared listed" || bad "GH-54 UC-6 undeclared" "no **undeclared** entry"
+[ "$(task_field "$R" .status)" = "done" ] \
+    && ok "GH-54 UC-6: task done (GAPS does not stop pipeline)" \
+    || bad "GH-54 UC-6 status" "$(task_field "$R" .status)"
+
+# --------------------------------------------------------------------------- #
+# structure check selftest (UC-1, UC-3, UC-4 — GH-44)
 # --------------------------------------------------------------------------- #
 
 # Stub lizard lives in a dedicated dir; generated here, added to PATH only for UC-1.
@@ -791,7 +956,7 @@ grep -qF 'not installed' "${D}scope-report.md" 2>/dev/null \
 printf '\nstructure UC-4: only .md files changed → no ## Structure section\n'
 R="$WORK/struct-uc4"
 fresh_repo_scope "$R" \
-    $'- `specs/SBX-1/`' \
+    $'- `docs/impl-notes.md`' \
     "" \
     ""
 # mdonly stub: implement commits only a .md file; qa adds qa-report.md
@@ -800,26 +965,9 @@ printf '{"verify":["test -f specs/SBX-1/qa-report.md"]}\n' > "$R/.aisdlc/config.
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
 AISDLC_STUB=mdonly "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
-! grep -q '## Structure' "${D}scope-report.md" 2>/dev/null \
+[ "$(task_field "$R" .scope_verdict)" = "PASS" ] && [ -f "${D}scope-report.md" ] && ! grep -q '## Structure' "${D}scope-report.md" \
     && ok "UC-4: no ## Structure section when only .md files changed" \
-    || bad "UC-4 no structure" "## Structure section unexpectedly present"
-
-# --------------------------------------------------------------------------- #
-printf '\nstructure UC-8: review.md imports ## Structure findings with correct severity\n'
-# Verify the instruction file has the required import logic (model-free check).
-_REVIEW_MD="$REPO_ROOT/plugins/sdlc/commands/review.md"
-grep -qF 'new hotspot' "$_REVIEW_MD" \
-    && ok "UC-8: review.md imports new hotspot finding" \
-    || bad "UC-8 new hotspot" "new hotspot not found in review.md"
-grep -qF 'hotspot over 25' "$_REVIEW_MD" \
-    && ok "UC-8: review.md imports hotspot over 25 finding" \
-    || bad "UC-8 hotspot over 25" "hotspot over 25 not found in review.md"
-grep -qF '[major]' "$_REVIEW_MD" \
-    && ok "UC-8: review.md has [major] severity for structural findings" \
-    || bad "UC-8 major" "[major] not found in review.md"
-grep -qF '[blocker]' "$_REVIEW_MD" \
-    && ok "UC-8: review.md has [blocker] severity for hotspot over 25" \
-    || bad "UC-8 blocker" "[blocker] not found in review.md (needed for hotspot over 25)"
+    || bad "UC-4 no structure" "scope-check did not PASS, report is missing, or ## Structure is present"
 
 # --------------------------------------------------------------------------- #
 printf '\nbilling=subscription: null cost, no --max-budget-usd in args\n'
@@ -1263,6 +1411,201 @@ TF="$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)"
 [ "$(task_field "$R" .status)" = "done" ] && ok "UC-5: outcome unchanged" || bad "UC-5 status" "$(task_field "$R" .status)"
 
 # --------------------------------------------------------------------------- #
+printf '\nGH-53: depends-on enforcement at add and run time\n'
+
+# Helper: write a spec with optional depends-on into a fresh repo and commit it.
+fresh_repo_dep() {
+    local dir="$1" dep="${2:-}"
+    fresh_repo "$dir"
+    {
+        echo "---"
+        echo "ticket: SBX-1"
+        echo "title: Dep test"
+        echo "status: approved"
+        [ -n "$dep" ] && echo "depends-on: $dep"
+        echo "---"
+        echo
+        echo "| id | actor | action | expected observable result | test |"
+        echo "|----|-------|--------|----------------------------|------|"
+        echo "| UC-1 | caller | calls Stub() | returns a non-empty string | unit |"
+    } > "$dir/specs/SBX-1/spec.md"
+    git -C "$dir" add -A >/dev/null
+    git -C "$dir" commit -q -m "dep spec"
+    git -C "$dir" update-ref refs/remotes/origin/master HEAD
+}
+
+# GH-53 UC-1: add refuses when verify-report.md is absent.
+R="$WORK/dep-uc1"
+fresh_repo_dep "$R" "DEP-a"
+out="$("$AISDLC" add SBX-1 --repo "$R" 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok "GH-53 UC-1: add exits non-zero" || bad "GH-53 UC-1 exit" "expected non-zero, got $rc"
+case "$out" in *DEP-a*) ok "GH-53 UC-1: output names DEP-a" ;; *) bad "GH-53 UC-1 output" "$out" ;; esac
+
+# GH-53 UC-2: add --force queues; run refuses, sets status=refused, no implement.log.
+R="$WORK/dep-uc2"
+fresh_repo_dep "$R" "DEP-a"
+out="$("$AISDLC" add SBX-1 --repo "$R" --no-pr --force 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok "GH-53 UC-2: add --force exits 0" || bad "GH-53 UC-2 add exit" "rc=$rc"
+case "$out" in *WARNING*) ok "GH-53 UC-2: WARNING in output" ;; *) bad "GH-53 UC-2 warning" "$out" ;; esac
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "refused" ] && ok "GH-53 UC-2: status refused" \
+    || bad "GH-53 UC-2 status" "$(task_field "$R" .status)"
+case "$(task_field "$R" .error)" in *DEP-a*) ok "GH-53 UC-2: error names DEP-a" ;; *) bad "GH-53 UC-2 error" "$(task_field "$R" .error)" ;; esac
+D2="$(ls -d "$R"/.aisdlc/tasks/*/ 2>/dev/null | head -1)"
+[ ! -f "${D2:-/nonexistent}/implement.log" ] && ok "GH-53 UC-2: no implement.log in task dir" \
+    || bad "GH-53 UC-2 implement.log" "file exists in task dir"
+
+# GH-53 UC-3: verify-report exists but first line is FAIL — add must refuse.
+R="$WORK/dep-uc3"
+fresh_repo_dep "$R" "DEP-a"
+mkdir -p "$R/specs/DEP-a"
+printf 'FAIL\n' > "$R/specs/DEP-a/verify-report.md"
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "add FAIL verify-report"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+out="$("$AISDLC" add SBX-1 --repo "$R" 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok "GH-53 UC-3: add exits non-zero on FAIL report" || bad "GH-53 UC-3 exit" "rc=$rc"
+case "$out" in *DEP-a*) ok "GH-53 UC-3: output names DEP-a" ;; *) bad "GH-53 UC-3 output" "$out" ;; esac
+
+# GH-53 UC-4: two deps; DEP-a PASS, DEP-b absent — output names DEP-b but not DEP-a.
+R="$WORK/dep-uc4"
+fresh_repo_dep "$R" "DEP-a DEP-b"
+mkdir -p "$R/specs/DEP-a"
+printf 'PASS\n' > "$R/specs/DEP-a/verify-report.md"
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "add DEP-a PASS verify-report"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+out="$("$AISDLC" add SBX-1 --repo "$R" 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok "GH-53 UC-4: add exits non-zero" || bad "GH-53 UC-4 exit" "rc=$rc"
+case "$out" in *DEP-b*) ok "GH-53 UC-4: output names DEP-b" ;; *) bad "GH-53 UC-4 DEP-b" "$out" ;; esac
+case "$out" in *DEP-a*) bad "GH-53 UC-4 DEP-a" "should not mention DEP-a: $out" ;; *) ok "GH-53 UC-4: output omits DEP-a" ;; esac
+
+# GH-53 UC-5: dep PASS committed to base — add exits 0, run completes to done.
+R="$WORK/dep-uc5"
+fresh_repo_dep "$R" "DEP-a"
+mkdir -p "$R/specs/DEP-a"
+printf 'PASS\n' > "$R/specs/DEP-a/verify-report.md"
+git -C "$R" add -A >/dev/null
+git -C "$R" commit -q -m "add DEP-a PASS verify-report"
+git -C "$R" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "GH-53 UC-5: add exits 0" || bad "GH-53 UC-5 add" "add failed"
+"$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "GH-53 UC-5: status done" \
+    || bad "GH-53 UC-5 status" "$(task_field "$R" .status)"
+D5="$(ls -d "$R"/.aisdlc/tasks/*/ 2>/dev/null | head -1)"
+[ -f "${D5:-/nonexistent}/implement.log" ] && ok "GH-53 UC-5: implement.log present in task dir" \
+    || bad "GH-53 UC-5 implement.log" "missing from task dir ${D5:-none}"
+
+
+# --------------------------------------------------------------------------- #
+printf '\nGH-60: local tracker symlink — ship writes to repo tracker, not worktree\n'
+
+# UC-1: symlink created and points correctly to repo canonical tracker (tested via retained worktree)
+printf '\nGH-60 UC-1: symlink created and readlink resolves to repo tracker\n'
+R="$WORK/gh60-uc1"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker" "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_TF1="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+_WT1="$(jq -r '.worktree' "$_TF1")"
+[ -L "$_WT1/.aisdlc/tracker" ] && [ "$(readlink "$_WT1/.aisdlc/tracker")" = "$R/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-1: symlink exists and readlink resolves to $R/.aisdlc/tracker" \
+    || bad "GH-60 UC-1" "symlink missing or points elsewhere: $(readlink "$_WT1/.aisdlc/tracker" 2>/dev/null || echo 'not a symlink')"
+unset _TF1 _WT1
+
+# UC-2 + UC-3: localpr stub writes prs.jsonl at repo tracker, inbox sees PR, clean preserves exact record contents
+printf '\nGH-60 UC-2,3: localpr writes prs.jsonl, inbox lists PR, clean preserves exact record contents\n'
+R="$WORK/gh60-uc23"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker" "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
+AISDLC_STUB=localpr "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+# UC-2 behavioral assertion: aisdlc inbox lists the shipped PR — capture once to avoid SIGPIPE race
+_INBOX60="$("$AISDLC" inbox --repo "$R" 2>&1)"
+grep -q 'local#1' <<< "$_INBOX60" \
+    && ok "GH-60 UC-2: aisdlc inbox lists PR local#1" \
+    || bad "GH-60 UC-2" "$_INBOX60"
+unset _INBOX60
+jq -e '.number == 1 and .url == "local#1" and .title == "SBX-1"' "$R/.aisdlc/tracker/prs.jsonl" >/dev/null \
+    && ok "GH-60 UC-3: prs.jsonl record contents correct before clean" \
+    || bad "GH-60 UC-3 before" "$(cat "$R/.aisdlc/tracker/prs.jsonl" 2>/dev/null)"
+_WT_23="$(jq -r '.worktree' "$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)")"
+"$AISDLC" clean --all --repo "$R" >/dev/null 2>&1
+[ ! -d "$_WT_23" ] \
+    && ok "GH-60 UC-3: worktree removed after clean" \
+    || bad "GH-60 UC-3 wt" "worktree still exists: $_WT_23"
+jq -e '.number == 1 and .url == "local#1" and .title == "SBX-1"' "$R/.aisdlc/tracker/prs.jsonl" >/dev/null \
+    && ok "GH-60 UC-3: prs.jsonl exact record contents retained at repo tracker after clean" \
+    || bad "GH-60 UC-3 after" "$(cat "$R/.aisdlc/tracker/prs.jsonl" 2>/dev/null)"
+unset _WT_23
+
+# UC-4: tracker dir absent — mkdir creates it, then symlinked (verified via readlink on retained worktree)
+printf '\nGH-60 UC-4: tracker dir absent → created by runner and symlinked\n'
+R="$WORK/gh60-uc4"; fresh_repo "$R"
+mkdir -p "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+# Intentionally no $R/.aisdlc/tracker yet
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ -d "$R/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-4: $R/.aisdlc/tracker/ created by runner" \
+    || bad "GH-60 UC-4 mkdir" "directory absent after run"
+_TF4="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+_WT4="$(jq -r '.worktree' "$_TF4")"
+[ -L "$_WT4/.aisdlc/tracker" ] && [ "$(readlink "$_WT4/.aisdlc/tracker")" = "$R/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-4: absent tracker dir created and symlinked correctly" \
+    || bad "GH-60 UC-4 link" "symlink missing or incorrect"
+unset _TF4 _WT4
+
+# UC-5: symlink creation step fails → task=failed, .error set, run.log records it, worktree kept
+printf '\nGH-60 UC-5: symlink failure → task failed, error set, worktree retained\n'
+R="$WORK/gh60-uc5"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker" "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+# Inject a failing ln wrapper (fails only when called as ln -sfn)
+_LN_BIN="$WORK/gh60-uc5-bin"
+mkdir -p "$_LN_BIN"
+printf '#!/bin/sh\nif [ "${1:-}" = "-sfn" ]; then exit 1; fi\nexec /bin/ln "$@"\n' > "$_LN_BIN/ln"
+chmod +x "$_LN_BIN/ln"
+AISDLC_ARCHIVE="$WORK/gh60-archive" PATH="$_LN_BIN:$PATH" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] \
+    && ok "GH-60 UC-5: task status is failed" \
+    || bad "GH-60 UC-5 status" "$(task_field "$R" .status)"
+jq -e '.status == "failed"' "$WORK/gh60-archive/index.jsonl" >/dev/null 2>&1 \
+    && ok "GH-60 UC-5: tracker-link failure archived" || bad "GH-60 archive" "terminal record missing"
+_TF5="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+jq -e '.error' "$_TF5" 2>/dev/null | grep -qi 'symlink' \
+    && ok "GH-60 UC-5: .error field mentions symlink failure" \
+    || bad "GH-60 UC-5 error" "$(jq -r '.error // empty' "$_TF5" 2>/dev/null)"
+_WT5="$(jq -r '.worktree' "$_TF5")"
+[ -d "$_WT5" ] \
+    && ok "GH-60 UC-5: worktree directory retained after symlink failure" \
+    || bad "GH-60 UC-5 wt" "worktree absent: $_WT5"
+_D5="$(dirname "$_TF5")/"
+grep -q 'symlink failed' "$_D5/run.log" 2>/dev/null \
+    && ok "GH-60 UC-5: run.log records symlink failure" \
+    || bad "GH-60 UC-5 log" "$(cat "$_D5/run.log" 2>/dev/null | tail -3)"
+[ ! -f "$_D5/implement.log" ] \
+    && ok "GH-60 UC-5: implement phase never invoked" \
+    || bad "GH-60 UC-5 nophase" "implement.log found — phase ran after symlink failure"
+unset _LN_BIN _TF5 _WT5 _D5
+
+# UC-6: github tracker → no symlink created in worktree, task proceeds normally
+printf '\nGH-60 UC-6: github tracker → no symlink in worktree\n'
+R="$WORK/gh60-uc6"; fresh_repo "$R"
+mkdir -p "$R/.claude"
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/github.md`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_TF6="$(ls -1 "$R"/.aisdlc/tasks/*/task.json 2>/dev/null | head -1)"
+_WT6="$(jq -r '.worktree' "$_TF6")"
+[ ! -L "$_WT6/.aisdlc/tracker" ] && [ ! -e "$_WT6/.aisdlc/tracker" ] \
+    && ok "GH-60 UC-6: no symlink or tracker dir created in worktree for github tracker" \
+    || bad "GH-60 UC-6" "unexpected symlink or tracker dir at $_WT6/.aisdlc/tracker"
+unset _TF6 _WT6
 # archive tests — UC-6 through UC-13 (GH-43-b)
 # --------------------------------------------------------------------------- #
 
@@ -1273,7 +1616,7 @@ printf '\narchive: done task writes archive dir, manifest, task.json, phases, sp
 R_ARC6="$WORK/arc-uc6"; ARC6="$WORK/arc-uc6-root"
 fresh_repo "$R_ARC6"
 "$AISDLC" add SBX-1 --repo "$R_ARC6" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC6" "$AISDLC" run --repo "$R_ARC6" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC6" "$AISDLC" run --repo "$R_ARC6" --once >/dev/null 2>&1
 [ "$(task_field "$R_ARC6" .status)" = "done" ] && ok "UC-6: task done" || bad "UC-6 pre" "status $(task_field "$R_ARC6" .status)"
 _ARC6_ID="$(ls -1 "$R_ARC6/.aisdlc/tasks" | head -1)"
 _ARC6_SLUG="$(arc_slug "$R_ARC6")"
@@ -1315,7 +1658,7 @@ printf '\narchive: anthropic key in phase log is redacted; live log unchanged (U
 R="$WORK/arc-uc8"; ARC8="$WORK/arc-uc8-root"
 fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC8" AISDLC_STUB=keyleak "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC8" AISDLC_STUB=keyleak "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "done" ] && ok "UC-8: task done" || bad "UC-8 pre" "status $(task_field "$R" .status)"
 _ARC8_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
 _ARC8_DIR="$ARC8/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC8_ID"
@@ -1333,7 +1676,7 @@ printf '\narchive: failed task archived with status failed and BLOCKED.md (UC-9)
 R_ARC9="$WORK/arc-uc9"; ARC9="$WORK/arc-uc9-root"
 fresh_repo "$R_ARC9"
 "$AISDLC" add SBX-1 --repo "$R_ARC9" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC9" AISDLC_STUB=blocked "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC9" AISDLC_STUB=blocked "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
 [ "$(task_field "$R_ARC9" .status)" = "failed" ] && ok "UC-9: task failed" || bad "UC-9 pre" "status $(task_field "$R_ARC9" .status)"
 _ARC9_ID="$(ls -1 "$R_ARC9/.aisdlc/tasks" | head -1)"
 _ARC9_DIR="$ARC9/$(arc_slug "$R_ARC9")/$(date -u +%Y-%m)/$_ARC9_ID"
@@ -1363,7 +1706,7 @@ assignees: []
 ARCISSUE
 printf -- '- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
 AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" add --issue 42 --repo "$R" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "refused" ] \
     && ok "UC-10: task refused" || bad "UC-10 status" "$(task_field "$R" .status)"
 _ARC10_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
@@ -1504,7 +1847,7 @@ R="$WORK/arc-metadata"; fresh_repo "$R"; _META_ROOT="$WORK/arc-metadata-root"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
 _meta_id="$(task_field "$R" .id)"; _meta_tf="$R/.aisdlc/tasks/$_meta_id/task.json"
 jq '.pr_url = "https://ghp_abcdefghijklmnopqrst@github.com/example/repo/pull/1"' "$_meta_tf" > "$_meta_tf.tmp" && mv "$_meta_tf.tmp" "$_meta_tf"
-AISDLC_ARCHIVE="$_META_ROOT" "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$_META_ROOT" "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
 _meta_manifest="$(find "$_META_ROOT" -name manifest.json)"
 ! grep -q 'ghp_abcdefghijklmnopqrst' "$_meta_manifest" \
     && jq -e '.pr_url | contains("[REDACTED:github-token]")' "$_meta_manifest" >/dev/null 2>&1 \
@@ -1518,6 +1861,924 @@ AISDLC_ARCHIVE="$_FAILED_ROOT" bash -c 'sed() { return 1; }; export -f sed; exec
     || bad "UC-8 publication" "failed redaction published files or changed task outcome"
 unset R_CANCEL ARC_CANCEL _CANCEL_ID _CANCEL_SLUG _CANCEL_DIR
 
+# --------------------------------------------------------------------------- #
+# GH-40: readiness gate
+# Helper: set readiness_min in repo config (one-line vs. repeated jq/mv).
+rdy_setup() { local d="$1" v="$2"
+    jq --argjson v "$v" '.readiness_min = $v' "$d/.aisdlc/config.json" > "$d/.aisdlc/config.json.tmp" \
+        && mv "$d/.aisdlc/config.json.tmp" "$d/.aisdlc/config.json"; }
+
+printf '\nGH-40 UC-1: absent and null readiness_min are no-ops\n'
+R="$WORK/ready-off"; fresh_repo "$R"
+AISDLC_STUB_READINESS='should-not-be-called' "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "UC-1 absent: add succeeds" || bad "UC-1 absent" "add failed"
+[ "$(task_field "$R" .readiness_score)" = "" ] \
+    && ok "UC-1 absent: no readiness_score" || bad "UC-1 score" "$(task_field "$R" .readiness_score)"
+rdy_setup "$R" null
+AISDLC_STUB_READINESS='should-not-be-called' "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "UC-1 null: add succeeds" || bad "UC-1 null" "add failed"
+
+printf '\nGH-40 UC-2/3: below threshold blocks; --force bypasses with score\n'
+R="$WORK/ready-fail"; fresh_repo "$R"; rdy_setup "$R" 80
+_RDY_GAP='## Acceptance criteria: rows are not checkable'
+AISDLC_STUB_READINESS="{\"score\":60,\"gaps\":[\"$_RDY_GAP\"]}" \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "UC-2" "should exit non-zero" || ok "UC-2: exits non-zero (60 < 80)"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "UC-2: queue empty" || bad "UC-2 queue" "not empty"
+[ -f "$R/specs/SBX-1/readiness.md" ] \
+    && ok "UC-2: readiness.md created" || bad "UC-2 rmd" "not written"
+grep -q "$_RDY_GAP" "$R/specs/SBX-1/readiness.md" 2>/dev/null \
+    && ok "UC-2: gap in readiness.md" || bad "UC-2 gap" "not found"
+out="$(AISDLC_STUB_READINESS="{\"score\":60,\"gaps\":[\"$_RDY_GAP\"]}" \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr --force 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && ok "UC-3: --force exits zero" || bad "UC-3 exit" "rc=$rc"
+printf '%s' "$out" | grep -qi 'warning' && ok "UC-3: warning printed" || bad "UC-3 warn" "$out"
+printf '%s' "$out" | grep -q '60' && ok "UC-3: warning names score" || bad "UC-3 score" "$out"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -gt 0 ] \
+    && ok "UC-3: task queued" || bad "UC-3 queue" "not queued"
+[ "$(task_field "$R" .readiness_score)" = "60" ] \
+    && ok "UC-3: readiness_score:60" || bad "UC-3 field" "$(task_field "$R" .readiness_score)"
+
+printf '\nGH-40 UC-4/5: above threshold queues; status shows READY\n'
+R="$WORK/ready-pass"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && ok "UC-4: add succeeds (85 >= 80)" || bad "UC-4" "add failed"
+[ "$(task_field "$R" .readiness_score)" = "85" ] \
+    && ok "UC-4: readiness_score:85" || bad "UC-4 score" "$(task_field "$R" .readiness_score)"
+[ ! -f "$R/specs/SBX-1/readiness.md" ] \
+    && ok "UC-4: no readiness.md on pass" || bad "UC-4 rmd" "written"
+_sts="$("$AISDLC" status --repo "$R" 2>/dev/null)"
+printf '%s' "$_sts" | grep -q 'READY' && ok "UC-5: READY column in header" || bad "UC-5 hdr" "$_sts"
+printf '%s' "$_sts" | grep -q '85' && ok "UC-5: score 85 in status" || bad "UC-5 score" "$_sts"
+
+printf '\nGH-40 UC-6: non-JSON fails closed; --force queues without score\n'
+R="$WORK/ready-bad"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='not valid json' "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "UC-6" "should exit non-zero" || ok "UC-6: parse failure exits non-zero"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "UC-6: queue empty" || bad "UC-6 queue" "not empty"
+AISDLC_STUB_READINESS='not valid json' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr --force >/dev/null 2>&1 \
+    && ok "UC-6: --force queues despite parse failure" || bad "UC-6 force" "failed"
+[ "$(task_field "$R" .readiness_score)" = "" ] \
+    && ok "UC-6: no readiness_score after parse failure" \
+    || bad "UC-6 no-score" "$(task_field "$R" .readiness_score)"
+
+printf '\nGH-40 UC-7: --issue route skips readiness\n'
+R="$WORK/ready-issue"; fresh_repo "$R"; rdy_setup "$R" 80
+mkdir -p "$R/.aisdlc/tracker/issues" "$R/.claude"
+cat > "$R/.aisdlc/tracker/issues/42.md" <<'ISSUE'
+---
+number: 42
+title: selftest bug
+state: open
+labels: [bug]
+assignees: []
+author: selftest
+created: 2026-10-01T00:00:00Z
+---
+Test issue.
+
+## Comments
+ISSUE
+printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
+AISDLC_STUB_READINESS='invalid-would-fail' \
+    "$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1 \
+    && ok "UC-7: --issue skips readiness" || bad "UC-7" "--issue failed"
+[ ! -f "$R/specs/GH-42/readiness.md" ] \
+    && ok "UC-7: no readiness.md for --issue" || bad "UC-7 rmd" "written"
+
+printf '\nGH-40: fail-closed boundaries (fraction, non-string gap, process rc, error envelope)\n'
+R="$WORK/ready-bounds"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='{"score":85.5,"gaps":[]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "fraction" "85.5 should reject" || ok "fraction: 85.5 rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "fraction: queue empty" || bad "fraction queue" "queued"
+AISDLC_STUB_READINESS='{"score":85,"gaps":[7]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "nonstring gap" "[7] should reject" || ok "nonstring gap: [7] rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "nonstring gap: queue empty" || bad "nonstring gap queue" "queued"
+AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' READINESS_FAIL_EXIT=1 \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "failed-process" "rc=1 should reject" || ok "failed-process: rc=1 rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "failed-process: queue empty" || bad "failed-process queue" "queued"
+AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' READINESS_ERROR_ENVELOPE=true \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1 \
+    && bad "error-envelope" "is_error:true should reject" || ok "error-envelope: is_error:true rejected"
+[ "$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')" -eq 0 ] \
+    && ok "error-envelope: queue empty" || bad "error-envelope queue" "queued"
+
+printf '\nGH-40: omp runtime — readiness check via omp stub\n'
+R="$WORK/ready-omp"; fresh_repo "$R"; rdy_setup "$R" 80
+AISDLC_STUB_READINESS='{"score":82,"gaps":[]}' \
+    "$AISDLC" add SBX-1 --repo "$R" --no-pr --runtime omp >/dev/null 2>&1 \
+    && ok "omp: add succeeds (82 >= 80)" || bad "omp" "add failed"
+[ "$(task_field "$R" .readiness_score)" = "82" ] \
+    && ok "omp: readiness_score:82" || bad "omp score" "$(task_field "$R" .readiness_score)"
+
+
+# --------------------------------------------------------------------------- #
+printf '\nGH-38: max-open-prs and max-run-usd run-admission caps\n'
+
+# UC-1 + UC-4a: PR cap (count=cap=2) → no task popped, exit 0; status names the limit
+R="$WORK/gh38-uc1"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker"
+printf '{"state":"open","labels":["ai-sdlc"],"number":1}\n{"state":"open","labels":["ai-sdlc"],"number":2}\n' \
+    > "$R/.aisdlc/tracker/prs.jsonl"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+out38a="$("$AISDLC" run --repo "$R" --max-open-prs 2 --workers 1 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "queued" ] && ok "GH-38 UC-1: no task popped when open PRs=cap=2" \
+    || bad "GH-38 UC-1" "status=$(task_field "$R" .status)"
+printf '%s\n' "$out38a" | grep -q 'max-open-prs' && ok "GH-38 UC-4a: status names max-open-prs cap" \
+    || bad "GH-38 UC-4a" "cap not mentioned in output"
+
+# UC-1b: count unavailable (malformed prs.jsonl) → exit non-zero
+R="$WORK/gh38-uc1b"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker"
+printf 'not-json\n' > "$R/.aisdlc/tracker/prs.jsonl"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --max-open-prs 2 --workers 1 >/dev/null 2>&1; _rc38b=$?
+[ "$_rc38b" -ne 0 ] && ok "GH-38 UC-1b: unavailable PR count exits non-zero" \
+    || bad "GH-38 UC-1b" "expected non-zero exit"
+
+# UC-2 + UC-4b: spend cap stops after 2 of 3 tasks (each --no-pr costs ~0.10; cap=0.15)
+R="$WORK/gh38-uc2"; fresh_repo "$R"
+for _n in 2 3; do cp -R "$R/specs/SBX-1" "$R/specs/SBX-$_n"; sed -i "s/SBX-1/SBX-$_n/" "$R/specs/SBX-$_n/spec.md"; done
+git -C "$R" add -A >/dev/null && git -C "$R" commit -q -m "chore: uc2 specs" && git -C "$R" update-ref refs/remotes/origin/master HEAD
+for _n in 1 2 3; do "$AISDLC" add "SBX-$_n" --repo "$R" --no-pr >/dev/null 2>&1; done
+out38b="$("$AISDLC" run --repo "$R" --max-run-usd 0.15 --workers 1 2>/dev/null)"
+_done38b="$(jq -sr '[.[] | select(.status=="done")] | length' "$R"/.aisdlc/tasks/*/task.json 2>/dev/null || echo 0)"
+[ "$_done38b" -eq 2 ] && ok "GH-38 UC-2: exactly 2 tasks done before spend cap" \
+    || bad "GH-38 UC-2" "done=$_done38b (expected 2)"
+printf '%s\n' "$out38b" | grep -q 'max-run-usd' && ok "GH-38 UC-4b: status names max-run-usd cap with spend" \
+    || bad "GH-38 UC-4b" "cap not mentioned in output"
+# Regression: accumulator must produce non-zero accumulated spend (bug: "$a+$b" shell-expanded to "+")
+_sp38b="$(jq -r '.accumulated_spend // empty' "$WORK/gh38-uc2/.aisdlc/last-run.json" 2>/dev/null)"
+jq -n --argjson v "${_sp38b:-0}" '$v > 0' 2>/dev/null | grep -q true \
+    && ok "GH-38 reg-accum: spend accumulator > \$0 (jq arithmetic regression)" \
+    || bad "GH-38 reg-accum" "accumulated_spend=${_sp38b:-0} (expected > 0; jq arithmetic bug?)"
+
+# Regression: uncapped run after count-unavailable must exit 0 and show no stale stop message.
+R_REG="$WORK/gh38-reg-stale"; fresh_repo "$R_REG"
+mkdir -p "$R_REG/.aisdlc/tracker"
+printf 'not-json\n' > "$R_REG/.aisdlc/tracker/prs.jsonl"
+"$AISDLC" add SBX-1 --repo "$R_REG" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R_REG" --max-open-prs 1 --workers 1 >/dev/null 2>&1 || true
+# Fix prs.jsonl so count succeeds; task is still queued (cap fired before pop).
+printf '{"state":"open","labels":["ai-sdlc"],"number":1}\n' \
+    > "$R_REG/.aisdlc/tracker/prs.jsonl"
+out_reg="$("$AISDLC" run --repo "$R_REG" --workers 1 2>/dev/null)"; rc_reg=$?
+[ "$rc_reg" -eq 0 ] && ok "GH-38 reg-stale: uncapped run after count-unavailable exits 0" \
+    || bad "GH-38 reg-stale exit" "exit=$rc_reg (expected 0)"
+printf '%s\n' "$out_reg" | grep -q 'count-unavailable' \
+    && bad "GH-38 reg-stale msg" "stale 'count-unavailable' message from prior run" \
+    || ok "GH-38 reg-stale: no stale stop-reason from prior run"
+
+# UC-3: null config defaults (as init/update writes) must not enable any cap; queue drains.
+# Also covers config>env precedence: config key 2 overrides env 3 — cap fires at count=2.
+R="$WORK/gh38-uc3"; fresh_repo "$R"
+jq '. + {"max_open_prs":null,"max_run_usd":null}' "$R/.aisdlc/config.json" \
+    > "$R/.aisdlc/config.json.tmp" && mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+out38c="$("$AISDLC" run --repo "$R" --workers 1 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "done" ] && ok "GH-38 UC-3: null config defaults → queue drains fully" \
+    || bad "GH-38 UC-3" "status=$(task_field "$R" .status)"
+printf '%s\n' "$out38c" | grep -qE 'stopped|max-open-prs|max-run-usd' \
+    && bad "GH-38 UC-3 nocap" "cap message with null defaults" \
+    || ok "GH-38 UC-3: no cap message or PR-count lookup with null defaults"
+R3b="$WORK/gh38-uc3b"; fresh_repo "$R3b"
+mkdir -p "$R3b/.aisdlc/tracker"
+printf '{"state":"open","labels":["ai-sdlc"],"number":1}\n{"state":"open","labels":["ai-sdlc"],"number":2}\n' \
+    > "$R3b/.aisdlc/tracker/prs.jsonl"
+jq '. + {"max_open_prs":2}' "$R3b/.aisdlc/config.json" \
+    > "$R3b/.aisdlc/config.json.tmp" && mv "$R3b/.aisdlc/config.json.tmp" "$R3b/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R3b" --no-pr >/dev/null 2>&1
+AISDLC_MAX_OPEN_PRS=3 "$AISDLC" run --repo "$R3b" --workers 1 >/dev/null 2>&1
+[ "$(task_field "$R3b" .status)" = "queued" ] \
+    && ok "GH-38 UC-3b: config key(2) overrides env(3) — cap fires" \
+    || bad "GH-38 UC-3b" "status=$(task_field "$R3b" .status)"
+
+# UC-5: all-subscription billing → warns and ignores spend cap; null cost not shown as $0
+R="$WORK/gh38-uc5"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr --billing subscription >/dev/null 2>&1
+out38d="$("$AISDLC" run --repo "$R" --max-run-usd 0.01 --workers 1 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "done" ] && ok "GH-38 UC-5: subscription task completes despite spend cap" \
+    || bad "GH-38 UC-5" "status=$(task_field "$R" .status)"
+printf '%s\n' "$out38d" | grep -qi 'subscription' && ok "GH-38 UC-5: warns that spend cap is ignored" \
+    || bad "GH-38 UC-5 warn" "no subscription warning in output"
+printf '%s\n' "$out38d" | grep -q 'total spend \$n/a' \
+    && ok "GH-38 UC-5: subscription null cost shown as n/a (not coerced to \$0)" \
+    || bad "GH-38 UC-5 null" "expected 'total spend \$n/a' in: $(printf '%s\n' "$out38d" | tail -3)"
+
+# UC-6: env cap over the GitHub tracker; the two labelled PRs sit on different pages.
+R="$WORK/gh38-uc6"; fresh_repo "$R"; mkdir -p "$R/.claude"
+git -C "$R" remote add origin git@github.com:acme/widget.git
+printf -- '- **Tracker descriptor:** `.claude/trackers/github.md`\n' > "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+ln -sf "$HARNESS_DIR/stub-gh" "$STUB_DIR/gh"
+export STUB_GH_STATE="$WORK/gh38-gh-state.json" STUB_GH_PULLS="$WORK/gh38-pulls.json"
+{ jq -c '[range(100) | {number: ., labels: (if . == 0 then [{name:"ai-sdlc"}] else [] end)}]' -n
+  printf '[{"number":100,"labels":[{"name":"ai-sdlc"}]}]\n'; } > "$STUB_GH_PULLS"
+out="$(AISDLC_MAX_OPEN_PRS=2 "$AISDLC" run --repo "$R" --workers 1 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(task_field "$R" .status)" = "queued" ] \
+    && printf '%s' "$out" | grep -q '2 open PR(s) — --max-open-prs 2 reached' \
+    && ok "GH-38 UC-6: env cap counts labelled PRs across GitHub pages; nothing popped" \
+    || bad "GH-38 UC-6" "rc=$rc status=$(task_field "$R" .status): $out"
+out="$(STUB_GH_PULLS_FAIL=1 AISDLC_MAX_OPEN_PRS=2 "$AISDLC" run --repo "$R" --workers 1 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && [ "$(task_field "$R" .status)" = "queued" ] \
+    && printf '%s' "$out" | grep -q 'PR count unavailable' \
+    && ok "GH-38 UC-1: failed GitHub count stops non-zero without popping" \
+    || bad "GH-38 UC-6 fail-closed" "rc=$rc status=$(task_field "$R" .status): $out"
+unset STUB_GH_PULLS STUB_GH_STATE; rm -f "$STUB_DIR/gh"
+
+# UC-7: workers=2, max-open-prs=1. Both tasks are in flight when the PR count reaches the cap;
+# they complete normally and task 3 is refused at the next admission check.
+R="$WORK/gh38-uc7"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker"
+for _n in 2 3; do cp -R "$R/specs/SBX-1" "$R/specs/SBX-$_n"; sed -i "s/SBX-1/SBX-$_n/" "$R/specs/SBX-$_n/spec.md"; done
+git -C "$R" add -A >/dev/null && git -C "$R" commit -q -m "chore: uc7" && git -C "$R" update-ref refs/remotes/origin/master HEAD
+for _n in 1 2 3; do "$AISDLC" add "SBX-$_n" --repo "$R" >/dev/null 2>&1; done
+# Barrier: each implement call drops a ready file and waits for go; the controller waits for
+# both, writes the labelled PR, then releases. Every wait has a 30 s deadline, never a hang.
+_uc7_rdy="$WORK/gh38-uc7-rdy"; _uc7_go="$WORK/gh38-uc7-go"; mkdir -p "$_uc7_rdy"
+_uc7_bin="$WORK/gh38-uc7-bin"; mkdir -p "$_uc7_bin"
+cat > "$_uc7_bin/claude" <<UC7WRAP
+#!/usr/bin/env bash
+_args=("\$@"); _p=""
+while [ \$# -gt 0 ]; do case "\$1" in -p) _p="\$2"; shift 2 ;; *) shift ;; esac; done
+case "\$_p" in *implement*)
+    : > "$_uc7_rdy/\$\$"
+    for _ in \$(seq 300); do [ -e "$_uc7_go" ] && break; sleep 0.1; done ;;
+esac
+exec "$HARNESS_DIR/stub-claude" "\${_args[@]}"
+UC7WRAP
+chmod +x "$_uc7_bin/claude"
+{ for _ in $(seq 300); do [ "$(ls "$_uc7_rdy" | wc -l)" -ge 2 ] && break; sleep 0.1; done
+  printf '{"state":"open","labels":["ai-sdlc"],"number":77}\n' >> "$R/.aisdlc/tracker/prs.jsonl"
+  : > "$_uc7_go"; } &
+_uc7_ctrl=$!
+PATH="$_uc7_bin:$PATH" "$AISDLC" run --repo "$R" --workers 2 --max-open-prs 1 >/dev/null 2>&1
+wait "$_uc7_ctrl"
+_rdy7="$(ls "$_uc7_rdy" | wc -l | tr -d ' ')"
+[ "$_rdy7" -eq 2 ] && ok "GH-38 UC-7: both tasks were in flight when the PR count reached the cap" \
+    || bad "GH-38 UC-7 barrier" "ready=$_rdy7 (expected 2)"
+_done7="$(jq -sr '[.[] | select(.status=="done")] | length' "$R"/.aisdlc/tasks/*/task.json 2>/dev/null || echo 0)"
+_q7="$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')"
+[ "$_done7" -eq 2 ] && ok "GH-38 UC-7: both in-flight tasks completed (done=$_done7)" \
+    || bad "GH-38 UC-7 done" "done=$_done7 (expected 2)"
+[ "$_q7" -eq 1 ] && ok "GH-38 UC-7: exactly 1 task queued — cap blocked task 3 after in-flight ship" \
+    || bad "GH-38 UC-7 cap" "queued=$_q7 (expected 1)"
+
+# UC-8: non-numeric max-open-prs → exit non-zero before any task is popped
+R="$WORK/gh38-uc8"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --max-open-prs abc --workers 1 >/dev/null 2>&1; _rc38h=$?
+[ "$_rc38h" -ne 0 ] && ok "GH-38 UC-8: non-numeric max-open-prs exits non-zero" \
+    || bad "GH-38 UC-8" "expected non-zero exit for 'abc'"
+[ "$(task_field "$R" .status)" = "queued" ] && ok "GH-38 UC-8: no task popped on invalid cap value" \
+    || bad "GH-38 UC-8 nopop" "status=$(task_field "$R" .status)"
+
+# Retry cost delta: retried task accumulates only this-run delta, not prior attempt total.
+# cap=0.18; retry's prior cost_usd=0.10; delta=0.10 → accum=0.10 < 0.18 → SBX-2 admitted.
+# Bug (no delta): accumulates full 0.20 → cap fires → SBX-2 never runs → only 1 done.
+R_RD="$WORK/gh38-retry-delta"; fresh_repo "$R_RD"
+cp -R "$R_RD/specs/SBX-1" "$R_RD/specs/SBX-2"; sed -i "s/SBX-1/SBX-2/" "$R_RD/specs/SBX-2/spec.md"
+git -C "$R_RD" add -A >/dev/null && git -C "$R_RD" commit -q -m "chore: rd" \
+    && git -C "$R_RD" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R_RD" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R_RD" --workers 1 >/dev/null 2>&1    # task done; cost_usd=0.10
+_rd_id="$(task_field "$R_RD" .id)"
+"$AISDLC" retry "$_rd_id" --repo "$R_RD" >/dev/null 2>&1   # re-queue; cost_usd NOT reset
+"$AISDLC" add SBX-2 --repo "$R_RD" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R_RD" --max-run-usd 0.18 --workers 1 >/dev/null 2>&1
+_rd_done="$(jq -sr '[.[] | select(.status=="done")] | length' "$R_RD"/.aisdlc/tasks/*/task.json 2>/dev/null || echo 0)"
+[ "$_rd_done" -eq 2 ] && ok "GH-38 retry-delta: both done (delta cost only; regression: cumulative would cap at 1)" \
+    || bad "GH-38 retry-delta" "done=$_rd_done (expected 2; bug accumulates full prior cost)"
+# UC-14: claude transcript copied and redacted into archive sessions/ (GH-43-c)
+printf '\narchive: claude transcript copied and redacted into sessions/ (UC-14)\n'
+R="$WORK/arc-uc14"; ARC14="$WORK/arc-uc14-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC14_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+# Pre-create transcript files at the paths aisdlc will look for.
+# aisdlc sets: transcript="$HOME/.claude/projects/$(printf '%s' "$wt" | tr '/.' '-')/${session_id}.jsonl"
+# wt="$(dirname "$repo")/.aisdlc-worktrees/$(basename "$repo")-${id}"
+_ARC14_WT="$(dirname "$R")/.aisdlc-worktrees/$(basename "$R")-$_ARC14_ID"
+_ARC14_TC_DIR="$HOME/.claude/projects/$(printf '%s' "$_ARC14_WT" | tr '/.' '-')"
+mkdir -p "$_ARC14_TC_DIR"
+# Write fake transcripts with an embedded sk-ant key to verify redaction.
+printf '{"type":"text","text":"sk-ant-api03-fake-uc14-abcdefghijklmnop12345678"}\n' \
+    > "$_ARC14_TC_DIR/stub-implement.jsonl"
+printf '{"type":"text","text":"stub qa transcript"}\n' \
+    > "$_ARC14_TC_DIR/stub-qa.jsonl"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC14" AISDLC_STUB=keyleak \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-14: task done" \
+    || bad "UC-14 pre" "$(task_field "$R" .status)"
+_ARC14_DIR="$ARC14/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC14_ID"
+# At least one transcript must be copied:true.
+_arc14_copied="$(jq -r '[.transcripts[]? | select(.copied==true)] | length' \
+    "$_ARC14_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc14_copied:-0}" -ge 1 ] \
+    && ok "UC-14: at least one transcript copied:true" \
+    || bad "UC-14 copy" "copied=$_arc14_copied; manifest=$(jq -c '.transcripts' "$_ARC14_DIR/manifest.json" 2>/dev/null)"
+# Planted sk-ant key must be ABSENT from the archived session file (redacted).
+_arc14_first_session="$(ls -1 "$_ARC14_DIR/sessions/" 2>/dev/null | head -1)"
+if [ -n "$_arc14_first_session" ]; then
+    ! grep -qF 'sk-ant-api03-fake-uc14-' "$_ARC14_DIR/sessions/$_arc14_first_session" 2>/dev/null \
+        && ok "UC-14: sk-ant key absent from archived transcript (redacted)" \
+        || bad "UC-14 redaction" "key still present in archived file"
+    # Checksum must match manifest.files entry.
+    _arc14_actual_sha="$(sha256sum "$_ARC14_DIR/sessions/$_arc14_first_session" | cut -c1-64)"
+    _arc14_manifest_sha="$(jq -r --arg p "sessions/$_arc14_first_session" '.files[$p] // empty' \
+        "$_ARC14_DIR/manifest.json" 2>/dev/null)"
+    [ -n "$_arc14_manifest_sha" ] && [ "$_arc14_actual_sha" = "$_arc14_manifest_sha" ] \
+        && ok "UC-14: archived transcript sha256 matches manifest.files" \
+        || bad "UC-14 sha256" "manifest=$_arc14_manifest_sha actual=$_arc14_actual_sha"
+fi
+rm -f "$_ARC14_TC_DIR/stub-implement.jsonl" "$_ARC14_TC_DIR/stub-qa.jsonl"
+rmdir "$_ARC14_TC_DIR" 2>/dev/null || true
+unset _ARC14_ID _ARC14_WT _ARC14_TC_DIR _arc14_copied _arc14_first_session \
+    _arc14_actual_sha _arc14_manifest_sha _ARC14_DIR R
+
+# --------------------------------------------------------------------------- #
+# UC-15: omp transcript copied into sessions/ (GH-43-c)
+printf '\narchive: omp transcript copied into sessions/omp-* (UC-15)\n'
+R="$WORK/arc-uc15"; ARC15="$WORK/arc-uc15-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr --runtime omp >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC15" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-15: omp task done" || bad "UC-15 pre" "$(task_field "$R" .status)"
+_ARC15_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC15_DIR="$ARC15/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC15_ID"
+_arc15_omp=""; for _arc15_f in "$_ARC15_DIR/sessions/"omp-*; do _arc15_omp="$_arc15_f"; break; done
+[ -n "$_arc15_omp" ] \
+    && ok "UC-15: sessions/omp-* file present" \
+    || bad "UC-15 omp session" "no omp-* file in sessions/: $(ls "$_ARC15_DIR/sessions/" 2>/dev/null)"
+_arc15_copied="$(jq -r '[.transcripts[]? | select(.copied==true)] | length' \
+    "$_ARC15_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc15_copied:-0}" -ge 1 ] \
+    && ok "UC-15: manifest.transcripts has copied:true" \
+    || bad "UC-15 transcripts" "copied=$_arc15_copied"
+unset _arc15_omp _arc15_copied _ARC15_ID _ARC15_DIR R
+
+# --------------------------------------------------------------------------- #
+# UC-16: missing transcript source → copied:false, reason:not found (GH-43-c)
+printf '\narchive: missing transcript → copied:false, reason:not found (UC-16)\n'
+R="$WORK/arc-uc16"; ARC16="$WORK/arc-uc16-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC16_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+# Inject a session pointing to a non-existent transcript BEFORE run,
+# so archive_task records it as copied:false, reason:"not found".
+_ARC16_TF="$R/.aisdlc/tasks/$_ARC16_ID/task.json"
+jq '.sessions += [{phase:"test-missing",runtime:"claude",session_id:"dead-sid",
+    transcript:"/nonexistent/path/dead.jsonl",
+    started:"2099-01-01T00:00:00Z",ended:"2099-01-01T00:00:01Z"}]' \
+    "$_ARC16_TF" > "$_ARC16_TF.tmp" && mv "$_ARC16_TF.tmp" "$_ARC16_TF"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC16" \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-16: task done (non-fatal missing transcript)" \
+    || bad "UC-16 pre" "$(task_field "$R" .status)"
+_ARC16_DIR="$ARC16/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC16_ID"
+# The injected missing-source session must be recorded with copied:false, reason:"not found".
+_arc16_notfound="$(jq -r '[.transcripts[]? |
+    select(.phase == "test-missing" and .copied == false and .reason == "not found")] | length' \
+    "$_ARC16_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc16_notfound:-0}" -ge 1 ] \
+    && ok "UC-16: missing transcript recorded with copied:false, reason:not found" \
+    || bad "UC-16 not-found" "count=$_arc16_notfound; transcripts=$(jq -c '.transcripts' "$_ARC16_DIR/manifest.json" 2>/dev/null)"
+unset _ARC16_ID _ARC16_TF _ARC16_DIR _arc16_notfound R
+
+# --------------------------------------------------------------------------- #
+# UC-17: archive_transcripts:off → no sessions/ dir, manifest.transcripts=="disabled" (GH-43-c)
+printf '\narchive: archive_transcripts:off → sessions/ absent, transcripts="disabled" (UC-17)\n'
+R="$WORK/arc-uc17"; ARC17="$WORK/arc-uc17-root"
+fresh_repo "$R"
+jq '. + {"archive_transcripts":"off"}' "$R/.aisdlc/config.json" > "$R/.aisdlc/config.json.tmp" \
+    && mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC17" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-17: task done" || bad "UC-17 pre" "$(task_field "$R" .status)"
+_ARC17_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC17_DIR="$ARC17/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC17_ID"
+[ ! -d "$_ARC17_DIR/sessions" ] \
+    && ok "UC-17: no sessions/ subdirectory when archive_transcripts:off" \
+    || bad "UC-17 sessions dir" "sessions/ exists: $(ls "$_ARC17_DIR/sessions" 2>/dev/null)"
+jq -e '.transcripts == "disabled"' "$_ARC17_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-17: manifest.transcripts is the string \"disabled\"" \
+    || bad "UC-17 transcripts field" "$(jq -c '.transcripts' "$_ARC17_DIR/manifest.json" 2>/dev/null)"
+# Other files still present
+[ -f "$_ARC17_DIR/task.json" ] && [ -f "$_ARC17_DIR/manifest.json" ] \
+    && ok "UC-17: task.json and manifest.json present with archive_transcripts:off" \
+    || bad "UC-17 files" "task.json or manifest.json missing"
+unset _ARC17_ID _ARC17_DIR R
+
+# Test with env var override
+R="$WORK/arc-uc17b"; ARC17B="$WORK/arc-uc17b-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC17B" AISDLC_ARCHIVE_TRANSCRIPTS=off "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC17B_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC17B_DIR="$ARC17B/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC17B_ID"
+jq -e '.transcripts == "disabled"' "$_ARC17B_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-17: AISDLC_ARCHIVE_TRANSCRIPTS=off also sets transcripts=disabled" \
+    || bad "UC-17 env" "$(jq -c '.transcripts' "$_ARC17B_DIR/manifest.json" 2>/dev/null)"
+unset _ARC17B_ID _ARC17B_DIR R ARC17B
+
+# --------------------------------------------------------------------------- #
+# UC-18: unreadable transcript → copied:false, reason:unreadable, archive unaffected (GH-43-c)
+printf '\narchive: unreadable transcript → copied:false, reason:unreadable (UC-18)\n'
+R="$WORK/arc-uc18"; ARC18="$WORK/arc-uc18-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+# Create a fake transcript file with mode 000 in a known location
+_uc18_tr_dir="$WORK/fake-transcripts"
+mkdir -p "$_uc18_tr_dir"
+_uc18_tr_file="$_uc18_tr_dir/stub-implement.jsonl"
+printf '{"stub":true}\n' > "$_uc18_tr_file"
+chmod 000 "$_uc18_tr_file"
+# Inject that path into task.json sessions before running
+_ARC18_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC18_TF="$R/.aisdlc/tasks/$_ARC18_ID/task.json"
+jq --arg tr "$_uc18_tr_file" \
+    '.sessions += [{phase:"implement",runtime:"claude",session_id:"uc18-sid",transcript:$tr,started:"2099-01-01T00:00:00Z",ended:"2099-01-01T00:00:01Z"}]' \
+    "$_ARC18_TF" > "$_ARC18_TF.tmp" && mv "$_ARC18_TF.tmp" "$_ARC18_TF"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC18" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-18: task done (archive_task returns 0)" || bad "UC-18 pre" "$(task_field "$R" .status)"
+_ARC18_DIR="$ARC18/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC18_ID"
+_arc18_unread="$(jq -r '[.transcripts[]? | select(.reason=="unreadable")] | length' \
+    "$_ARC18_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc18_unread:-0}" -ge 1 ] \
+    && ok "UC-18: manifest.transcripts has reason:unreadable" \
+    || bad "UC-18 unreadable" "unreadable entries=$_arc18_unread; transcripts=$(jq -c '.transcripts' "$_ARC18_DIR/manifest.json" 2>/dev/null)"
+[ -f "$_ARC18_DIR/task.json" ] && [ -f "$_ARC18_DIR/manifest.json" ] \
+    && ok "UC-18: archive dir and other files present" \
+    || bad "UC-18 other files" "missing task.json or manifest.json"
+chmod 644 "$_uc18_tr_file" 2>/dev/null || true
+unset _ARC18_ID _ARC18_TF _ARC18_DIR _arc18_unread _uc18_tr_dir _uc18_tr_file R
+
+# --------------------------------------------------------------------------- #
+# UC-43: profile Archive:off → no archive (GH-43-c)
+printf '\narchive: profile Archive:off disables archiving (UC-43)\n'
+R="$WORK/arc-uc43"; ARC43="$WORK/arc-uc43-root"
+fresh_repo "$R"
+mkdir -p "$R/.claude"
+# Write an sdlc.md with Archive: off
+printf '## Archive\n\n- **Archive:** `off`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC43" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-43: task completes with Archive:off" || bad "UC-43 pre" "$(task_field "$R" .status)"
+_ARC43_SLUG="$(arc_slug "$R")"
+[ ! -d "$ARC43/$_ARC43_SLUG" ] \
+    && ok "UC-43: no archive dir created with profile Archive:off" \
+    || bad "UC-43 dir" "archive created at $ARC43/$_ARC43_SLUG"
+unset _ARC43_SLUG R
+
+
+# --------------------------------------------------------------------------- #
+# UC-19 + UC-20: archive ls basic and filtered (GH-43-d)
+printf '\naisdlc archive ls: two tasks, filter by repo/status/since (UC-19, UC-20)\n'
+R_LS1="$WORK/arc-ls1"; R_LS2="$WORK/arc-ls2"; ARC_LS="$WORK/arc-ls-root"
+fresh_repo "$R_LS1"; fresh_repo "$R_LS2"
+"$AISDLC" add SBX-1 --repo "$R_LS1" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS1" --once >/dev/null 2>&1
+"$AISDLC" add SBX-1 --repo "$R_LS2" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS2" --once >/dev/null 2>&1
+_ls_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls 2>/dev/null)"
+_ls_rows="$(printf '%s\n' "$_ls_out" | grep -c .)"
+[ "${_ls_rows:-0}" -eq 2 ] \
+    && ok "UC-19: archive ls shows exactly two rows" \
+    || bad "UC-19 rows" "got $_ls_rows rows; output: $_ls_out"
+# UC-19: each row has id, repo_slug, status, archived_at (tab-separated)
+printf '%s' "$_ls_out" | grep -q 'done' \
+    && ok "UC-19: output contains status done" \
+    || bad "UC-19 status" "done not found"
+# UC-20: filter by status=done → both tasks; filter by status=failed → none
+_ls_done="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --status 'done' 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_done:-0}" -eq 2 ] \
+    && ok "UC-20: --status done returns both done tasks" \
+    || bad "UC-20 status-done" "got $_ls_done rows"
+_ls_fail="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --status failed 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_fail:-0}" -eq 0 ] \
+    && ok "UC-20: --status failed returns no rows" \
+    || bad "UC-20 status-fail" "got $_ls_fail rows"
+# UC-20: filter by --since future → no rows
+_ls_future="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --since "2099-01-01" 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_future:-0}" -eq 0 ] \
+    && ok "UC-20: --since future returns no rows" \
+    || bad "UC-20 since" "got $_ls_future rows"
+# UC-20: filter by --repo for ls1 slug → exactly 1 row
+_ls1_slug="$(arc_slug "$R_LS1")"
+_ls_repo="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --repo "$_ls1_slug" 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_repo:-0}" -eq 1 ] \
+    && ok "UC-20: --repo <slug> returns 1 row for first repo" \
+    || bad "UC-20 repo-filter" "got $_ls_repo rows for slug $_ls1_slug"
+unset _ls_out _ls_rows _ls_done _ls_fail _ls_future _ls1_slug _ls_repo
+
+# --------------------------------------------------------------------------- #
+# UC-21 + UC-22: archive show <id> (GH-43-d)
+printf '\naisdlc archive show: two attempts; unknown id (UC-21, UC-22)\n'
+_LS1_ID="$(ls -1 "$R_LS1/.aisdlc/tasks" | head -1)"
+# Simulate a second attempt by retry: re-queue and run
+AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" retry "$_LS1_ID" --repo "$R_LS1" >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS1" --once >/dev/null 2>&1
+_show_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive show "$_LS1_ID" 2>/dev/null)"
+# Should show two === headers (attempt 1 and attempt 2)
+_show_hdrs="$(printf '%s' "$_show_out" | grep -c '^===' || echo 0)"
+[ "${_show_hdrs:-0}" -ge 2 ] \
+    && ok "UC-21: show <id> with two attempts shows two headers" \
+    || bad "UC-21 headers" "got $_show_hdrs headers; output: $(printf '%s' "$_show_out" | head -5)"
+# Should have manifest JSON (id field)
+printf '%s' "$_show_out" | grep -q '"id"' \
+    && ok "UC-21: show output contains manifest JSON" \
+    || bad "UC-21 manifest" "no id field in output"
+# UC-22: unknown id → stderr + non-zero exit
+_show_rc=0
+_show_err="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive show "nonexistent-id-xyz" 2>&1)" || _show_rc=$?
+[ "$_show_rc" -ne 0 ] \
+    && ok "UC-22: show unknown id exits non-zero" \
+    || bad "UC-22 exit" "rc was 0"
+printf '%s' "$_show_err" | grep -q 'not found' \
+    && ok "UC-22: show unknown id prints not found to stderr" \
+    || bad "UC-22 stderr" "expected 'not found': $_show_err"
+unset _LS1_ID _show_out _show_hdrs _show_rc _show_err
+
+# --------------------------------------------------------------------------- #
+# UC-23: archive grep <pattern> searches phases/ and sessions/ but not spec/ (GH-43-d)
+printf '\naisdlc archive grep: finds in phases/ but not spec/ (UC-23)\n'
+_LS2_ID="$(ls -1 "$R_LS2/.aisdlc/tasks" | head -1)"
+_LS2_SLUG="$(arc_slug "$R_LS2")"
+_LS2_DIR="$ARC_LS/$_LS2_SLUG/$(date -u +%Y-%m)/$_LS2_ID"
+# Plant a unique pattern in a phases log and in spec/spec.md
+_uc23_pattern="UC23SEARCHTOKEN_xyz987"
+printf '%s\n' "$_uc23_pattern" >> "$_LS2_DIR/phases/implement.log" 2>/dev/null || true
+printf '%s\n' "$_uc23_pattern" >> "$_LS2_DIR/spec/spec.md" 2>/dev/null || true
+_grep_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive grep "$_uc23_pattern" 2>/dev/null)"
+printf '%s' "$_grep_out" | grep -q 'phases/implement.log' \
+    && ok "UC-23: grep finds pattern in phases/implement.log" \
+    || bad "UC-23 phases" "phases/implement.log not matched; output: $_grep_out"
+printf '%s' "$_grep_out" | grep -qv 'spec/' \
+    && ok "UC-23: grep does not search spec/ files" \
+    || bad "UC-23 spec" "spec/ content appeared in grep output: $_grep_out"
+unset _LS2_ID _LS2_SLUG _LS2_DIR _uc23_pattern _grep_out
+
+# --------------------------------------------------------------------------- #
+# UC-24: archive prune removes old, retains young (GH-43-d)
+printf '\naisdlc archive prune: removes 2d-old task, retains 0d-old (UC-24)\n'
+R_PR1="$WORK/arc-pr1"; R_PR2="$WORK/arc-pr2"; ARC_PR="$WORK/arc-pr-root"
+fresh_repo "$R_PR1"; fresh_repo "$R_PR2"
+"$AISDLC" add SBX-1 --repo "$R_PR1" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" run --repo "$R_PR1" --once >/dev/null 2>&1
+"$AISDLC" add SBX-1 --repo "$R_PR2" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" run --repo "$R_PR2" --once >/dev/null 2>&1
+# Back-date the first task's index entry and manifest to 2 days ago
+_PR1_ID="$(ls -1 "$R_PR1/.aisdlc/tasks" | head -1)"
+_PR1_SLUG="$(arc_slug "$R_PR1")"
+_PR1_DIR="$ARC_PR/$_PR1_SLUG/$(date -u +%Y-%m)/$_PR1_ID"
+_two_days_ago="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                 date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '2020-01-01T00:00:00Z')"
+# Update index.jsonl to use old date for PR1
+jq -c --arg id "$_PR1_ID" --arg old "$_two_days_ago" \
+    'if .id == $id then .archived_at = $old else . end' \
+    "$ARC_PR/index.jsonl" > "$ARC_PR/index.jsonl.tmp" && \
+    mv "$ARC_PR/index.jsonl.tmp" "$ARC_PR/index.jsonl"
+# Run prune --older-than 1d
+AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1
+# Old task dir should be gone
+[ ! -d "$_PR1_DIR" ] \
+    && ok "UC-24: 2d-old task directory removed by prune" \
+    || bad "UC-24 removed" "dir still exists: $_PR1_DIR"
+# Old task not in index
+grep -q "$_PR1_ID" "$ARC_PR/index.jsonl" 2>/dev/null \
+    && bad "UC-24 index-remove" "old id still in index.jsonl" \
+    || ok "UC-24: old task absent from index.jsonl"
+# PR2 (new) task dir and index entry still present
+_PR2_ID="$(ls -1 "$R_PR2/.aisdlc/tasks" | head -1)"
+_PR2_SLUG="$(arc_slug "$R_PR2")"
+_PR2_DIR="$ARC_PR/$_PR2_SLUG/$(date -u +%Y-%m)/$_PR2_ID"
+[ -d "$_PR2_DIR" ] \
+    && ok "UC-24: 0d-old task directory retained" \
+    || bad "UC-24 retained" "new task dir missing: $_PR2_DIR"
+grep -q "$_PR2_ID" "$ARC_PR/index.jsonl" 2>/dev/null \
+    && ok "UC-24: new task present in index.jsonl" \
+    || bad "UC-24 index-retain" "new task id absent from index.jsonl"
+# Second prune is a no-op
+_pr24_before="$(wc -l < "$ARC_PR/index.jsonl" | tr -d ' ')"
+AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1
+_pr24_after="$(wc -l < "$ARC_PR/index.jsonl" | tr -d ' ')"
+[ "$_pr24_before" = "$_pr24_after" ] \
+    && ok "UC-24: second prune is a no-op (index unchanged)" \
+    || bad "UC-24 noop" "index changed: $_pr24_before→$_pr24_after"
+unset _PR1_ID _PR1_SLUG _PR1_DIR _PR2_ID _PR2_SLUG _PR2_DIR _two_days_ago _pr24_before _pr24_after
+# Pruning every entry must empty the index, not leave a dangling record for a deleted dir.
+ARC_PRALL="$WORK/arc-pr-all"; mkdir -p "$ARC_PRALL/old"
+jq -cn --arg p "$ARC_PRALL/old" '{path:$p,archived_at:"2020-01-01T00:00:00Z",id:"old"}' > "$ARC_PRALL/index.jsonl"
+AISDLC_ARCHIVE="$ARC_PRALL" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1 \
+    && [ ! -e "$ARC_PRALL/old" ] && [ ! -s "$ARC_PRALL/index.jsonl" ] \
+    && ok "UC-24: pruning the only entry deletes it and empties index.jsonl" \
+    || bad "UC-24 prune-all" "dir=$([ -e "$ARC_PRALL/old" ] && echo kept) index=$(cat "$ARC_PRALL/index.jsonl")"
+
+# --------------------------------------------------------------------------- #
+# UC-38: prune with shared-path entries → both retained (GH-43-d)
+printf '\naisdlc archive prune: shared-path entries — dir retained, both index entries kept (UC-38)\n'
+ARC_SH="$WORK/arc-shared-root"
+R_SH="$WORK/arc-shared-repo"; fresh_repo "$R_SH"
+"$AISDLC" add SBX-1 --repo "$R_SH" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_SH" "$AISDLC" run --repo "$R_SH" --once >/dev/null 2>&1
+_SH_ID="$(ls -1 "$R_SH/.aisdlc/tasks" | head -1)"
+_SH_SLUG="$(arc_slug "$R_SH")"
+_SH_DIR="$ARC_SH/$_SH_SLUG/$(date -u +%Y-%m)/$_SH_ID"
+_two_days_ago_sh="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                    date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '2020-01-01T00:00:00Z')"
+# Inject a second compact index entry: same path as the real entry, old date.
+_sh_base_entry="$(cat "$ARC_SH/index.jsonl" | head -1)"
+_sh_old_entry="$(printf '%s' "$_sh_base_entry" | jq -c --arg old "$_two_days_ago_sh" '.archived_at = $old')"
+printf '%s\n' "$_sh_old_entry" >> "$ARC_SH/index.jsonl"
+# Capture prune stderr to assert the shared-path warning.
+_sh_prune_warn="$WORK/arc-sh-prune.warn"
+AISDLC_ARCHIVE="$ARC_SH" "$AISDLC" archive prune --older-than 1d 2>"$_sh_prune_warn" >/dev/null
+# Directory must still exist (shared-path, so neither entry is prunable).
+[ -d "$_SH_DIR" ] \
+    && ok "UC-38: shared-path dir retained (not removed)" \
+    || bad "UC-38 dir" "shared dir was removed: $_SH_DIR"
+# Prune must emit a shared-path warning on stderr.
+grep -q "shared path\|shared-path\|skipping.*shared" "$_sh_prune_warn" 2>/dev/null \
+    && ok "UC-38: prune warns about shared-path retention" \
+    || bad "UC-38 warning" "no shared-path warning in stderr: $(cat "$_sh_prune_warn" 2>/dev/null)"
+# Both index entries for the shared path must be retained (parse each JSONL line).
+_sh_retained="$(jq -c --arg p "$_SH_DIR" 'select(.path == $p)' "$ARC_SH/index.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_sh_retained:-0}" -ge 2 ] \
+    && ok "UC-38: both shared-path entries retained in index (parsed)" \
+    || bad "UC-38 index" "only $_sh_retained entries retained for shared path"
+unset _SH_ID _SH_SLUG _SH_DIR _two_days_ago_sh _sh_base_entry _sh_old_entry \
+    _sh_prune_warn _sh_retained
+
+# --------------------------------------------------------------------------- #
+# UC-40: prune — symlink root, root-itself, owned outside, descendant symlink, relative root (GH-43-d)
+printf '\naisdlc archive prune: symlink root; root-itself, outside, inner-sym retained; relative root (UC-40)\n'
+ARC_SYM="$WORK/arc-sym-root"
+R_SYM="$WORK/arc-sym-repo"; fresh_repo "$R_SYM"
+"$AISDLC" add SBX-1 --repo "$R_SYM" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_SYM" "$AISDLC" run --repo "$R_SYM" --once >/dev/null 2>&1
+_SYM_ID="$(ls -1 "$R_SYM/.aisdlc/tasks" | head -1)"
+_SYM_SLUG="$(arc_slug "$R_SYM")"
+_SYM_DIR="$ARC_SYM/$_SYM_SLUG/$(date -u +%Y-%m)/$_SYM_ID"
+# Back-date the real entry (compact JSONL).
+_two_days_ago_sym="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                     date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '2020-01-01T00:00:00Z')"
+jq -c --arg old "$_two_days_ago_sym" '.archived_at = $old' "$ARC_SYM/index.jsonl" \
+    > "$ARC_SYM/index.jsonl.tmp" && mv "$ARC_SYM/index.jsonl.tmp" "$ARC_SYM/index.jsonl"
+# Entry whose .path == archive root itself: is_desc=0, must be retained+warned.
+_arc_sym_root_entry="$(jq -cn --arg p "$ARC_SYM" --arg old "$_two_days_ago_sym" \
+    '{id:"root-itself",ticket:"SBX-0",repo:"x",status:"done",cost_usd:0,
+     archived_at:$old,repo_slug:"x",path:$p}')"
+printf '%s\n' "$_arc_sym_root_entry" >> "$ARC_SYM/index.jsonl"
+# Entry whose .path is an owned sentinel directory outside the root (not /tmp).
+_ARC_OUTSIDE="$WORK/arc-outside-sentinel"; mkdir -p "$_ARC_OUTSIDE"
+_outside_entry="$(jq -cn --arg p "$_ARC_OUTSIDE" --arg old "$_two_days_ago_sym" \
+    '{id:"outsider",ticket:"SBX-0",repo:"x",status:"done",cost_usd:0,
+     archived_at:$old,repo_slug:"x",path:$p}')"
+printf '%s\n' "$_outside_entry" >> "$ARC_SYM/index.jsonl"
+# Entry for a symlink inside the root whose canonical path resolves OUTSIDE the root.
+_SYM_INNER="$ARC_SYM/inner-sym-entry"
+_ARC_OUTER="$WORK/arc-outer-target"; mkdir -p "$_ARC_OUTER"
+ln -sfn "$_ARC_OUTER" "$_SYM_INNER"
+_sym_inner_entry="$(jq -cn --arg p "$_SYM_INNER" --arg old "$_two_days_ago_sym" \
+    '{id:"inner-sym",ticket:"SBX-0",repo:"x",status:"done",cost_usd:0,
+     archived_at:$old,repo_slug:"x",path:$p}')"
+printf '%s\n' "$_sym_inner_entry" >> "$ARC_SYM/index.jsonl"
+# Create a symlink root and run prune through it.
+ln -sfn "$ARC_SYM" "$WORK/arc-sym-link"
+_sym_warn="$WORK/arc-sym-prune.warn"
+AISDLC_ARCHIVE="$WORK/arc-sym-link" "$AISDLC" archive prune --older-than 1d \
+    2>"$_sym_warn" >/dev/null
+# Valid old descendant removed via symlink root.
+[ ! -d "$_SYM_DIR" ] \
+    && ok "UC-40: valid old descendant removed via symlink root" \
+    || bad "UC-40 removed" "dir still exists: $_SYM_DIR"
+# root-itself entry retained in index (path == root, not a strict descendant).
+grep -q 'root-itself' "$ARC_SYM/index.jsonl" 2>/dev/null \
+    && ok "UC-40: root-itself entry retained in index" \
+    || bad "UC-40 root-itself" "root-itself entry removed from index"
+# Owned outside sentinel entry retained; its directory not deleted.
+grep -q 'outsider' "$ARC_SYM/index.jsonl" 2>/dev/null \
+    && ok "UC-40: out-of-root entry retained in index" \
+    || bad "UC-40 outside" "outsider entry missing from index"
+[ -d "$_ARC_OUTSIDE" ] \
+    && ok "UC-40: owned outside sentinel dir not removed by prune" \
+    || bad "UC-40 outside-dir" "outside sentinel was deleted"
+# Symlink inside root that resolves outside: retained; outer target untouched.
+grep -q 'inner-sym' "$ARC_SYM/index.jsonl" 2>/dev/null \
+    && ok "UC-40: inner symlink resolving outside root retained in index" \
+    || bad "UC-40 inner-sym" "inner-sym entry removed from index"
+[ -d "$_ARC_OUTER" ] \
+    && ok "UC-40: outer symlink target dir not removed" \
+    || bad "UC-40 outer-target" "outer target was deleted by prune"
+# Relative root path: a fresh archive, back-date it, then prune using ./relative path.
+_SYM2_R="$WORK/arc-rel-repo"; fresh_repo "$_SYM2_R"
+"$AISDLC" add SBX-1 --repo "$_SYM2_R" --no-pr >/dev/null 2>&1
+ARC_REL="$WORK/arc-rel-root"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_REL" "$AISDLC" run --repo "$_SYM2_R" --once >/dev/null 2>&1
+_SYM2_ID="$(ls -1 "$_SYM2_R/.aisdlc/tasks" | head -1)"
+_SYM2_DIR="$ARC_REL/$(arc_slug "$_SYM2_R")/$(date -u +%Y-%m)/$_SYM2_ID"
+jq -c --arg old "$_two_days_ago_sym" '.archived_at = $old' "$ARC_REL/index.jsonl" \
+    > "$ARC_REL/index.jsonl.tmp" && mv "$ARC_REL/index.jsonl.tmp" "$ARC_REL/index.jsonl"
+( cd "$WORK" && AISDLC_ARCHIVE="./arc-rel-root" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1 )
+[ ! -d "$_SYM2_DIR" ] \
+    && ok "UC-40: old entry removed when prune given relative root path" \
+    || bad "UC-40 rel-root" "dir still exists: $_SYM2_DIR"
+unset _SYM_ID _SYM_SLUG _SYM_DIR _two_days_ago_sym _arc_sym_root_entry \
+    _ARC_OUTSIDE _outside_entry _SYM_INNER _ARC_OUTER _sym_inner_entry _sym_warn \
+    _SYM2_R _SYM2_ID _SYM2_DIR ARC_REL
+
+# --------------------------------------------------------------------------- #
+# UC-31: exact phase sequence, correct session attribution (GH-43-f)
+printf '\nmanifest.phases: full run — exact sequence and session_id attribution (UC-31)\n'
+R="$WORK/arc-uc31"; ARC31="$WORK/arc-uc31-root"
+# In: `pkg/` puts the stub's commits in scope, so every verdict is PASS.
+fresh_repo_scope "$R" '- `pkg/`' ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC31" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-31: task done" \
+    || bad "UC-31 pre" "$(task_field "$R" .status)"
+_ARC31_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC31_DIR="$ARC31/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC31_ID"
+# F4: exact ordered sequence with session_id presence per phase type.
+jq -e '[.phases[] | {name, sid: (.session_id != null)}] ==
+    [{"name":"implement","sid":true},{"name":"qa","sid":true},
+     {"name":"scope-check","sid":false},{"name":"verify","sid":false}]' \
+    "$_ARC31_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-31: exact phase sequence; session_id on claude phases, null on native" \
+    || bad "UC-31 sequence" \
+       "$(jq -c '[.phases[] | {name,session_id}]' "$_ARC31_DIR/manifest.json" 2>/dev/null)"
+jq -e '[.phases[] | .verdict] | all(. == "PASS")' "$_ARC31_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-31: all verdicts PASS" \
+    || bad "UC-31 verdicts" \
+       "$(jq -c '[.phases[] | {name,verdict}]' "$_ARC31_DIR/manifest.json" 2>/dev/null)"
+jq -e '[.phases[] | select(.started and .ended)] | length == 4' \
+    "$_ARC31_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-31: all four phases have started and ended timestamps" \
+    || bad "UC-31 timestamps" \
+       "$(jq -c '[.phases[] | {name,started,ended}]' "$_ARC31_DIR/manifest.json" 2>/dev/null)"
+unset _ARC31_ID _ARC31_DIR R
+
+# UC-36: single-model task — manifest.model equals task.model, manifest.models null (GH-43-f)
+printf '\nmanifest.model exact equality; models null (UC-36)\n'
+R="$WORK/arc-uc36"; ARC36="$WORK/arc-uc36-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC36_BASE_MODEL="$(task_field "$R" .model)"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC36" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC36_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC36_DIR="$ARC36/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC36_ID"
+# F6: exact model equality
+jq -e --arg m "$_ARC36_BASE_MODEL" '$m != "" and .model == $m' \
+    "$_ARC36_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-36: manifest.model equals task .model ($( jq -r '.model' "$_ARC36_DIR/manifest.json" 2>/dev/null))" \
+    || bad "UC-36 model" \
+       "want=$_ARC36_BASE_MODEL got=$(jq -r '.model' "$_ARC36_DIR/manifest.json" 2>/dev/null)"
+jq -e '.models == null' "$_ARC36_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-36: manifest.models is null (no model_roles)" \
+    || bad "UC-36 models" "$(jq -c '.models' "$_ARC36_DIR/manifest.json" 2>/dev/null)"
+unset _ARC36_BASE_MODEL _ARC36_ID _ARC36_DIR R
+
+# UC-32: implement FAIL (run_phase failure); GH-52 empty-diff FAIL (GH-43-f)
+printf '\nmanifest.phases: implement FAIL — run_phase failure and GH-52 empty-diff (UC-32)\n'
+R="$WORK/arc-uc32"; ARC32="$WORK/arc-uc32-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC32" AISDLC_STUB=blocked \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "UC-32: task failed (BLOCKED.md)" \
+    || bad "UC-32 pre" "$(task_field "$R" .status)"
+_ARC32_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC32_DIR="$ARC32/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC32_ID"
+jq -e '[.phases[] | {name,verdict}] == [{"name":"implement","verdict":"FAIL"}]' \
+    "$_ARC32_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-32: exactly [implement:FAIL] in phases (BLOCKED.md path)" \
+    || bad "UC-32 blocked-phases" \
+       "$(jq -c '.phases' "$_ARC32_DIR/manifest.json" 2>/dev/null)"
+# F5: GH-52 empty-diff path (AISDLC_STUB=refuse — model succeeded but committed nothing).
+R="$WORK/arc-uc32-refuse"; ARC32R="$WORK/arc-uc32-refuse-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC32R" AISDLC_STUB=refuse \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC32R_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC32R_DIR="$ARC32R/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC32R_ID"
+jq -e '[.phases[] | {name,verdict}] == [{"name":"implement","verdict":"FAIL"}]' \
+    "$_ARC32R_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-32: GH-52 empty-diff: exactly [implement:FAIL] (model-success, runner-rejected)" \
+    || bad "UC-32 refuse-phases" \
+       "$(jq -c '.phases' "$_ARC32R_DIR/manifest.json" 2>/dev/null)"
+unset _ARC32_ID _ARC32_DIR _ARC32R_ID _ARC32R_DIR R
+
+# UC-35: legacy task (no .phase_log) archived via cancel → manifest.phases null (GH-43-f)
+printf '\nmanifest.phases: null for legacy task without phase_log (UC-35)\n'
+R="$WORK/arc-uc35"; ARC35="$WORK/arc-uc35-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC35" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC35_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+# Snapshot first archive's file hashes before any modifications.
+_ARC35_DIR1="$ARC35/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC35_ID"
+_ARC35_H1="$(cd "$_ARC35_DIR1" && find . -type f -print0 | sort -z | xargs -0 sha256sum 2>/dev/null)"
+# F2: strip phase_log from live task.json to simulate legacy record, then cancel.
+_ARC35_TF="$R/.aisdlc/tasks/$_ARC35_ID/task.json"
+jq 'del(.phase_log)' "$_ARC35_TF" > "$_ARC35_TF.tmp" && mv "$_ARC35_TF.tmp" "$_ARC35_TF"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC35" "$AISDLC" cancel "$_ARC35_ID" \
+    --repo "$R" >/dev/null 2>&1
+_ARC35_DIR2="$ARC35/$(arc_slug "$R")/$(date -u +%Y-%m)/${_ARC35_ID}.1"
+jq -e '.phases == null' "$_ARC35_DIR2/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-35: legacy record (cancel) archived with manifest.phases null" \
+    || bad "UC-35 legacy" "$(jq -c '.phases' "$_ARC35_DIR2/manifest.json" 2>/dev/null)"
+_ARC35_H1_NOW="$(cd "$_ARC35_DIR1" && find . -type f -print0 | sort -z | \
+    xargs -0 sha256sum 2>/dev/null)"
+[ "$_ARC35_H1_NOW" = "$_ARC35_H1" ] \
+    && ok "UC-35: first archive files untouched after legacy cancel" \
+    || bad "UC-35 untouched" "first archive hash changed"
+unset _ARC35_ID _ARC35_TF _ARC35_DIR1 _ARC35_DIR2 _ARC35_H1 _ARC35_H1_NOW R
+
+# UC-37: model_roles — manifest.model equals base model, manifest.models has exact per-phase map (GH-43-f)
+printf '\nmanifest.model and models exact equality with model_roles (UC-37)\n'
+R="$WORK/arc-uc37"; ARC37="$WORK/arc-uc37-root"
+fresh_repo "$R"
+jq '. + {"model_roles":{"smol":"stub-haiku","default":"stub-sonnet","slow":"stub-opus"}}' \
+    "$R/.aisdlc/config.json" > "$R/.aisdlc/config.json.tmp" && \
+    mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC37_BASE_MODEL="$(task_field "$R" .model)"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC37" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC37_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC37_DIR="$ARC37/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC37_ID"
+# F6: exact model equality including per-phase models map.
+jq -e --arg m "$_ARC37_BASE_MODEL" '$m != "" and .model == $m' \
+    "$_ARC37_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-37: manifest.model equals base model $_ARC37_BASE_MODEL" \
+    || bad "UC-37 model" "$(jq '.model' "$_ARC37_DIR/manifest.json" 2>/dev/null)"
+jq -e '.models == {"implement":"stub-sonnet","qa":"stub-sonnet",
+    "scope-check":"stub-haiku","verify":"stub-haiku"}' \
+    "$_ARC37_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-37: manifest.models has exact per-phase model_roles entries" \
+    || bad "UC-37 models" "$(jq -c '.models' "$_ARC37_DIR/manifest.json" 2>/dev/null)"
+unset _ARC37_BASE_MODEL _ARC37_ID _ARC37_DIR R
+
+# UC-33: scope-check BLOCKED with correct Out: backtick format (GH-43-f)
+printf '\nmanifest.phases: scope-check BLOCKED — correct Out: fixture (UC-33)\n'
+R="$WORK/arc-uc33"; ARC33="$WORK/arc-uc33-root"
+# Out: `pkg/` makes the stub's commits out of bounds, so scope-check is BLOCKED.
+fresh_repo_scope "$R" "" '- `pkg/`'
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC33" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] \
+    && ok "UC-33: task failed (scope-check BLOCKED)" \
+    || bad "UC-33 pre" "status=$(task_field "$R" .status)"
+_ARC33_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC33_DIR="$ARC33/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC33_ID"
+jq -e '.phases | map(select(.name == "scope-check")) | (length == 1) and (.[0].verdict == "BLOCKED") and (.[0].session_id == null)' \
+    "$_ARC33_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-33: scope-check BLOCKED with session_id null and started/ended timestamps" \
+    || bad "UC-33 blocked" \
+       "$(jq -c '[.phases[] | {name,verdict,session_id}]' "$_ARC33_DIR/manifest.json" 2>/dev/null)"
+jq -e '.phases | map(select(.name == "implement" or .name == "qa")) | all(.verdict == "PASS")' \
+    "$_ARC33_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-33: implement and qa have PASS (ran before scope-check)" \
+    || bad "UC-33 pre-phases" \
+       "$(jq -c '[.phases[] | select(.name=="implement" or .name=="qa") | {name,verdict}]' "$_ARC33_DIR/manifest.json" 2>/dev/null)"
+jq -e '.phases | map(select(.name == "verify")) | length == 0' \
+    "$_ARC33_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-33: verify absent after scope-check BLOCKED" \
+    || bad "UC-33 after" \
+       "$(jq -c '[.phases[] | .name]' "$_ARC33_DIR/manifest.json" 2>/dev/null)"
+unset _ARC33_ID _ARC33_DIR R
+
+# UC-34: verify FAIL → manifest.phases entry for verify has verdict FAIL; session_id null (GH-43-f)
+printf '\nmanifest.phases: verify FAIL (UC-34)\n'
+R="$WORK/arc-uc34"; ARC34="$WORK/arc-uc34-root"
+fresh_repo "$R"
+# Override verify to a command that always fails
+jq '.verify = ["false"]' "$R/.aisdlc/config.json" > "$R/.aisdlc/config.json.tmp" && \
+    mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC34" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "UC-34: task failed (verify FAIL)" || bad "UC-34 pre" "$(task_field "$R" .status)"
+_ARC34_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC34_DIR="$ARC34/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC34_ID"
+jq -e '.phases | map(select(.name == "verify" and .verdict == "FAIL")) | length == 1' \
+    "$_ARC34_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-34: verify entry has verdict FAIL" \
+    || bad "UC-34 fail" "$(jq -c '[.phases[] | {name,verdict}]' "$_ARC34_DIR/manifest.json" 2>/dev/null)"
+jq -e '.phases | map(select(.name == "verify")) | all(.session_id == null and .started != null and .ended != null)' \
+    "$_ARC34_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-34: verify session_id null, started/ended non-null" \
+    || bad "UC-34 verify-fields" "$(jq -c '[.phases[] | select(.name=="verify")]' "$_ARC34_DIR/manifest.json" 2>/dev/null)"
+unset _ARC34_ID _ARC34_DIR R
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

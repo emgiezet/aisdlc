@@ -14,7 +14,7 @@ the **Tracker descriptor**; paths below assume the defaults `specs/` and `ai-sdl
 
 Every tracker action below is a bold operation name (**create-pr**). Execute it exactly as the
 descriptor file defines it; never substitute a CLI call of your own. `Tracker descriptor: none` →
-there is no delivery channel: write `specs/<TICKET>/pr-body.md`, report the branch, stop.
+there is no delivery channel: still compose and validate the Phase 2 body, then use Phase 4.
 
 Requires `specs/<TICKET>/spec.md` and, unless `--no-qa` or `--docs` is passed,
 `specs/<TICKET>/qa-report.md`.
@@ -77,9 +77,78 @@ that is where an unattended run is most likely to have overstepped.
 
 ### Not covered
 <anything from the QA report's "Not verified" section, or "nothing">
+
+### Change map
+<mermaid flowchart — modules from diff + edges from spec Context; omit this section for docs-only diffs>
+
+| UC id | Before | After |
+|-------|--------|-------|
+<one row per UC from spec's Acceptance criteria: id | prior observable behaviour | new behaviour>
 ```
 
    A `--docs` body is shorter: title, what changed and why, the `git log --oneline <base>..HEAD`.
+
+   **Change map.** Skip this section entirely when `--docs` is passed or all diff paths match
+   `*.md`, `docs/**`, `specs/**`, or `CHANGELOG*`. Otherwise build the `### Change map`
+   section (appended after `### Not covered`) as follows:
+
+   a. Map each path in `git diff --name-only <base>..HEAD` to a logical module name: drop
+      the filename, keep meaningful directory levels (e.g.
+      `plugins/sdlc/commands/ship.md` → `commands/ship`).
+   b. Use `## Context` in the spec to derive directed call/data edges between modules.
+   c. **Classify before grouping.** Only `In:` grants scope; `Context` supplies edges, never
+      permission. Use this plugin's runner helpers (resolve `<plugin-root>` from the loaded
+      plugin path) to get the warning set before drawing:
+
+```bash
+source <plugin-root>/bin/aisdlc
+patterns="$(_path_tokens "$(_scope_bullets specs/<TICKET>/spec.md In)")"
+while IFS= read -r file; do
+  declared=0
+  while IFS= read -r pat; do _glob_match "$file" "$pat" && declared=1; done <<< "$patterns"
+  [ "$declared" = 1 ] || printf 'WARN %s\n' "$file"
+done < <(git diff --name-only <base>..HEAD)
+```
+
+      Every `WARN` path must belong to a styled node; retain that classification when grouping.
+      **Hard cap: 12 nodes, including aggregates.** Collapse siblings into their common
+      directory, never the repository root. If >12 top-level groups remain, keep the
+      first 11 lexically and put **all remaining groups in one node**, `Other (N more)`.
+      For 15 top-level modules: 11 individual nodes + one aggregate of four, never 15.
+      Redirect edges to aggregates; omit self-edges. Below the graph, write
+      `Members of <NodeId>: <every original member>; out of scope: <members or none>`
+      for each aggregate. An unnamed remainder is not a complete change map.
+   d. **Style from original classifications, not aggregate labels.** Every node containing
+      any out-of-scope member gets `style NodeId fill:#ffa,stroke:#f90,color:#111`.
+      This includes `Other` when even one of its members is out of scope. In-scope-only
+      nodes carry no style. Check each flagged original module is represented by a styled node.
+   e. Emit a fenced `mermaid` block, then a before/after UC table. Declare each node once
+      on its own line as `NodeId["label"]`; edges reference IDs only. Rendered example:
+
+```mermaid
+flowchart LR
+  ShipCmd["commands/ship"]
+  PRBody["pr-body.md"]
+  Tracker["trackers/github"]
+  ShipCmd --> PRBody
+  ShipCmd --> Tracker
+  style Tracker fill:#ffa,stroke:#f90,color:#111
+```
+
+| UC id | Before | After |
+|-------|--------|-------|
+| UC-1  | no visual summary in PR body | mermaid module graph + UC table appended |
+
+   *(Populate from the spec's `## Acceptance criteria`; never fabricate rows or derive from the diff.)*
+
+   f. Write `specs/<TICKET>/pr-body.md`. For non-doc diffs, run this gate before **create-pr**
+      or the Phase 4 fallback. Also check aggregate membership lines and warning inheritance.
+      A missing member/style or non-zero exit means regenerate the map, not publish it:
+
+```bash
+awk '/^```mermaid$/{g=1;next} g && /^```$/{g=0} g && /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*\[/{n++} END {print "Change-map nodes:",n; exit(n<1 || n>12)}' \
+  specs/<TICKET>/pr-body.md
+```
 
 3. **create-pr** with title `type(scope): <summary> (<TICKET>)`, the body file, the profile's
    default base, `draft` set, and the QA verdict (`PASS`/`GAPS`; `null` under `--docs`). Always a

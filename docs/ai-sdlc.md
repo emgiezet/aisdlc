@@ -35,9 +35,9 @@ Three consequences shape everything below:
 | `/sdlc:triage`, `/sdlc:root-cause` (issue route) | agent, read-only | `specs/GH-<n>/spec.md` with `kind: bugfix`, root cause in Context |
 | `/sdlc:implement` | agent, unattended | commits per UC, or `BLOCKED.md` |
 | `/sdlc:qa` | agent, unattended | `specs/<TICKET>/qa-report.md`, PASS/GAPS, screenshots for UI UCs |
-| `aisdlc scope-check` | queue, native bash | `specs/<TICKET>/scope-report.md`, PASS/GAPS/BLOCKED — BLOCKED stops before ship |
+| `aisdlc scope-check` | queue, native bash | `specs/<TICKET>/scope-report.md`, PASS/GAPS/BLOCKED — BLOCKED stops before ship (`specs/<TICKET>/`, AGENTS.md, CLAUDE.md, .claude/ are never classified) |
 | `/sdlc:ship` | agent, unattended | draft PR labelled `ai-sdlc` + `review` |
-| `/sdlc:review` | agent, unattended | `APPROVED` → `merge-ready`, or `CHANGES_REQUESTED` and an autofix loop |
+| `/sdlc:review` | agent, unattended | `APPROVED` → `merge-ready`, or `CHANGES_REQUESTED` and an autofix loop; approved spec stays read-only during code-review autofix. Required scope gaps and every change-budget finding escalate as `⚠ NEEDS HUMAN` (PR labelled `blocked`) |
 | `/sdlc:continue`, `/sdlc:fix-pr`, `/sdlc:autopilot` | agent, on demand | a stalled PR driven to `merge-ready` |
 | `/sdlc:merge` | **human only** | the decision that still cannot be delegated, now with its gates checked |
 | `/sdlc:close-fixed`, `/sdlc:changelog`, `/sdlc:retro` | agent, on a schedule | closed issues, a changelog PR, a ranked list of what the harness cost |
@@ -57,6 +57,7 @@ again inside the worktree before spending a token.
 
 The section that earns its keep most is `Out:`. It is the only thing standing between "add a
 balance endpoint" and an agent helpfully restructuring the money handling on its way past.
+A file listed verbatim (exact path, no glob characters, no trailing `/`) in `In:` is exempt from `Out:` matching even if `Out:` cross-references it; repo-wide prohibited paths always win regardless.
 
 ### Context is routed, not concatenated
 
@@ -97,8 +98,9 @@ a cliff with size. The numbers behind the defaults:
 
 So the harness budgets the change instead of hoping: **400 added lines, 15 files, 3 modules**, with
 a hard ceiling of **3000 added lines** past which `scope-check` returns `BLOCKED` and the queue
-stops before ship. Deleted lines, generated output, vendored trees, lock files and the specs
-directory never count — removing code is not a large change to review.
+stops before ship. Deleted lines, generated output, vendored trees, lock files (`package-lock.json`,
+`yarn.lock`, `poetry.lock`, `uv.lock`, and similar) and the specs directory never count — removing
+code is not a large change to review.
 
 The budget binds at planning time, not at review time: `/sdlc:spec` estimates the surface from the
 paths in `Context` plus their call sites, and calls `/sdlc:decompose` when the estimate breaks a
@@ -248,6 +250,18 @@ Precedence for every setting: CLI flag > `.aisdlc/config.json` > environment var
 | model roles | `model_roles` | — | *(absent)* | Maps `smol`/`default`/`slow` roles to model names; see below. Absent = today's behaviour |
 | pull label | `pull_label` | `AISDLC_PULL_LABEL` | `bug` | The approval label `aisdlc pull` selects on |
 | loop interval | `loop_interval` | `AISDLC_LOOP_INTERVAL` | `900` | Seconds between `aisdlc loop` ticks |
+| readiness min | `readiness_min` | — | `null` | Config-key only; absent or null disables add-time spec scoring. Set to an integer 0–100 to opt in; `aisdlc add` refuses specs that score below the threshold. Uses `model_roles.smol`. |
+| max open PRs | `max_open_prs` | `AISDLC_MAX_OPEN_PRS` | *(null — unlimited)* | Stop popping tasks when open PRs ≥ N; fail-closed on count error |
+| max run spend | `max_run_usd` | `AISDLC_MAX_RUN_USD` | *(null — unlimited)* | Stop popping tasks once run-wide API spend ≥ $X; all-subscription queues warn and ignore |
+
+### Run-admission caps
+
+`--max-open-prs N` and `--max-run-usd X` are checked, under one admission lock, before every
+task `aisdlc run` pops; in-flight tasks always finish. The PR count comes from the tracker
+(local `prs.jsonl`, or every page of GitHub's open pulls); a count that cannot be obtained
+stops the run with a non-zero exit. The spend cap sums only this run's numeric `cost_usd`
+deltas — subscription nulls are never counted as zero, and an all-subscription queue warns and
+ignores the cap. `aisdlc status` names the limit that stopped the last run.
 
 ### billing = subscription
 
@@ -267,6 +281,8 @@ Setting `billing: subscription` makes the difference explicit:
 The zero-turn failure check is **unaffected**: a phase that completes with `num_turns == 0` is
 still a hard failure regardless of billing mode. That guard is what prevents a silent no-op from
 being reported as a successful PR; billing mode has no bearing on whether Claude ran.
+A companion guard runs after `implement`: if the phase exits cleanly but the branch diff is empty
+(excluding `specs/<TICKET>/` and agent-config paths), the runner fails immediately with `phase 'implement' failed — it changed no file; see implement.json for why` and does not run later phases.
 
 ### model_roles
 
@@ -336,10 +352,78 @@ The live task files in `.aisdlc/tasks/` are **not** redacted — only the archiv
 Temporary raw copies and newly created archive files are owner-only. The manifest uses
 redacted task metadata; generated index records also pass through redaction.
 
+**Phase provenance:** `manifest.phases` holds a per-phase log as
+`[{name, verdict, session_id, started, ended}]`. Native phases (`scope-check`, `verify`)
+always have `session_id: null`. Claude/omp phases record the session_id of the new sessions
+entry appended by `run_phase`; the omp early-return path (command file absent) and retry
+contamination both yield `null`. All phases that executed appear in order; phases that did not
+run are absent. When archiving a legacy task record with no `phase_log`, `manifest.phases` is
+`null`; no historical data is invented or modified.
+
+**Model identity:** `manifest.model` preserves `task.json .model` (the base model recorded at
+add time). `manifest.models` is the per-phase model map when `model_roles` are configured, or
+`null` for single-model tasks. Both fields are `null` when the legacy task record lacks them.
+
 A failed copy or redaction withholds the new archive and index entry. Archive errors
 (including an unwritable root or full disk) log `archive failed: <reason>` to `run.log`
 and never change the task's status or the runner's exit code. Existing archive entries
 remain intact.
+
+**Transcript copies:** agent session transcripts are copied into `sessions/` under the archive
+task directory. For `claude` tasks, each `task.json .sessions[]` entry with a non-null
+`transcript` path is copied as `sessions/<phase>-<session_id>.jsonl`. For `omp` tasks, every
+`*.jsonl` in the task's `sessions/` directory is copied as `sessions/omp-<original-filename>`.
+Missing or unreadable sources are recorded in `manifest.transcripts[]` as `copied: false`
+with a reason; the rest of the archive is unaffected.
+Set `"archive_transcripts": "off"` in `.aisdlc/config.json` or `AISDLC_ARCHIVE_TRANSCRIPTS=off`
+to skip the transcript copy; `manifest.transcripts` is then the string `"disabled"`.
+
+**betterleaks scanner:** when betterleaks v2 is installed on PATH or through the slop-guard
+managed location, each archived file is scanned in JSONL mode (`--jsonl --analyze=false
+--validate=false`) before the built-in regex pass. A scanner error (`rc > 1`), incomplete
+scan (`scan.state != "complete"`), or decoded finding (`encodings`/`decode_depth > 0`) all
+withhold the entire new archive and index entry; the diagnostic reason is logged to `run.log`
+without exposing the credential. Literal findings are replaced with
+`[REDACTED:betterleaks:<rule_id>]`; counts are merged into `manifest.redactions`.
+When betterleaks is absent, the built-in regex pass runs unchanged.
+
+**Opt-out:** set `Archive: off` in `.claude/sdlc.md` to disable all archiving for a repository
+(checked after `AISDLC_ARCHIVE=off`). Use `/sdlc:retro --archive` to query the cross-repo
+index. Use `aisdlc archive ls|show|grep|prune` to inspect and maintain the archive.
+
+### Archive CLI
+
+Four read-only or maintenance subcommands work against `$AISDLC_ARCHIVE` (or the default root).
+`AISDLC_ARCHIVE=off` causes all subcommands to print `archive disabled` and exit 0.
+
+**`aisdlc archive ls [--repo <slug>] [--status <s>] [--since <YYYY-MM-DD>]`**
+Reads `index.jsonl` and prints one tab-separated row per matching entry:
+`id | ticket | repo_slug | status | cost_usd | archived_at`.
+All filters are optional; when omitted every entry is printed.
+
+**`aisdlc archive show <id>`**
+Finds all entries in `index.jsonl` where `.id == <id>` (multiple entries = retried tasks)
+and pretty-prints each resolved `manifest.json`. Pass `<id>.<n>` to show a single attempt.
+Exits non-zero and prints `not found: <id>` to stderr when no match exists.
+
+**`aisdlc archive grep <pattern>`**
+Searches the extended-regex `<pattern>` across `phases/*.log`, `phases/*.json`, and
+`sessions/*.jsonl` within every task's archive directory, prefixing each match with the
+archive-relative path. Never searches `manifest.json`, `task.json`, or `spec/` files.
+Read-only; never modifies any file.
+
+**`aisdlc archive prune --older-than <N>d`**
+Removes archive task directories (and their `index.jsonl` entries) whose `archived_at` is
+older than N days. The operation holds `index.lock` for the entire read-parse-filter-rewrite
+cycle. Safety guards: the archive root itself is never removed; entries whose canonical path is
+not a strict descendant of the root are skipped with a stderr warning; entries whose canonical
+path is shared with a retained (younger) entry are skipped with a warning. A second prune when
+no entries are below the cutoff exits 0 with no changes. Recommended retention: `--older-than 180d`.
+
+**Cross-repo metrics:** `/sdlc:retro --archive` reads the archive `index.jsonl` to produce
+pipeline metrics across all repos, not just the current repo's `.aisdlc/tasks/`. Use it after
+running tasks in multiple repositories to see cumulative spend, failure rates, and top blocked
+causes across the entire workflow.
 
 ## Failure modes
 
@@ -353,6 +437,12 @@ remain intact.
 | Cost per PR climbing | Specs too large; whole-repo context per task | Split specs; check the router loads one playbook |
 | Review queue growing faster than merges | Generation outran review capacity | Queue fewer, larger-value tasks — throughput is merges, not PRs |
 | `BLOCKED` on the same ambiguity repeatedly | The spec template is missing a section your domain needs | Extend the template, not the individual spec |
+| Task status `refused` with `depends-on not met: <TOKEN>` | Dependent slice queued or run before its prerequisite merged | Wait for the prerequisite to merge; its `verify-report.md` must show `PASS` in the base tree |
+| PR record missing after ship or clean | Worktree local tracker `.aisdlc/tracker` not linked to repo canonical | Automatic repo tracker symlinking ensures worktree records land at repo root |
+
+**Limitation — dependencies outside the pipeline:** if a prerequisite was implemented without
+going through this pipeline it has no `verify-report.md`. Remove the `depends-on:` field from
+the dependent spec before queuing it.
 
 ## What stays human
 

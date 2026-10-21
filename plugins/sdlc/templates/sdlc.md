@@ -44,6 +44,14 @@ value, because the pipeline has nowhere to put its output otherwise.
   <!-- .claude/browsers/playwright.md | .claude/browsers/agent-browser.md | none.
        none → UI use cases are verified by tests only; QA says so in one line and moves on -->
 
+## Archive
+
+- **Archive:** `on`
+  <!-- Set to `off` to disable all archiving (also available as AISDLC_ARCHIVE=off).
+       When on, every task reaching a terminal status is archived locally in a private,
+       redacted store. Add "archive_transcripts":"off" to .aisdlc/config.json to suppress
+       session transcript copies while keeping all other archive files. -->
+
 ## Runtime verification
 
 - **Verification map:** `none`
@@ -71,6 +79,8 @@ Deleted lines, generated output, vendored trees, lock files and the specs direct
 - **Hard ceiling:** 3000
   <!-- past this scope-check returns BLOCKED and the queue stops before ship: nobody reviews
        a diff this wide, so it goes back through /sdlc:decompose -->
+- **Tolerance:** 0%
+  <!-- % above each soft limit scope-check still accepts; absent or 0 = any overshoot is a finding; repo-wide only; ceiling unaffected -->
 - **Erosion delta max:** 0.05
   <!-- SlopCodeBench erosion delta above this triggers an `erosion` finding in scope-report.md;
        0.05 is the default (matches the built-in). Raise it only for a large mechanical refactor. -->
@@ -88,6 +98,12 @@ Deleted lines, generated output, vendored trees, lock files and the specs direct
   <!-- e.g. docs/adr/ or docs/architecture-decision-records.md -->
 - **Domain glossary skill:** `none`
   <!-- name of a skill holding this product's vocabulary, if the project has one -->
+
+## Review
+
+- **review-adversarial:** `false`
+  <!-- true enables a second independent adversarial pass after the primary code-reviewer;
+       the stricter of the two verdicts wins. Has no effect on spec-only PRs. -->
 
 ## Stacks and verification
 

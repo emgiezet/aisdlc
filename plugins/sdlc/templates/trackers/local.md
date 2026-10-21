@@ -60,7 +60,7 @@ see Prerequisites.
 ### assign-issue
 `sed -i -E 's/^assignees: \[(.*)\]/assignees: [\1, {user}]/; s/\[, /[/' $I`
 ### get-pr
-`n={n}; rec=$(jq --argjson n $n -c 'select(.number==$n)' $P); bp=$(echo "$rec"|jq -r '.body_path // empty'); br=$(echo "$rec"|jq -r '.branch // empty'); body=$([ -n "$bp" ] && cat "$bp" 2>/dev/null); cf=.aisdlc/tracker/prs/$n.comments.md; comments=$(cat "$cf" 2>/dev/null); mt=$(git merge-tree "$(git merge-base HEAD "$br" 2>/dev/null)" HEAD "$br" 2>/dev/null | { grep -qF '<<<<<<<' && echo CONFLICTING || echo MERGEABLE; }); mt=${mt:-MERGEABLE}; echo "$rec" | jq -c --arg body "$body" --arg comments "$comments" --arg mt "$mt" '(.branch) as $br | . + {body:$body,comments:$comments,mergeable:$mt,headRefName:$br}'`
+`n={n}; rec=$(jq --argjson n $n -c 'select(.number==$n)' $P); bp=$(echo "$rec"|jq -r '.body_path // empty'); br=$(echo "$rec"|jq -r '.branch // empty'); base=$(echo "$rec"|jq -r '.baseRefName // empty'); body=$([ -n "$bp" ] && cat "$bp" 2>/dev/null); cf=.aisdlc/tracker/prs/$n.comments.md; comments=$(cat "$cf" 2>/dev/null); mb=$(git merge-base "$base" "$br") || exit 1; mt=$(git merge-tree "$mb" "$base" "$br") || exit 1; if printf '%s' "$mt" | grep -qF '<<<<<<<'; then mt=CONFLICTING; else mt=MERGEABLE; fi; echo "$rec" | jq -c --arg body "$body" --arg comments "$comments" --arg mt "$mt" '(.branch) as $br | . + {body:$body,comments:$comments,mergeable:$mt,headRefName:$br}'`
 ### list-prs
 `jq -c --arg s '{state}' --arg l '{label}' 'select(($s=="all") or (.state==$s)) | select(.labels|index($l)) | {number,title,labels,url,headRefName:.branch,isDraft:(.isDraft//false),createdAt:(.createdAt//""),author:(.author//"local-user")}' $P`
 ### search-prs
@@ -82,7 +82,7 @@ see Prerequisites.
 ### merge-pr
 `b=$(jq -r 'select(.number=={n}).branch' $P); git merge --squash "$b" && git commit -m "$(jq -r 'select(.number=={n}).title' $P) (#{n})"; mc=$(git rev-parse HEAD); jq -c --argjson n {n} --arg mc "$mc" 'if .number==$n then .state="merged"|.mergeCommit=$mc else . end' $P > $P.tmp && mv $P.tmp $P`
 ### get-pr-diff
-`git diff $(git merge-base HEAD "$(jq -r 'select(.number=={n}).branch' $P)")...$(jq -r 'select(.number=={n}).branch' $P)`
+`br=$(jq -r 'select(.number=={n}).branch' $P); base=$(jq -r 'select(.number=={n}).baseRefName' $P); git diff "$base...$br"`
 ### get-pr-checks
 `[ -f .aisdlc/tracker/checks/{n}.json ] && cat .aisdlc/tracker/checks/{n}.json || echo '[]'` — a repo's CI may write this file; absent means no checks.
 ### get-run-failed-logs
