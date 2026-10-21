@@ -21,7 +21,7 @@
         "task-router",
         "testing"
       ],
-      "version": "0.16.1"
+      "version": "0.17.0"
     },
     {
       "name": "slop-guard",
@@ -38,7 +38,7 @@
         "anti-patterns",
         "supply-chain"
       ],
-      "version": "0.5.1"
+      "version": "0.6.0"
     }
   ]
 }
