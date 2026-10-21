@@ -149,16 +149,13 @@ Router near the top, and leave the rest alone.
   launching the app and driving one feature.
 - `.aisdlc/config.json` — runner defaults: `{"model", "budget", "base", "workers", "label",
   "specs_dir", "billing", "readiness_min": null, "max_open_prs": null, "max_run_usd": null}`,
-  plus `"harness_version"` set to this plugin's version (read it from
-  `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`) — that stamp is what `/sdlc:update` later
-  compares against to know which generated files are behind. Pick `base` from the actual default
-  branch. Set `"billing": "subscription"` when the queue runs under a Claude Pro/Max subscription
-  plan (the CLI reports no per-token cost on a subscription, so the queue omits the spend cap and
-  records `cost_usd: null` instead of a zero that would look like a free run). Omit the key or set
-  `"billing": "api"` for pay-as-you-go API access.
-  `readiness_min` defaults to `null` (scoring disabled); set a numeric threshold (e.g. `70`) to
-  opt in. `max_open_prs` and `max_run_usd` default to `null` (unlimited). Never overwrite a value
-  the operator set; preserve configured opt-ins on re-runs.
+  plus `"harness_version"` set to this plugin's version (from
+  `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`), which `/sdlc:update` compares to find
+  stale generated files. Pick `base` from the actual default branch. Set `"billing":
+  "subscription"` under a Claude Pro/Max plan (no per-token cost: the queue omits the spend cap
+  and records `cost_usd: null`, not a misleading zero); omit it or use `"api"` otherwise.
+  `"archive_transcripts": "off"` keeps transcripts out of the archive. The three `null` keys mean
+  disabled/unlimited; set a threshold to opt in. Never overwrite a value the operator set.
 - `specs/.gitkeep` and `specs/briefs/.gitkeep` — so both directories exist before the first artefact.
 - `.gitignore` — append `.aisdlc/` if absent (the runner's state and, under `local`, the tracker's
   files live there and are never committed).

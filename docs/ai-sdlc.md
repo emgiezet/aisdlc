@@ -352,10 +352,78 @@ The live task files in `.aisdlc/tasks/` are **not** redacted — only the archiv
 Temporary raw copies and newly created archive files are owner-only. The manifest uses
 redacted task metadata; generated index records also pass through redaction.
 
+**Phase provenance:** `manifest.phases` holds a per-phase log as
+`[{name, verdict, session_id, started, ended}]`. Native phases (`scope-check`, `verify`)
+always have `session_id: null`. Claude/omp phases record the session_id of the new sessions
+entry appended by `run_phase`; the omp early-return path (command file absent) and retry
+contamination both yield `null`. All phases that executed appear in order; phases that did not
+run are absent. When archiving a legacy task record with no `phase_log`, `manifest.phases` is
+`null`; no historical data is invented or modified.
+
+**Model identity:** `manifest.model` preserves `task.json .model` (the base model recorded at
+add time). `manifest.models` is the per-phase model map when `model_roles` are configured, or
+`null` for single-model tasks. Both fields are `null` when the legacy task record lacks them.
+
 A failed copy or redaction withholds the new archive and index entry. Archive errors
 (including an unwritable root or full disk) log `archive failed: <reason>` to `run.log`
 and never change the task's status or the runner's exit code. Existing archive entries
 remain intact.
+
+**Transcript copies:** agent session transcripts are copied into `sessions/` under the archive
+task directory. For `claude` tasks, each `task.json .sessions[]` entry with a non-null
+`transcript` path is copied as `sessions/<phase>-<session_id>.jsonl`. For `omp` tasks, every
+`*.jsonl` in the task's `sessions/` directory is copied as `sessions/omp-<original-filename>`.
+Missing or unreadable sources are recorded in `manifest.transcripts[]` as `copied: false`
+with a reason; the rest of the archive is unaffected.
+Set `"archive_transcripts": "off"` in `.aisdlc/config.json` or `AISDLC_ARCHIVE_TRANSCRIPTS=off`
+to skip the transcript copy; `manifest.transcripts` is then the string `"disabled"`.
+
+**betterleaks scanner:** when betterleaks v2 is installed on PATH or through the slop-guard
+managed location, each archived file is scanned in JSONL mode (`--jsonl --analyze=false
+--validate=false`) before the built-in regex pass. A scanner error (`rc > 1`), incomplete
+scan (`scan.state != "complete"`), or decoded finding (`encodings`/`decode_depth > 0`) all
+withhold the entire new archive and index entry; the diagnostic reason is logged to `run.log`
+without exposing the credential. Literal findings are replaced with
+`[REDACTED:betterleaks:<rule_id>]`; counts are merged into `manifest.redactions`.
+When betterleaks is absent, the built-in regex pass runs unchanged.
+
+**Opt-out:** set `Archive: off` in `.claude/sdlc.md` to disable all archiving for a repository
+(checked after `AISDLC_ARCHIVE=off`). Use `/sdlc:retro --archive` to query the cross-repo
+index. Use `aisdlc archive ls|show|grep|prune` to inspect and maintain the archive.
+
+### Archive CLI
+
+Four read-only or maintenance subcommands work against `$AISDLC_ARCHIVE` (or the default root).
+`AISDLC_ARCHIVE=off` causes all subcommands to print `archive disabled` and exit 0.
+
+**`aisdlc archive ls [--repo <slug>] [--status <s>] [--since <YYYY-MM-DD>]`**
+Reads `index.jsonl` and prints one tab-separated row per matching entry:
+`id | ticket | repo_slug | status | cost_usd | archived_at`.
+All filters are optional; when omitted every entry is printed.
+
+**`aisdlc archive show <id>`**
+Finds all entries in `index.jsonl` where `.id == <id>` (multiple entries = retried tasks)
+and pretty-prints each resolved `manifest.json`. Pass `<id>.<n>` to show a single attempt.
+Exits non-zero and prints `not found: <id>` to stderr when no match exists.
+
+**`aisdlc archive grep <pattern>`**
+Searches the extended-regex `<pattern>` across `phases/*.log`, `phases/*.json`, and
+`sessions/*.jsonl` within every task's archive directory, prefixing each match with the
+archive-relative path. Never searches `manifest.json`, `task.json`, or `spec/` files.
+Read-only; never modifies any file.
+
+**`aisdlc archive prune --older-than <N>d`**
+Removes archive task directories (and their `index.jsonl` entries) whose `archived_at` is
+older than N days. The operation holds `index.lock` for the entire read-parse-filter-rewrite
+cycle. Safety guards: the archive root itself is never removed; entries whose canonical path is
+not a strict descendant of the root are skipped with a stderr warning; entries whose canonical
+path is shared with a retained (younger) entry are skipped with a warning. A second prune when
+no entries are below the cutoff exits 0 with no changes. Recommended retention: `--older-than 180d`.
+
+**Cross-repo metrics:** `/sdlc:retro --archive` reads the archive `index.jsonl` to produce
+pipeline metrics across all repos, not just the current repo's `.aisdlc/tasks/`. Use it after
+running tasks in multiple repositories to see cumulative spend, failure rates, and top blocked
+causes across the entire workflow.
 
 ## Failure modes
 

@@ -66,6 +66,12 @@ task_field() {
     [ -n "$f" ] && jq -r "$field // empty" "$f"
 }
 
+# Hide any host-installed betterleaks from selftest (v1 managed binary causes archive abort).
+# XDG_DATA_HOME is overridden for all archive-related tests via ARC_XDG below.
+ARC_XDG="$WORK/xdg-home"
+mkdir -p "$ARC_XDG"
+
+
 if [ -n "${AISDLC_SELFTEST_WORK:-}" ]; then
     rm -rf "$WORK"
 fi
@@ -1610,7 +1616,7 @@ printf '\narchive: done task writes archive dir, manifest, task.json, phases, sp
 R_ARC6="$WORK/arc-uc6"; ARC6="$WORK/arc-uc6-root"
 fresh_repo "$R_ARC6"
 "$AISDLC" add SBX-1 --repo "$R_ARC6" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC6" "$AISDLC" run --repo "$R_ARC6" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC6" "$AISDLC" run --repo "$R_ARC6" --once >/dev/null 2>&1
 [ "$(task_field "$R_ARC6" .status)" = "done" ] && ok "UC-6: task done" || bad "UC-6 pre" "status $(task_field "$R_ARC6" .status)"
 _ARC6_ID="$(ls -1 "$R_ARC6/.aisdlc/tasks" | head -1)"
 _ARC6_SLUG="$(arc_slug "$R_ARC6")"
@@ -1652,7 +1658,7 @@ printf '\narchive: anthropic key in phase log is redacted; live log unchanged (U
 R="$WORK/arc-uc8"; ARC8="$WORK/arc-uc8-root"
 fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC8" AISDLC_STUB=keyleak "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC8" AISDLC_STUB=keyleak "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "done" ] && ok "UC-8: task done" || bad "UC-8 pre" "status $(task_field "$R" .status)"
 _ARC8_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
 _ARC8_DIR="$ARC8/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC8_ID"
@@ -1670,7 +1676,7 @@ printf '\narchive: failed task archived with status failed and BLOCKED.md (UC-9)
 R_ARC9="$WORK/arc-uc9"; ARC9="$WORK/arc-uc9-root"
 fresh_repo "$R_ARC9"
 "$AISDLC" add SBX-1 --repo "$R_ARC9" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC9" AISDLC_STUB=blocked "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC9" AISDLC_STUB=blocked "$AISDLC" run --repo "$R_ARC9" --once >/dev/null 2>&1
 [ "$(task_field "$R_ARC9" .status)" = "failed" ] && ok "UC-9: task failed" || bad "UC-9 pre" "status $(task_field "$R_ARC9" .status)"
 _ARC9_ID="$(ls -1 "$R_ARC9/.aisdlc/tasks" | head -1)"
 _ARC9_DIR="$ARC9/$(arc_slug "$R_ARC9")/$(date -u +%Y-%m)/$_ARC9_ID"
@@ -1700,7 +1706,7 @@ assignees: []
 ARCISSUE
 printf -- '- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
 AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" add --issue 42 --repo "$R" --no-pr >/dev/null 2>&1
-AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC10" AISDLC_STUB=refuse-blocked "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "refused" ] \
     && ok "UC-10: task refused" || bad "UC-10 status" "$(task_field "$R" .status)"
 _ARC10_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
@@ -1841,7 +1847,7 @@ R="$WORK/arc-metadata"; fresh_repo "$R"; _META_ROOT="$WORK/arc-metadata-root"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
 _meta_id="$(task_field "$R" .id)"; _meta_tf="$R/.aisdlc/tasks/$_meta_id/task.json"
 jq '.pr_url = "https://ghp_abcdefghijklmnopqrst@github.com/example/repo/pull/1"' "$_meta_tf" > "$_meta_tf.tmp" && mv "$_meta_tf.tmp" "$_meta_tf"
-AISDLC_ARCHIVE="$_META_ROOT" "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$_META_ROOT" "$AISDLC" cancel "$_meta_id" --repo "$R" >/dev/null 2>&1
 _meta_manifest="$(find "$_META_ROOT" -name manifest.json)"
 ! grep -q 'ghp_abcdefghijklmnopqrst' "$_meta_manifest" \
     && jq -e '.pr_url | contains("[REDACTED:github-token]")' "$_meta_manifest" >/dev/null 2>&1 \
@@ -2153,5 +2159,626 @@ _rd_id="$(task_field "$R_RD" .id)"
 _rd_done="$(jq -sr '[.[] | select(.status=="done")] | length' "$R_RD"/.aisdlc/tasks/*/task.json 2>/dev/null || echo 0)"
 [ "$_rd_done" -eq 2 ] && ok "GH-38 retry-delta: both done (delta cost only; regression: cumulative would cap at 1)" \
     || bad "GH-38 retry-delta" "done=$_rd_done (expected 2; bug accumulates full prior cost)"
+# UC-14: claude transcript copied and redacted into archive sessions/ (GH-43-c)
+printf '\narchive: claude transcript copied and redacted into sessions/ (UC-14)\n'
+R="$WORK/arc-uc14"; ARC14="$WORK/arc-uc14-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC14_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+# Pre-create transcript files at the paths aisdlc will look for.
+# aisdlc sets: transcript="$HOME/.claude/projects/$(printf '%s' "$wt" | tr '/.' '-')/${session_id}.jsonl"
+# wt="$(dirname "$repo")/.aisdlc-worktrees/$(basename "$repo")-${id}"
+_ARC14_WT="$(dirname "$R")/.aisdlc-worktrees/$(basename "$R")-$_ARC14_ID"
+_ARC14_TC_DIR="$HOME/.claude/projects/$(printf '%s' "$_ARC14_WT" | tr '/.' '-')"
+mkdir -p "$_ARC14_TC_DIR"
+# Write fake transcripts with an embedded sk-ant key to verify redaction.
+printf '{"type":"text","text":"sk-ant-api03-fake-uc14-abcdefghijklmnop12345678"}\n' \
+    > "$_ARC14_TC_DIR/stub-implement.jsonl"
+printf '{"type":"text","text":"stub qa transcript"}\n' \
+    > "$_ARC14_TC_DIR/stub-qa.jsonl"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC14" AISDLC_STUB=keyleak \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-14: task done" \
+    || bad "UC-14 pre" "$(task_field "$R" .status)"
+_ARC14_DIR="$ARC14/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC14_ID"
+# At least one transcript must be copied:true.
+_arc14_copied="$(jq -r '[.transcripts[]? | select(.copied==true)] | length' \
+    "$_ARC14_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc14_copied:-0}" -ge 1 ] \
+    && ok "UC-14: at least one transcript copied:true" \
+    || bad "UC-14 copy" "copied=$_arc14_copied; manifest=$(jq -c '.transcripts' "$_ARC14_DIR/manifest.json" 2>/dev/null)"
+# Planted sk-ant key must be ABSENT from the archived session file (redacted).
+_arc14_first_session="$(ls -1 "$_ARC14_DIR/sessions/" 2>/dev/null | head -1)"
+if [ -n "$_arc14_first_session" ]; then
+    ! grep -qF 'sk-ant-api03-fake-uc14-' "$_ARC14_DIR/sessions/$_arc14_first_session" 2>/dev/null \
+        && ok "UC-14: sk-ant key absent from archived transcript (redacted)" \
+        || bad "UC-14 redaction" "key still present in archived file"
+    # Checksum must match manifest.files entry.
+    _arc14_actual_sha="$(sha256sum "$_ARC14_DIR/sessions/$_arc14_first_session" | cut -c1-64)"
+    _arc14_manifest_sha="$(jq -r --arg p "sessions/$_arc14_first_session" '.files[$p] // empty' \
+        "$_ARC14_DIR/manifest.json" 2>/dev/null)"
+    [ -n "$_arc14_manifest_sha" ] && [ "$_arc14_actual_sha" = "$_arc14_manifest_sha" ] \
+        && ok "UC-14: archived transcript sha256 matches manifest.files" \
+        || bad "UC-14 sha256" "manifest=$_arc14_manifest_sha actual=$_arc14_actual_sha"
+fi
+rm -f "$_ARC14_TC_DIR/stub-implement.jsonl" "$_ARC14_TC_DIR/stub-qa.jsonl"
+rmdir "$_ARC14_TC_DIR" 2>/dev/null || true
+unset _ARC14_ID _ARC14_WT _ARC14_TC_DIR _arc14_copied _arc14_first_session \
+    _arc14_actual_sha _arc14_manifest_sha _ARC14_DIR R
+
+# --------------------------------------------------------------------------- #
+# UC-15: omp transcript copied into sessions/ (GH-43-c)
+printf '\narchive: omp transcript copied into sessions/omp-* (UC-15)\n'
+R="$WORK/arc-uc15"; ARC15="$WORK/arc-uc15-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr --runtime omp >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC15" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-15: omp task done" || bad "UC-15 pre" "$(task_field "$R" .status)"
+_ARC15_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC15_DIR="$ARC15/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC15_ID"
+_arc15_omp="$(ls -1 "$_ARC15_DIR/sessions/" 2>/dev/null | grep '^omp-' | head -1)"
+[ -n "$_arc15_omp" ] \
+    && ok "UC-15: sessions/omp-* file present" \
+    || bad "UC-15 omp session" "no omp-* file in sessions/: $(ls "$_ARC15_DIR/sessions/" 2>/dev/null)"
+_arc15_copied="$(jq -r '[.transcripts[]? | select(.copied==true)] | length' \
+    "$_ARC15_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc15_copied:-0}" -ge 1 ] \
+    && ok "UC-15: manifest.transcripts has copied:true" \
+    || bad "UC-15 transcripts" "copied=$_arc15_copied"
+unset _arc15_omp _arc15_copied _ARC15_ID _ARC15_DIR R
+
+# --------------------------------------------------------------------------- #
+# UC-16: missing transcript source → copied:false, reason:not found (GH-43-c)
+printf '\narchive: missing transcript → copied:false, reason:not found (UC-16)\n'
+R="$WORK/arc-uc16"; ARC16="$WORK/arc-uc16-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC16_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+# Inject a session pointing to a non-existent transcript BEFORE run,
+# so archive_task records it as copied:false, reason:"not found".
+_ARC16_TF="$R/.aisdlc/tasks/$_ARC16_ID/task.json"
+jq '.sessions += [{phase:"test-missing",runtime:"claude",session_id:"dead-sid",
+    transcript:"/nonexistent/path/dead.jsonl",
+    started:"2099-01-01T00:00:00Z",ended:"2099-01-01T00:00:01Z"}]' \
+    "$_ARC16_TF" > "$_ARC16_TF.tmp" && mv "$_ARC16_TF.tmp" "$_ARC16_TF"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC16" \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-16: task done (non-fatal missing transcript)" \
+    || bad "UC-16 pre" "$(task_field "$R" .status)"
+_ARC16_DIR="$ARC16/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC16_ID"
+# The injected missing-source session must be recorded with copied:false, reason:"not found".
+_arc16_notfound="$(jq -r '[.transcripts[]? |
+    select(.phase == "test-missing" and .copied == false and .reason == "not found")] | length' \
+    "$_ARC16_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc16_notfound:-0}" -ge 1 ] \
+    && ok "UC-16: missing transcript recorded with copied:false, reason:not found" \
+    || bad "UC-16 not-found" "count=$_arc16_notfound; transcripts=$(jq -c '.transcripts' "$_ARC16_DIR/manifest.json" 2>/dev/null)"
+unset _ARC16_ID _ARC16_TF _ARC16_DIR _arc16_notfound R
+
+# --------------------------------------------------------------------------- #
+# UC-17: archive_transcripts:off → no sessions/ dir, manifest.transcripts=="disabled" (GH-43-c)
+printf '\narchive: archive_transcripts:off → sessions/ absent, transcripts="disabled" (UC-17)\n'
+R="$WORK/arc-uc17"; ARC17="$WORK/arc-uc17-root"
+fresh_repo "$R"
+jq '. + {"archive_transcripts":"off"}' "$R/.aisdlc/config.json" > "$R/.aisdlc/config.json.tmp" \
+    && mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC17" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-17: task done" || bad "UC-17 pre" "$(task_field "$R" .status)"
+_ARC17_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC17_DIR="$ARC17/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC17_ID"
+[ ! -d "$_ARC17_DIR/sessions" ] \
+    && ok "UC-17: no sessions/ subdirectory when archive_transcripts:off" \
+    || bad "UC-17 sessions dir" "sessions/ exists: $(ls "$_ARC17_DIR/sessions" 2>/dev/null)"
+jq -e '.transcripts == "disabled"' "$_ARC17_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-17: manifest.transcripts is the string \"disabled\"" \
+    || bad "UC-17 transcripts field" "$(jq -c '.transcripts' "$_ARC17_DIR/manifest.json" 2>/dev/null)"
+# Other files still present
+[ -f "$_ARC17_DIR/task.json" ] && [ -f "$_ARC17_DIR/manifest.json" ] \
+    && ok "UC-17: task.json and manifest.json present with archive_transcripts:off" \
+    || bad "UC-17 files" "task.json or manifest.json missing"
+unset _ARC17_ID _ARC17_DIR R
+
+# Test with env var override
+R="$WORK/arc-uc17b"; ARC17B="$WORK/arc-uc17b-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC17B" AISDLC_ARCHIVE_TRANSCRIPTS=off "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC17B_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC17B_DIR="$ARC17B/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC17B_ID"
+jq -e '.transcripts == "disabled"' "$_ARC17B_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-17: AISDLC_ARCHIVE_TRANSCRIPTS=off also sets transcripts=disabled" \
+    || bad "UC-17 env" "$(jq -c '.transcripts' "$_ARC17B_DIR/manifest.json" 2>/dev/null)"
+unset _ARC17B_ID _ARC17B_DIR R ARC17B
+
+# --------------------------------------------------------------------------- #
+# UC-18: unreadable transcript → copied:false, reason:unreadable, archive unaffected (GH-43-c)
+printf '\narchive: unreadable transcript → copied:false, reason:unreadable (UC-18)\n'
+R="$WORK/arc-uc18"; ARC18="$WORK/arc-uc18-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+# Create a fake transcript file with mode 000 in a known location
+_uc18_tr_dir="$WORK/fake-transcripts"
+mkdir -p "$_uc18_tr_dir"
+_uc18_tr_file="$_uc18_tr_dir/stub-implement.jsonl"
+printf '{"stub":true}\n' > "$_uc18_tr_file"
+chmod 000 "$_uc18_tr_file"
+# Inject that path into task.json sessions before running
+_ARC18_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC18_TF="$R/.aisdlc/tasks/$_ARC18_ID/task.json"
+jq --arg tr "$_uc18_tr_file" \
+    '.sessions += [{phase:"implement",runtime:"claude",session_id:"uc18-sid",transcript:$tr,started:"2099-01-01T00:00:00Z",ended:"2099-01-01T00:00:01Z"}]' \
+    "$_ARC18_TF" > "$_ARC18_TF.tmp" && mv "$_ARC18_TF.tmp" "$_ARC18_TF"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC18" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-18: task done (archive_task returns 0)" || bad "UC-18 pre" "$(task_field "$R" .status)"
+_ARC18_DIR="$ARC18/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC18_ID"
+_arc18_unread="$(jq -r '[.transcripts[]? | select(.reason=="unreadable")] | length' \
+    "$_ARC18_DIR/manifest.json" 2>/dev/null || echo 0)"
+[ "${_arc18_unread:-0}" -ge 1 ] \
+    && ok "UC-18: manifest.transcripts has reason:unreadable" \
+    || bad "UC-18 unreadable" "unreadable entries=$_arc18_unread; transcripts=$(jq -c '.transcripts' "$_ARC18_DIR/manifest.json" 2>/dev/null)"
+[ -f "$_ARC18_DIR/task.json" ] && [ -f "$_ARC18_DIR/manifest.json" ] \
+    && ok "UC-18: archive dir and other files present" \
+    || bad "UC-18 other files" "missing task.json or manifest.json"
+chmod 644 "$_uc18_tr_file" 2>/dev/null || true
+unset _ARC18_ID _ARC18_TF _ARC18_DIR _arc18_unread _uc18_tr_dir _uc18_tr_file R
+
+# --------------------------------------------------------------------------- #
+# UC-43: profile Archive:off → no archive (GH-43-c)
+printf '\narchive: profile Archive:off disables archiving (UC-43)\n'
+R="$WORK/arc-uc43"; ARC43="$WORK/arc-uc43-root"
+fresh_repo "$R"
+mkdir -p "$R/.claude"
+# Write an sdlc.md with Archive: off
+printf '## Archive\n\n- **Archive:** `off`\n' >> "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_ARCHIVE="$ARC43" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-43: task completes with Archive:off" || bad "UC-43 pre" "$(task_field "$R" .status)"
+_ARC43_SLUG="$(arc_slug "$R")"
+[ ! -d "$ARC43/$_ARC43_SLUG" ] \
+    && ok "UC-43: no archive dir created with profile Archive:off" \
+    || bad "UC-43 dir" "archive created at $ARC43/$_ARC43_SLUG"
+unset _ARC43_SLUG R
+
+
+# --------------------------------------------------------------------------- #
+# UC-19 + UC-20: archive ls basic and filtered (GH-43-d)
+printf '\naisdlc archive ls: two tasks, filter by repo/status/since (UC-19, UC-20)\n'
+R_LS1="$WORK/arc-ls1"; R_LS2="$WORK/arc-ls2"; ARC_LS="$WORK/arc-ls-root"
+fresh_repo "$R_LS1"; fresh_repo "$R_LS2"
+"$AISDLC" add SBX-1 --repo "$R_LS1" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS1" --once >/dev/null 2>&1
+"$AISDLC" add SBX-1 --repo "$R_LS2" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS2" --once >/dev/null 2>&1
+_ls_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls 2>/dev/null)"
+_ls_rows="$(printf '%s\n' "$_ls_out" | grep -c .)"
+[ "${_ls_rows:-0}" -eq 2 ] \
+    && ok "UC-19: archive ls shows exactly two rows" \
+    || bad "UC-19 rows" "got $_ls_rows rows; output: $_ls_out"
+# UC-19: each row has id, repo_slug, status, archived_at (tab-separated)
+printf '%s' "$_ls_out" | grep -q 'done' \
+    && ok "UC-19: output contains status done" \
+    || bad "UC-19 status" "done not found"
+# UC-20: filter by status=done → both tasks; filter by status=failed → none
+_ls_done="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --status done 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_done:-0}" -eq 2 ] \
+    && ok "UC-20: --status done returns both done tasks" \
+    || bad "UC-20 status-done" "got $_ls_done rows"
+_ls_fail="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --status failed 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_fail:-0}" -eq 0 ] \
+    && ok "UC-20: --status failed returns no rows" \
+    || bad "UC-20 status-fail" "got $_ls_fail rows"
+# UC-20: filter by --since future → no rows
+_ls_future="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --since "2099-01-01" 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_future:-0}" -eq 0 ] \
+    && ok "UC-20: --since future returns no rows" \
+    || bad "UC-20 since" "got $_ls_future rows"
+# UC-20: filter by --repo for ls1 slug → exactly 1 row
+_ls1_slug="$(arc_slug "$R_LS1")"
+_ls_repo="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --repo "$_ls1_slug" 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_ls_repo:-0}" -eq 1 ] \
+    && ok "UC-20: --repo <slug> returns 1 row for first repo" \
+    || bad "UC-20 repo-filter" "got $_ls_repo rows for slug $_ls1_slug"
+unset _ls_out _ls_rows _ls_done _ls_fail _ls_future _ls1_slug _ls_repo
+
+# --------------------------------------------------------------------------- #
+# UC-21 + UC-22: archive show <id> (GH-43-d)
+printf '\naisdlc archive show: two attempts; unknown id (UC-21, UC-22)\n'
+_LS1_ID="$(ls -1 "$R_LS1/.aisdlc/tasks" | head -1)"
+# Simulate a second attempt by retry: re-queue and run
+AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" retry "$_LS1_ID" --repo "$R_LS1" >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS1" --once >/dev/null 2>&1
+_show_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive show "$_LS1_ID" 2>/dev/null)"
+# Should show two === headers (attempt 1 and attempt 2)
+_show_hdrs="$(printf '%s' "$_show_out" | grep -c '^===' || echo 0)"
+[ "${_show_hdrs:-0}" -ge 2 ] \
+    && ok "UC-21: show <id> with two attempts shows two headers" \
+    || bad "UC-21 headers" "got $_show_hdrs headers; output: $(printf '%s' "$_show_out" | head -5)"
+# Should have manifest JSON (id field)
+printf '%s' "$_show_out" | grep -q '"id"' \
+    && ok "UC-21: show output contains manifest JSON" \
+    || bad "UC-21 manifest" "no id field in output"
+# UC-22: unknown id → stderr + non-zero exit
+_show_rc=0
+_show_err="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive show "nonexistent-id-xyz" 2>&1)" || _show_rc=$?
+[ "$_show_rc" -ne 0 ] \
+    && ok "UC-22: show unknown id exits non-zero" \
+    || bad "UC-22 exit" "rc was 0"
+printf '%s' "$_show_err" | grep -q 'not found' \
+    && ok "UC-22: show unknown id prints not found to stderr" \
+    || bad "UC-22 stderr" "expected 'not found': $_show_err"
+unset _LS1_ID _show_out _show_hdrs _show_rc _show_err
+
+# --------------------------------------------------------------------------- #
+# UC-23: archive grep <pattern> searches phases/ and sessions/ but not spec/ (GH-43-d)
+printf '\naisdlc archive grep: finds in phases/ but not spec/ (UC-23)\n'
+_LS2_ID="$(ls -1 "$R_LS2/.aisdlc/tasks" | head -1)"
+_LS2_SLUG="$(arc_slug "$R_LS2")"
+_LS2_DIR="$ARC_LS/$_LS2_SLUG/$(date -u +%Y-%m)/$_LS2_ID"
+# Plant a unique pattern in a phases log and in spec/spec.md
+_uc23_pattern="UC23SEARCHTOKEN_xyz987"
+printf '%s\n' "$_uc23_pattern" >> "$_LS2_DIR/phases/implement.log" 2>/dev/null || true
+printf '%s\n' "$_uc23_pattern" >> "$_LS2_DIR/spec/spec.md" 2>/dev/null || true
+_grep_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive grep "$_uc23_pattern" 2>/dev/null)"
+printf '%s' "$_grep_out" | grep -q 'phases/implement.log' \
+    && ok "UC-23: grep finds pattern in phases/implement.log" \
+    || bad "UC-23 phases" "phases/implement.log not matched; output: $_grep_out"
+printf '%s' "$_grep_out" | grep -qv 'spec/' \
+    && ok "UC-23: grep does not search spec/ files" \
+    || bad "UC-23 spec" "spec/ content appeared in grep output: $_grep_out"
+unset _LS2_ID _LS2_SLUG _LS2_DIR _uc23_pattern _grep_out
+
+# --------------------------------------------------------------------------- #
+# UC-24: archive prune removes old, retains young (GH-43-d)
+printf '\naisdlc archive prune: removes 2d-old task, retains 0d-old (UC-24)\n'
+R_PR1="$WORK/arc-pr1"; R_PR2="$WORK/arc-pr2"; ARC_PR="$WORK/arc-pr-root"
+fresh_repo "$R_PR1"; fresh_repo "$R_PR2"
+"$AISDLC" add SBX-1 --repo "$R_PR1" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" run --repo "$R_PR1" --once >/dev/null 2>&1
+"$AISDLC" add SBX-1 --repo "$R_PR2" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" run --repo "$R_PR2" --once >/dev/null 2>&1
+# Back-date the first task's index entry and manifest to 2 days ago
+_PR1_ID="$(ls -1 "$R_PR1/.aisdlc/tasks" | head -1)"
+_PR1_SLUG="$(arc_slug "$R_PR1")"
+_PR1_DIR="$ARC_PR/$_PR1_SLUG/$(date -u +%Y-%m)/$_PR1_ID"
+_two_days_ago="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                 date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '2020-01-01T00:00:00Z')"
+# Update index.jsonl to use old date for PR1
+jq -c --arg id "$_PR1_ID" --arg old "$_two_days_ago" \
+    'if .id == $id then .archived_at = $old else . end' \
+    "$ARC_PR/index.jsonl" > "$ARC_PR/index.jsonl.tmp" && \
+    mv "$ARC_PR/index.jsonl.tmp" "$ARC_PR/index.jsonl"
+# Run prune --older-than 1d
+AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1
+# Old task dir should be gone
+[ ! -d "$_PR1_DIR" ] \
+    && ok "UC-24: 2d-old task directory removed by prune" \
+    || bad "UC-24 removed" "dir still exists: $_PR1_DIR"
+# Old task not in index
+grep -q "$_PR1_ID" "$ARC_PR/index.jsonl" 2>/dev/null \
+    && bad "UC-24 index-remove" "old id still in index.jsonl" \
+    || ok "UC-24: old task absent from index.jsonl"
+# PR2 (new) task dir and index entry still present
+_PR2_ID="$(ls -1 "$R_PR2/.aisdlc/tasks" | head -1)"
+_PR2_SLUG="$(arc_slug "$R_PR2")"
+_PR2_DIR="$ARC_PR/$_PR2_SLUG/$(date -u +%Y-%m)/$_PR2_ID"
+[ -d "$_PR2_DIR" ] \
+    && ok "UC-24: 0d-old task directory retained" \
+    || bad "UC-24 retained" "new task dir missing: $_PR2_DIR"
+grep -q "$_PR2_ID" "$ARC_PR/index.jsonl" 2>/dev/null \
+    && ok "UC-24: new task present in index.jsonl" \
+    || bad "UC-24 index-retain" "new task id absent from index.jsonl"
+# Second prune is a no-op
+_pr24_before="$(wc -l < "$ARC_PR/index.jsonl" | tr -d ' ')"
+AISDLC_ARCHIVE="$ARC_PR" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1
+_pr24_after="$(wc -l < "$ARC_PR/index.jsonl" | tr -d ' ')"
+[ "$_pr24_before" = "$_pr24_after" ] \
+    && ok "UC-24: second prune is a no-op (index unchanged)" \
+    || bad "UC-24 noop" "index changed: $_pr24_before→$_pr24_after"
+unset _PR1_ID _PR1_SLUG _PR1_DIR _PR2_ID _PR2_SLUG _PR2_DIR _two_days_ago _pr24_before _pr24_after
+# Pruning every entry must empty the index, not leave a dangling record for a deleted dir.
+ARC_PRALL="$WORK/arc-pr-all"; mkdir -p "$ARC_PRALL/old"
+jq -cn --arg p "$ARC_PRALL/old" '{path:$p,archived_at:"2020-01-01T00:00:00Z",id:"old"}' > "$ARC_PRALL/index.jsonl"
+AISDLC_ARCHIVE="$ARC_PRALL" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1 \
+    && [ ! -e "$ARC_PRALL/old" ] && [ ! -s "$ARC_PRALL/index.jsonl" ] \
+    && ok "UC-24: pruning the only entry deletes it and empties index.jsonl" \
+    || bad "UC-24 prune-all" "dir=$([ -e "$ARC_PRALL/old" ] && echo kept) index=$(cat "$ARC_PRALL/index.jsonl")"
+
+# --------------------------------------------------------------------------- #
+# UC-38: prune with shared-path entries → both retained (GH-43-d)
+printf '\naisdlc archive prune: shared-path entries — dir retained, both index entries kept (UC-38)\n'
+ARC_SH="$WORK/arc-shared-root"
+R_SH="$WORK/arc-shared-repo"; fresh_repo "$R_SH"
+"$AISDLC" add SBX-1 --repo "$R_SH" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_SH" "$AISDLC" run --repo "$R_SH" --once >/dev/null 2>&1
+_SH_ID="$(ls -1 "$R_SH/.aisdlc/tasks" | head -1)"
+_SH_SLUG="$(arc_slug "$R_SH")"
+_SH_DIR="$ARC_SH/$_SH_SLUG/$(date -u +%Y-%m)/$_SH_ID"
+_two_days_ago_sh="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                    date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '2020-01-01T00:00:00Z')"
+# Inject a second compact index entry: same path as the real entry, old date.
+_sh_base_entry="$(cat "$ARC_SH/index.jsonl" | head -1)"
+_sh_old_entry="$(printf '%s' "$_sh_base_entry" | jq -c --arg old "$_two_days_ago_sh" '.archived_at = $old')"
+printf '%s\n' "$_sh_old_entry" >> "$ARC_SH/index.jsonl"
+# Capture prune stderr to assert the shared-path warning.
+_sh_prune_warn="$WORK/arc-sh-prune.warn"
+AISDLC_ARCHIVE="$ARC_SH" "$AISDLC" archive prune --older-than 1d 2>"$_sh_prune_warn" >/dev/null
+# Directory must still exist (shared-path, so neither entry is prunable).
+[ -d "$_SH_DIR" ] \
+    && ok "UC-38: shared-path dir retained (not removed)" \
+    || bad "UC-38 dir" "shared dir was removed: $_SH_DIR"
+# Prune must emit a shared-path warning on stderr.
+grep -q "shared path\|shared-path\|skipping.*shared" "$_sh_prune_warn" 2>/dev/null \
+    && ok "UC-38: prune warns about shared-path retention" \
+    || bad "UC-38 warning" "no shared-path warning in stderr: $(cat "$_sh_prune_warn" 2>/dev/null)"
+# Both index entries for the shared path must be retained (parse each JSONL line).
+_sh_retained="$(jq -c --arg p "$_SH_DIR" 'select(.path == $p)' "$ARC_SH/index.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
+[ "${_sh_retained:-0}" -ge 2 ] \
+    && ok "UC-38: both shared-path entries retained in index (parsed)" \
+    || bad "UC-38 index" "only $_sh_retained entries retained for shared path"
+unset _SH_ID _SH_SLUG _SH_DIR _two_days_ago_sh _sh_base_entry _sh_old_entry \
+    _sh_prune_warn _sh_retained
+
+# --------------------------------------------------------------------------- #
+# UC-40: prune — symlink root, root-itself, owned outside, descendant symlink, relative root (GH-43-d)
+printf '\naisdlc archive prune: symlink root; root-itself, outside, inner-sym retained; relative root (UC-40)\n'
+ARC_SYM="$WORK/arc-sym-root"
+R_SYM="$WORK/arc-sym-repo"; fresh_repo "$R_SYM"
+"$AISDLC" add SBX-1 --repo "$R_SYM" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_SYM" "$AISDLC" run --repo "$R_SYM" --once >/dev/null 2>&1
+_SYM_ID="$(ls -1 "$R_SYM/.aisdlc/tasks" | head -1)"
+_SYM_SLUG="$(arc_slug "$R_SYM")"
+_SYM_DIR="$ARC_SYM/$_SYM_SLUG/$(date -u +%Y-%m)/$_SYM_ID"
+# Back-date the real entry (compact JSONL).
+_two_days_ago_sym="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                     date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '2020-01-01T00:00:00Z')"
+jq -c --arg old "$_two_days_ago_sym" '.archived_at = $old' "$ARC_SYM/index.jsonl" \
+    > "$ARC_SYM/index.jsonl.tmp" && mv "$ARC_SYM/index.jsonl.tmp" "$ARC_SYM/index.jsonl"
+# Entry whose .path == archive root itself: is_desc=0, must be retained+warned.
+_arc_sym_root_entry="$(jq -cn --arg p "$ARC_SYM" --arg old "$_two_days_ago_sym" \
+    '{id:"root-itself",ticket:"SBX-0",repo:"x",status:"done",cost_usd:0,
+     archived_at:$old,repo_slug:"x",path:$p}')"
+printf '%s\n' "$_arc_sym_root_entry" >> "$ARC_SYM/index.jsonl"
+# Entry whose .path is an owned sentinel directory outside the root (not /tmp).
+_ARC_OUTSIDE="$WORK/arc-outside-sentinel"; mkdir -p "$_ARC_OUTSIDE"
+_outside_entry="$(jq -cn --arg p "$_ARC_OUTSIDE" --arg old "$_two_days_ago_sym" \
+    '{id:"outsider",ticket:"SBX-0",repo:"x",status:"done",cost_usd:0,
+     archived_at:$old,repo_slug:"x",path:$p}')"
+printf '%s\n' "$_outside_entry" >> "$ARC_SYM/index.jsonl"
+# Entry for a symlink inside the root whose canonical path resolves OUTSIDE the root.
+_SYM_INNER="$ARC_SYM/inner-sym-entry"
+_ARC_OUTER="$WORK/arc-outer-target"; mkdir -p "$_ARC_OUTER"
+ln -sfn "$_ARC_OUTER" "$_SYM_INNER"
+_sym_inner_entry="$(jq -cn --arg p "$_SYM_INNER" --arg old "$_two_days_ago_sym" \
+    '{id:"inner-sym",ticket:"SBX-0",repo:"x",status:"done",cost_usd:0,
+     archived_at:$old,repo_slug:"x",path:$p}')"
+printf '%s\n' "$_sym_inner_entry" >> "$ARC_SYM/index.jsonl"
+# Create a symlink root and run prune through it.
+ln -sfn "$ARC_SYM" "$WORK/arc-sym-link"
+_sym_warn="$WORK/arc-sym-prune.warn"
+AISDLC_ARCHIVE="$WORK/arc-sym-link" "$AISDLC" archive prune --older-than 1d \
+    2>"$_sym_warn" >/dev/null
+# Valid old descendant removed via symlink root.
+[ ! -d "$_SYM_DIR" ] \
+    && ok "UC-40: valid old descendant removed via symlink root" \
+    || bad "UC-40 removed" "dir still exists: $_SYM_DIR"
+# root-itself entry retained in index (path == root, not a strict descendant).
+grep -q 'root-itself' "$ARC_SYM/index.jsonl" 2>/dev/null \
+    && ok "UC-40: root-itself entry retained in index" \
+    || bad "UC-40 root-itself" "root-itself entry removed from index"
+# Owned outside sentinel entry retained; its directory not deleted.
+grep -q 'outsider' "$ARC_SYM/index.jsonl" 2>/dev/null \
+    && ok "UC-40: out-of-root entry retained in index" \
+    || bad "UC-40 outside" "outsider entry missing from index"
+[ -d "$_ARC_OUTSIDE" ] \
+    && ok "UC-40: owned outside sentinel dir not removed by prune" \
+    || bad "UC-40 outside-dir" "outside sentinel was deleted"
+# Symlink inside root that resolves outside: retained; outer target untouched.
+grep -q 'inner-sym' "$ARC_SYM/index.jsonl" 2>/dev/null \
+    && ok "UC-40: inner symlink resolving outside root retained in index" \
+    || bad "UC-40 inner-sym" "inner-sym entry removed from index"
+[ -d "$_ARC_OUTER" ] \
+    && ok "UC-40: outer symlink target dir not removed" \
+    || bad "UC-40 outer-target" "outer target was deleted by prune"
+# Relative root path: a fresh archive, back-date it, then prune using ./relative path.
+_SYM2_R="$WORK/arc-rel-repo"; fresh_repo "$_SYM2_R"
+"$AISDLC" add SBX-1 --repo "$_SYM2_R" --no-pr >/dev/null 2>&1
+ARC_REL="$WORK/arc-rel-root"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_REL" "$AISDLC" run --repo "$_SYM2_R" --once >/dev/null 2>&1
+_SYM2_ID="$(ls -1 "$_SYM2_R/.aisdlc/tasks" | head -1)"
+_SYM2_DIR="$ARC_REL/$(arc_slug "$_SYM2_R")/$(date -u +%Y-%m)/$_SYM2_ID"
+jq -c --arg old "$_two_days_ago_sym" '.archived_at = $old' "$ARC_REL/index.jsonl" \
+    > "$ARC_REL/index.jsonl.tmp" && mv "$ARC_REL/index.jsonl.tmp" "$ARC_REL/index.jsonl"
+( cd "$WORK" && AISDLC_ARCHIVE="./arc-rel-root" "$AISDLC" archive prune --older-than 1d >/dev/null 2>&1 )
+[ ! -d "$_SYM2_DIR" ] \
+    && ok "UC-40: old entry removed when prune given relative root path" \
+    || bad "UC-40 rel-root" "dir still exists: $_SYM2_DIR"
+unset _SYM_ID _SYM_SLUG _SYM_DIR _two_days_ago_sym _arc_sym_root_entry \
+    _ARC_OUTSIDE _outside_entry _SYM_INNER _ARC_OUTER _sym_inner_entry _sym_warn \
+    _SYM2_R _SYM2_ID _SYM2_DIR ARC_REL
+
+# --------------------------------------------------------------------------- #
+# UC-31: exact phase sequence, correct session attribution (GH-43-f)
+printf '\nmanifest.phases: full run — exact sequence and session_id attribution (UC-31)\n'
+R="$WORK/arc-uc31"; ARC31="$WORK/arc-uc31-root"
+# In: `pkg/` puts the stub's commits in scope, so every verdict is PASS.
+fresh_repo_scope "$R" '- `pkg/`' ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC31" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "UC-31: task done" \
+    || bad "UC-31 pre" "$(task_field "$R" .status)"
+_ARC31_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC31_DIR="$ARC31/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC31_ID"
+# F4: exact ordered sequence with session_id presence per phase type.
+jq -e '[.phases[] | {name, sid: (.session_id != null)}] ==
+    [{"name":"implement","sid":true},{"name":"qa","sid":true},
+     {"name":"scope-check","sid":false},{"name":"verify","sid":false}]' \
+    "$_ARC31_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-31: exact phase sequence; session_id on claude phases, null on native" \
+    || bad "UC-31 sequence" \
+       "$(jq -c '[.phases[] | {name,session_id}]' "$_ARC31_DIR/manifest.json" 2>/dev/null)"
+jq -e '[.phases[] | .verdict] | all(. == "PASS")' "$_ARC31_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-31: all verdicts PASS" \
+    || bad "UC-31 verdicts" \
+       "$(jq -c '[.phases[] | {name,verdict}]' "$_ARC31_DIR/manifest.json" 2>/dev/null)"
+jq -e '[.phases[] | select(.started and .ended)] | length == 4' \
+    "$_ARC31_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-31: all four phases have started and ended timestamps" \
+    || bad "UC-31 timestamps" \
+       "$(jq -c '[.phases[] | {name,started,ended}]' "$_ARC31_DIR/manifest.json" 2>/dev/null)"
+unset _ARC31_ID _ARC31_DIR R
+
+# UC-36: single-model task — manifest.model equals task.model, manifest.models null (GH-43-f)
+printf '\nmanifest.model exact equality; models null (UC-36)\n'
+R="$WORK/arc-uc36"; ARC36="$WORK/arc-uc36-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC36_BASE_MODEL="$(task_field "$R" .model)"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC36" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC36_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC36_DIR="$ARC36/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC36_ID"
+# F6: exact model equality
+jq -e --arg m "$_ARC36_BASE_MODEL" '$m != "" and .model == $m' \
+    "$_ARC36_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-36: manifest.model equals task .model ($( jq -r '.model' "$_ARC36_DIR/manifest.json" 2>/dev/null))" \
+    || bad "UC-36 model" \
+       "want=$_ARC36_BASE_MODEL got=$(jq -r '.model' "$_ARC36_DIR/manifest.json" 2>/dev/null)"
+jq -e '.models == null' "$_ARC36_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-36: manifest.models is null (no model_roles)" \
+    || bad "UC-36 models" "$(jq -c '.models' "$_ARC36_DIR/manifest.json" 2>/dev/null)"
+unset _ARC36_BASE_MODEL _ARC36_ID _ARC36_DIR R
+
+# UC-32: implement FAIL (run_phase failure); GH-52 empty-diff FAIL (GH-43-f)
+printf '\nmanifest.phases: implement FAIL — run_phase failure and GH-52 empty-diff (UC-32)\n'
+R="$WORK/arc-uc32"; ARC32="$WORK/arc-uc32-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC32" AISDLC_STUB=blocked \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "UC-32: task failed (BLOCKED.md)" \
+    || bad "UC-32 pre" "$(task_field "$R" .status)"
+_ARC32_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC32_DIR="$ARC32/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC32_ID"
+jq -e '[.phases[] | {name,verdict}] == [{"name":"implement","verdict":"FAIL"}]' \
+    "$_ARC32_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-32: exactly [implement:FAIL] in phases (BLOCKED.md path)" \
+    || bad "UC-32 blocked-phases" \
+       "$(jq -c '.phases' "$_ARC32_DIR/manifest.json" 2>/dev/null)"
+# F5: GH-52 empty-diff path (AISDLC_STUB=refuse — model succeeded but committed nothing).
+R="$WORK/arc-uc32-refuse"; ARC32R="$WORK/arc-uc32-refuse-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC32R" AISDLC_STUB=refuse \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC32R_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC32R_DIR="$ARC32R/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC32R_ID"
+jq -e '[.phases[] | {name,verdict}] == [{"name":"implement","verdict":"FAIL"}]' \
+    "$_ARC32R_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-32: GH-52 empty-diff: exactly [implement:FAIL] (model-success, runner-rejected)" \
+    || bad "UC-32 refuse-phases" \
+       "$(jq -c '.phases' "$_ARC32R_DIR/manifest.json" 2>/dev/null)"
+unset _ARC32_ID _ARC32_DIR _ARC32R_ID _ARC32R_DIR R
+
+# UC-35: legacy task (no .phase_log) archived via cancel → manifest.phases null (GH-43-f)
+printf '\nmanifest.phases: null for legacy task without phase_log (UC-35)\n'
+R="$WORK/arc-uc35"; ARC35="$WORK/arc-uc35-root"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC35" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC35_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+# Snapshot first archive's file hashes before any modifications.
+_ARC35_DIR1="$ARC35/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC35_ID"
+_ARC35_H1="$(cd "$_ARC35_DIR1" && find . -type f -print0 | sort -z | xargs -0 sha256sum 2>/dev/null)"
+# F2: strip phase_log from live task.json to simulate legacy record, then cancel.
+_ARC35_TF="$R/.aisdlc/tasks/$_ARC35_ID/task.json"
+jq 'del(.phase_log)' "$_ARC35_TF" > "$_ARC35_TF.tmp" && mv "$_ARC35_TF.tmp" "$_ARC35_TF"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC35" "$AISDLC" cancel "$_ARC35_ID" \
+    --repo "$R" >/dev/null 2>&1
+_ARC35_DIR2="$ARC35/$(arc_slug "$R")/$(date -u +%Y-%m)/${_ARC35_ID}.1"
+jq -e '.phases == null' "$_ARC35_DIR2/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-35: legacy record (cancel) archived with manifest.phases null" \
+    || bad "UC-35 legacy" "$(jq -c '.phases' "$_ARC35_DIR2/manifest.json" 2>/dev/null)"
+_ARC35_H1_NOW="$(cd "$_ARC35_DIR1" && find . -type f -print0 | sort -z | \
+    xargs -0 sha256sum 2>/dev/null)"
+[ "$_ARC35_H1_NOW" = "$_ARC35_H1" ] \
+    && ok "UC-35: first archive files untouched after legacy cancel" \
+    || bad "UC-35 untouched" "first archive hash changed"
+unset _ARC35_ID _ARC35_TF _ARC35_DIR1 _ARC35_DIR2 _ARC35_H1 _ARC35_H1_NOW R
+
+# UC-37: model_roles — manifest.model equals base model, manifest.models has exact per-phase map (GH-43-f)
+printf '\nmanifest.model and models exact equality with model_roles (UC-37)\n'
+R="$WORK/arc-uc37"; ARC37="$WORK/arc-uc37-root"
+fresh_repo "$R"
+jq '. + {"model_roles":{"smol":"stub-haiku","default":"stub-sonnet","slow":"stub-opus"}}' \
+    "$R/.aisdlc/config.json" > "$R/.aisdlc/config.json.tmp" && \
+    mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+_ARC37_BASE_MODEL="$(task_field "$R" .model)"
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC37" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_ARC37_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC37_DIR="$ARC37/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC37_ID"
+# F6: exact model equality including per-phase models map.
+jq -e --arg m "$_ARC37_BASE_MODEL" '$m != "" and .model == $m' \
+    "$_ARC37_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-37: manifest.model equals base model $_ARC37_BASE_MODEL" \
+    || bad "UC-37 model" "$(jq '.model' "$_ARC37_DIR/manifest.json" 2>/dev/null)"
+jq -e '.models == {"implement":"stub-sonnet","qa":"stub-sonnet",
+    "scope-check":"stub-haiku","verify":"stub-haiku"}' \
+    "$_ARC37_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-37: manifest.models has exact per-phase model_roles entries" \
+    || bad "UC-37 models" "$(jq -c '.models' "$_ARC37_DIR/manifest.json" 2>/dev/null)"
+unset _ARC37_BASE_MODEL _ARC37_ID _ARC37_DIR R
+
+# UC-33: scope-check BLOCKED with correct Out: backtick format (GH-43-f)
+printf '\nmanifest.phases: scope-check BLOCKED — correct Out: fixture (UC-33)\n'
+R="$WORK/arc-uc33"; ARC33="$WORK/arc-uc33-root"
+# Out: `pkg/` makes the stub's commits out of bounds, so scope-check is BLOCKED.
+fresh_repo_scope "$R" "" '- `pkg/`'
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC33" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] \
+    && ok "UC-33: task failed (scope-check BLOCKED)" \
+    || bad "UC-33 pre" "status=$(task_field "$R" .status)"
+_ARC33_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC33_DIR="$ARC33/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC33_ID"
+jq -e '.phases | map(select(.name == "scope-check")) | (length == 1) and (.[0].verdict == "BLOCKED") and (.[0].session_id == null)' \
+    "$_ARC33_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-33: scope-check BLOCKED with session_id null and started/ended timestamps" \
+    || bad "UC-33 blocked" \
+       "$(jq -c '[.phases[] | {name,verdict,session_id}]' "$_ARC33_DIR/manifest.json" 2>/dev/null)"
+jq -e '.phases | map(select(.name == "implement" or .name == "qa")) | all(.verdict == "PASS")' \
+    "$_ARC33_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-33: implement and qa have PASS (ran before scope-check)" \
+    || bad "UC-33 pre-phases" \
+       "$(jq -c '[.phases[] | select(.name=="implement" or .name=="qa") | {name,verdict}]' "$_ARC33_DIR/manifest.json" 2>/dev/null)"
+jq -e '.phases | map(select(.name == "verify")) | length == 0' \
+    "$_ARC33_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-33: verify absent after scope-check BLOCKED" \
+    || bad "UC-33 after" \
+       "$(jq -c '[.phases[] | .name]' "$_ARC33_DIR/manifest.json" 2>/dev/null)"
+unset _ARC33_ID _ARC33_DIR R
+
+# UC-34: verify FAIL → manifest.phases entry for verify has verdict FAIL; session_id null (GH-43-f)
+printf '\nmanifest.phases: verify FAIL (UC-34)\n'
+R="$WORK/arc-uc34"; ARC34="$WORK/arc-uc34-root"
+fresh_repo "$R"
+# Override verify to a command that always fails
+jq '.verify = ["false"]' "$R/.aisdlc/config.json" > "$R/.aisdlc/config.json.tmp" && \
+    mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC34" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "UC-34: task failed (verify FAIL)" || bad "UC-34 pre" "$(task_field "$R" .status)"
+_ARC34_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+_ARC34_DIR="$ARC34/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC34_ID"
+jq -e '.phases | map(select(.name == "verify" and .verdict == "FAIL")) | length == 1' \
+    "$_ARC34_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-34: verify entry has verdict FAIL" \
+    || bad "UC-34 fail" "$(jq -c '[.phases[] | {name,verdict}]' "$_ARC34_DIR/manifest.json" 2>/dev/null)"
+jq -e '.phases | map(select(.name == "verify")) | all(.session_id == null and .started != null and .ended != null)' \
+    "$_ARC34_DIR/manifest.json" >/dev/null 2>&1 \
+    && ok "UC-34: verify session_id null, started/ended non-null" \
+    || bad "UC-34 verify-fields" "$(jq -c '[.phases[] | select(.name=="verify")]' "$_ARC34_DIR/manifest.json" 2>/dev/null)"
+unset _ARC34_ID _ARC34_DIR R
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

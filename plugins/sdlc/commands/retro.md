@@ -5,19 +5,72 @@ allowed-tools: Bash, Read, Grep, Glob, SlashCommand
 
 # /sdlc:retro
 
-Reads `.aisdlc/tasks/` and produces a ranked defect report: every finished task classified,
-costs summed by class, pipeline metrics printed as numbers, then one optional issue filed.
-Never edits `task.json` or any harness file.
+Reads `.aisdlc/tasks/` — or, with `--archive`, the cross-repo archive (Phase 0) — and produces a
+ranked defect report: every finished task classified, costs summed by class, pipeline metrics
+printed as numbers, then one optional issue filed. Never edits `task.json` or any harness file.
 
-`$ARGUMENTS`: `[--since <YYYY-MM-DD>] [--repo <path>]`
+Arguments passed: `$ARGUMENTS`. Usage: `[--since <YYYY-MM-DD>] [--repo <slug>] [--archive]`.
+When the arguments passed contain `--archive`, start at Phase 0 and never read `.aisdlc/tasks/`.
 
 `--since` defaults to 30 days ago (`date -d '-30 days' +%Y-%m-%d` or equivalent).
-`--repo` defaults to the current directory. All paths below are relative to `<repo>`.
+`--repo` in live mode defaults to the current directory. In archive mode (`--archive`) there
+is no default repo: `--repo` accepts a `repo_slug` value (third column of `aisdlc archive ls`)
+and filters only when explicitly passed; omitting it returns tasks from all repos.
 
 Read `.claude/sdlc.md` for the **Tracker descriptor**. Execute tracker operations through
 the descriptor file; never substitute bare CLI calls.
 
 ---
+
+## Phase 0: Archive mode [runs only when `--archive` is present]
+
+**Skip entirely when `--archive` is absent.** When present, run before Phase 1 and replace it.
+
+1. **Resolve archive root:**
+   ```bash
+   root="${AISDLC_ARCHIVE:-${XDG_DATA_HOME:-$HOME/.local/share}/aisdlc/archive}"
+   ```
+
+2. **Check availability:** If `AISDLC_ARCHIVE=off` or the archive root directory does not exist,
+   print `archive unavailable or disabled` and stop (exit 0). The live `.aisdlc/tasks/` is never
+   read when `--archive` is present.
+
+3. **Read `<root>/index.jsonl`:** For each line, apply `--since` (compare `.archived_at`, not
+   `.updated`) and — only when `--repo` was explicitly passed — `--repo <slug>` (match
+   `.repo_slug`; the current-directory default does not apply in archive mode). Resolve `.path`
+   for each surviving entry; read `<path>/task.json` (not `manifest.json`) to build each working
+   task record — `task.json` carries `.error`, `.created`, `.updated`, `.cost_usd`, `.pr_url`,
+   `.attempts`, `.id`, `.status`. Read `<path>/manifest.json` alongside only for the `.repo`
+   field used by Phase 3 tracker lookup.
+
+4. **Deduplicate by `(repo_slug, id)`:** If multiple `index.jsonl` entries exist for the same
+   `.id` (retried tasks), retain the record with the highest `task.json .attempts`, breaking ties
+   by latest index `.archived_at`. The deduplicated cost comes from this single retained record;
+   the earlier-attempt record's cost is not counted separately.
+
+5. **Filter to `done` or `failed` status only.** Exclude `refused` and `cancelled` before
+   Phases 2–4. The surviving `<path>/task.json` files, one per deduplicated task, replace
+   `.aisdlc/tasks/*/task.json` as the input of every Phase 2–4 command, including the Phase 3
+   `jq` (drop its `.updated >= $since` clause; `--since` already applied to `.archived_at`
+   during filtering in step 3).
+
+6. **Resolve supplementary files from the archive path:** `<path>/spec/qa-report.md` for the
+   `gaps` class check (Phase 2), `<path>/spec/BLOCKED.md` for top causes (Phase 4).
+   `manifest.pr_url` is used for the PR URL in Phases 2 and 3 tracker lookups.
+
+7. **Tracker lookups in Phases 2 and 3:** for each task, read `<manifest.repo>/.claude/sdlc.md`
+   for the tracker descriptor, and execute operations with `<manifest.repo>` as working directory.
+   Never pass a filesystem path as the `{owner}/{repo}` tracker argument. Count a PR as merged
+   **only** on an explicit merged state, normalising case: `MERGED` from GitHub, `merged` from
+   the local provider (`local.md`); `CLOSED` alone is not merged. If `<manifest.repo>` is absent
+   on this machine, `<manifest.repo>/.claude/sdlc.md` is missing, or the tracker call fails:
+   classify the PR state as `unknown` and the task's review-loop count as `n/a` (print the
+   standard unavailability line; **never fall back to the current directory's descriptor**),
+   exclude from the merged denominator, and print `n/a` for cost-per-merged-PR when no merged
+   tasks have non-null `cost_usd`. Never count a `pr_url` as merged without a successful tracker
+   verification.
+
+After Phase 0, Phases 2, 3, 4, and 5 run on the working task set above. Phase 1 does not run.
 
 ## Phase 1: Discover finished runs [HARD STOP]
 
@@ -78,21 +131,6 @@ a Claude Pro/Max subscription have `cost_usd: null` — they carry no cost data 
 reports no per-token pricing on a subscription plan). Exclude null-cost tasks from cost
 averages; render their cost column as `n/a`.
 
-```bash
-jq -rn --arg since "<since-date>" '
-  [inputs | select((.status == "done" or .status == "failed") and .updated >= $since)
-          | {id, status, cost: .cost_usd,
-             wall: ((.updated | fromdateiso8601) - (.created | fromdateiso8601)),
-             attempts, error, pr_url}]
-  | group_by(.status)   # replace with your class labels in memory
-  | .[]
-  | {class: .[0].status, count: length,
-     cost:  (map(select(.cost != null) | .cost) | if length == 0 then null else add end),
-     wall:  (map(.wall) | add)}
-  | [.class, .count, (.cost // "n/a"), .wall] | @tsv
-' .aisdlc/tasks/*/task.json
-```
-
 Use the Phase 2 classification (not raw `.status`) for grouping. Sort rows by `cost_usd`
 descending. Print:
 
@@ -115,18 +153,19 @@ Harness file per class (from `harness-eval` § "Diagnosing a failure"):
 ## Phase 4: Metrics [UC-3]
 
 Compute from `task.json` files only. Read `BLOCKED.md` for the top-three blocked tasks to
-extract the first line of each (`head -1 specs/<ticket>/BLOCKED.md` in the task's repo).
+extract the first line of each (archive: `<path>/spec/BLOCKED.md` from Phase 0 step 6; live: `head -1 specs/<ticket>/BLOCKED.md` in the task's repo).
 
 ```
-$ per merged PR:    <sum cost_usd where status=done and cost_usd != null> / <count where status=done and pr_url non-null and cost_usd != null>
-                    (omit the metric and print "n/a — subscription billing" when all done tasks have null cost_usd)
+$ per merged PR:    <sum cost_usd over merged done tasks with non-null cost> ÷ their count
+                    archive: "merged" = Phase 0 step 7 result; live: done with pr_url non-null
+                    (print "n/a" when no merged tasks have non-null cost_usd)
 First-pass PASS %:  <clean count> / <total finished> × 100
 BLOCKED rate %:     <blocked count> / <total finished> × 100
   Top causes:       <first line of BLOCKED.md for the 3 highest-cost blocked tasks>
-Generated / merged: <total finished> / <done with pr_url non-null>
+Generated / merged: <total finished> / <merged count (archive: verified; live: pr_url non-null)>
 ```
 
-If the tracker is `local` or unreachable, print `n/a` for the merge denominator and the
+In live mode, if the tracker is `local` or unreachable, print `n/a` for the merge denominator and the
 review-loop count, and add one line:
 `merge ratio and review-loop count unavailable — tracker is local or unreachable`. (UC-4)
 
