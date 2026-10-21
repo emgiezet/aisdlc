@@ -251,6 +251,17 @@ Precedence for every setting: CLI flag > `.aisdlc/config.json` > environment var
 | pull label | `pull_label` | `AISDLC_PULL_LABEL` | `bug` | The approval label `aisdlc pull` selects on |
 | loop interval | `loop_interval` | `AISDLC_LOOP_INTERVAL` | `900` | Seconds between `aisdlc loop` ticks |
 | readiness min | `readiness_min` | — | `null` | Config-key only; absent or null disables add-time spec scoring. Set to an integer 0–100 to opt in; `aisdlc add` refuses specs that score below the threshold. Uses `model_roles.smol`. |
+| max open PRs | `max_open_prs` | `AISDLC_MAX_OPEN_PRS` | *(null — unlimited)* | Stop popping tasks when open PRs ≥ N; fail-closed on count error |
+| max run spend | `max_run_usd` | `AISDLC_MAX_RUN_USD` | *(null — unlimited)* | Stop popping tasks once run-wide API spend ≥ $X; all-subscription queues warn and ignore |
+
+### Run-admission caps
+
+`--max-open-prs N` and `--max-run-usd X` are checked, under one admission lock, before every
+task `aisdlc run` pops; in-flight tasks always finish. The PR count comes from the tracker
+(local `prs.jsonl`, or every page of GitHub's open pulls); a count that cannot be obtained
+stops the run with a non-zero exit. The spend cap sums only this run's numeric `cost_usd`
+deltas — subscription nulls are never counted as zero, and an all-subscription queue warns and
+ignores the cap. `aisdlc status` names the limit that stopped the last run.
 
 ### billing = subscription
 

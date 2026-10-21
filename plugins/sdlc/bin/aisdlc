@@ -2587,24 +2587,80 @@ queued_runtimes() {
     done < "$(state_dir "$repo")/queue.jsonl" | sort -u
 }
 
+# Count open PRs labelled <label> for the run-admission cap.
+# Prints the integer count on success. Prints an error detail + returns 1 when the count
+# cannot be obtained (provider failure, invalid local state, unsupported tracker).
+count_open_prs() {
+    local repo="$1" label="$2" kind; kind="$(tracker_kind "$repo")"
+    case "$kind" in
+        local)
+            local f="$repo/.aisdlc/tracker/prs.jsonl"
+            [ -f "$f" ] || { printf '0'; return 0; }
+            jq -rs --arg l "$label" \
+                '[.[] | select(.state=="open" and ((.labels//[]) | index($l) != null))] | length' \
+                "$f" 2>/dev/null || { printf 'cannot parse prs.jsonl'; return 1; }
+            ;;
+        github)
+            local slug prs; slug="$(gh_repo_slug "$repo")"
+            prs="$(gh api "repos/${slug}/pulls?state=open&per_page=100" --paginate 2>/dev/null)" \
+                || { printf 'gh api failed'; return 1; }
+            printf '%s' "$prs" | jq -rs --arg l "$label" \
+                '[.[] | .[] | select(.labels | map(.name) | index($l) != null)] | length' \
+                2>/dev/null || { printf 'cannot parse GitHub pulls'; return 1; }
+            ;;
+        *) printf 'unsupported tracker: %s' "$kind"; return 1 ;;
+    esac
+}
+
 cmd_run() {
-    local repo="." workers="" once=0
+    local repo="." workers="" once=0 max_open_prs="" max_run_usd=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --repo)    repo="$2"; shift 2 ;;
-            --workers) workers="$2"; shift 2 ;;
-            --once)    once=1; workers=1; shift ;;
-            -*)        die "unknown flag for run: $1" ;;
-            *)         die "run takes no positional arguments" ;;
+            --repo)         repo="$2"; shift 2 ;;
+            --workers)      workers="$2"; shift 2 ;;
+            --once)         once=1; workers=1; shift ;;
+            --max-open-prs) max_open_prs="$2"; shift 2 ;;
+            --max-run-usd)  max_run_usd="$2";  shift 2 ;;
+            -*)             die "unknown flag for run: $1" ;;
+            *)              die "run takes no positional arguments" ;;
         esac
     done
     repo="$(resolve_repo "$repo")"
     init_state "$repo"
+    # Resolve caps: CLI flag > config > env > builtin "" (disabled).
+    max_open_prs="$(resolve_default "$repo" max_open_prs "$max_open_prs" "${AISDLC_MAX_OPEN_PRS:-}" "")"
+    max_run_usd="$(resolve_default  "$repo" max_run_usd  "$max_run_usd"  "${AISDLC_MAX_RUN_USD:-}"  "")"
+    [ "$max_open_prs" = "null" ] && max_open_prs=""
+    [ "$max_run_usd"  = "null" ] && max_run_usd=""
+    # UC-8: non-numeric cap value → exit non-zero before any task is popped.
+    if [ -n "$max_open_prs" ]; then
+        case "$max_open_prs" in
+            *[!0-9]*) die "--max-open-prs must be a non-negative integer (got '${max_open_prs}')" ;;
+        esac
+    fi
+    if [ -n "$max_run_usd" ]; then
+        printf '%s' "$max_run_usd" | grep -qE '^[0-9]+(\.[0-9]+)?$' \
+            || die "--max-run-usd must be a number (got '${max_run_usd}')"
+    fi
     [ "$once" -eq 1 ] || workers="$(resolve_default "$repo" workers "$workers" "${AISDLC_WORKERS:-}" "$BUILTIN_WORKERS")"
 
     local pending
     pending="$(wc -l < "$(state_dir "$repo")/queue.jsonl" | tr -d ' ')"
     [ "${pending:-0}" -gt 0 ] || { say "queue is empty"; return 0; }
+
+    # UC-5: all-subscription queues warn and ignore the spend cap.
+    if [ -n "$max_run_usd" ]; then
+        local _asub=1 _qi _qb
+        while read -r _qi; do
+            [ -n "$_qi" ] || continue
+            _qb="$(task_get "$repo" .billing "$_qi" 2>/dev/null)"
+            [ "$_qb" = "subscription" ] || { _asub=0; break; }
+        done < "$(state_dir "$repo")/queue.jsonl"
+        if [ "$_asub" -eq 1 ]; then
+            say "aisdlc: warning: all queued tasks use subscription billing — spend cap cannot be enforced; --max-run-usd ignored"
+            max_run_usd=""
+        fi
+    fi
 
     # Every runtime the queued tasks were added with must be installed, checked before any
     # task is popped: a missing CLI found mid-queue fails a task that was never attempted.
@@ -2613,16 +2669,91 @@ cmd_run() {
 
     say "aisdlc $VERSION — $pending queued, $workers worker(s)$([ "$once" -eq 1 ] && echo ', single task')"
 
+    # Shared files: run-wide spend accumulator + stop-reason record + admission lock.
+    local _rsp _rsf _lbl _adm_lock
+    _rsp="$(state_dir "$repo")/.run-spend.tmp"
+    _rsf="$(state_dir "$repo")/last-run.json"
+    _adm_lock="$(state_dir "$repo")/admission.lock"
+    _lbl="$(resolve_default "$repo" label "" "${AISDLC_LABEL:-}" "$BUILTIN_LABEL")"
+    printf '0\n' > "$_rsp"; : > "${_rsp}.lock"; : > "$_adm_lock"
+    # Clear any stop decision from a prior run so an uncapped run does not inherit it.
+    rm -f "$_rsf"
+
     local -a pids=()
     trap 'say "interrupted — finishing current phases"; kill -TERM "${pids[@]}" 2>/dev/null; wait; exit 130' INT TERM
 
     for _ in $(seq 1 "$workers"); do
         (
             while :; do
-                local id
+                # Admission lock: serializes stop-check, cap-checks, and pop atomically.
+                # Held from the first gate check through pop_task; released BEFORE execute_task
+                # so other workers can proceed to their own admissions while this one executes.
+                local _fd
+                exec {_fd}>"$_adm_lock"
+                flock "$_fd"
+
+                # 1. Propagate any stop decision written by another worker this run.
+                if [ -f "$_rsf" ] && jq -e '.stop_reason' "$_rsf" >/dev/null 2>&1; then
+                    exec {_fd}>&-; break
+                fi
+
+                # 2. Cap checks — fail-closed; write stop record then release.
+                if [ -n "$max_open_prs" ]; then
+                    local _pc
+                    if ! _pc="$(count_open_prs "$repo" "$_lbl")"; then
+                        say "aisdlc: stopped: PR count unavailable — ${_pc}"
+                        jq -cn --arg r "count-unavailable" --arg v "$_pc" \
+                            '{stop_reason:$r,stop_value:$v,accumulated_spend:null}' > "$_rsf"
+                        exec {_fd}>&-; exit 2
+                    fi
+                    if [ "$_pc" -ge "$max_open_prs" ]; then
+                        say "aisdlc: stopped: ${_pc} open PR(s) — --max-open-prs ${max_open_prs} reached"
+                        jq -cn --arg r "max-open-prs" --arg v "$max_open_prs" \
+                            '{stop_reason:$r,stop_value:$v,accumulated_spend:null}' > "$_rsf"
+                        exec {_fd}>&-; break
+                    fi
+                fi
+                if [ -n "$max_run_usd" ]; then
+                    local _acc; _acc="$(cat "$_rsp" 2>/dev/null)"; _acc="${_acc:-0}"
+                    if jq -n --argjson a "$_acc" --argjson c "$max_run_usd" '$a >= $c' 2>/dev/null \
+                            | grep -q true; then
+                        say "aisdlc: stopped: run spend \$${_acc} — --max-run-usd ${max_run_usd} reached"
+                        jq -cn --arg r "max-run-usd" --arg v "$max_run_usd" --arg s "$_acc" \
+                            '{stop_reason:$r,stop_value:$v,accumulated_spend:$s}' > "$_rsf"
+                        exec {_fd}>&-; break
+                    fi
+                fi
+
+                # 3. Pop the next task (still holding admission lock for atomicity).
+                local id _cost_pre
                 id="$(pop_task "$repo")"
+                exec {_fd}>&-   # release BEFORE execute — do not block sibling admissions
                 [ -n "$id" ] || break
+
+                # Snapshot cost before execution; delta = this-run cost only (handles retries).
+                if [ -n "$max_run_usd" ]; then
+                    _cost_pre="$(task_get "$repo" .cost_usd "$id" 2>/dev/null)"
+                    [ "$_cost_pre" = "null" ] && _cost_pre="0"
+                    [ -z "$_cost_pre" ]        && _cost_pre="0"
+                fi
+
                 execute_task "$repo" "$id" || true
+
+                # Accumulate this run's cost delta; filter as positional arg prevents shell
+                # expansion of $a/$b; atomic mv prevents truncation reads across workers.
+                if [ -n "$max_run_usd" ]; then
+                    local _cost_post; _cost_post="$(task_get "$repo" .cost_usd "$id")"
+                    if [ -n "$_cost_post" ] && [ "$_cost_post" != "null" ]; then
+                        local _delta
+                        _delta="$(jq -n --argjson a "$_cost_post" --argjson b "${_cost_pre:-0}" \
+                            '$a - $b' 2>/dev/null || echo 0)"
+                        flock "${_rsp}.lock" bash -c '
+                            p=$(cat "$1" 2>/dev/null); p=${p:-0}
+                            jq -rn --argjson a "$p" --argjson b "$2" "$3" > "${1}.new" \
+                                && mv "${1}.new" "$1"
+                        ' _ "$_rsp" "$_delta" '$a+$b'
+                    fi
+                fi
                 [ "$once" -eq 1 ] && break
             done
         ) &
@@ -2631,7 +2762,13 @@ cmd_run() {
     wait
 
     say ""
+    rm -f "$_rsp" "${_rsp}.lock"
+    local _stop_rc=0
+    if [ -f "$_rsf" ]; then
+        [ "$(jq -r '.stop_reason // empty' "$_rsf" 2>/dev/null)" = "count-unavailable" ] && _stop_rc=1
+    fi
     cmd_status --repo "$repo"
+    return "$_stop_rc"
 }
 
 # --------------------------------------------------------------------------- #
@@ -2663,7 +2800,8 @@ cmd_status() {
     while read -r f; do
         [ -n "$f" ] || continue
         # Phases as initials (i·q·s) so the column stays aligned on a narrow terminal.
-        jq -r '[.id, .status, (.phases | map(.[0:1]) | join("·")), ((.cost_usd//0)|tostring),
+        jq -r '[.id, .status, (.phases | map(.[0:1]) | join("·")),
+                (if .cost_usd == null then "n/a" else (.cost_usd|tostring) end),
                 ((.readiness_score // "-") | tostring),
                 (.pr_url // .error // "")] | @tsv' "$f" 2>/dev/null \
         | while IFS=$'\t' read -r id st ph cost ready note; do
@@ -2672,9 +2810,24 @@ cmd_status() {
     done < <(each_task "$repo")
 
     local total
-    total="$(each_task "$repo" | xargs -r jq -s \
-        '(map(.cost_usd // 0) | add // 0) * 100 | round / 100' 2>/dev/null || echo 0)"
+    total="$(each_task "$repo" | xargs -r jq -rs \
+        '[.[] | .cost_usd | select(. != null)] as $api |
+         if ($api | length) == 0 then "n/a"
+         else (($api | add // 0) * 100 | round / 100 | tostring) end' \
+        2>/dev/null || echo 0)"
     printf '\n%s still queued · total spend $%s\n' "${queued:-0}" "$total"
+    local _rsf; _rsf="$(state_dir "$repo")/last-run.json"
+    if [ -f "$_rsf" ]; then
+        local _sr _sv _sp
+        _sr="$(jq -r '.stop_reason // empty' "$_rsf" 2>/dev/null)"
+        _sv="$(jq -r '.stop_value  // empty' "$_rsf" 2>/dev/null)"
+        _sp="$(jq -r '.accumulated_spend // empty' "$_rsf" 2>/dev/null)"
+        case "$_sr" in
+            max-open-prs)     say "last run stopped: open PRs ≥ --max-open-prs ${_sv}" ;;
+            max-run-usd)      say "last run stopped: spend \$${_sp} ≥ --max-run-usd ${_sv}" ;;
+            count-unavailable) say "last run stopped: PR count unavailable — ${_sv}" ;;
+        esac
+    fi
 }
 
 cmd_inbox() {
@@ -2945,6 +3098,8 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
   aisdlc run [flags]            execute the queue
       --workers <n>     concurrent tasks (default: $BUILTIN_WORKERS)
       --once            run a single task, then exit
+      --max-open-prs <n> stop popping when open PRs with the run label ≥ N (null = unlimited)
+      --max-run-usd <x>  stop popping when run-wide API spend ≥ x USD; all-subscription queues warn and ignore
 
   aisdlc status                 one line per task, with spend
   aisdlc inbox                  open PRs with #, title, Verdict, pipeline label, url
@@ -3001,7 +3156,8 @@ Optional: add readiness_min to score spec quality before queuing:
 
 Environment overrides: AISDLC_MODEL, AISDLC_BUDGET, AISDLC_BASE, AISDLC_WORKERS,
 AISDLC_LABEL, AISDLC_SPECS_DIR, AISDLC_PULL_LABEL, AISDLC_LOOP_INTERVAL (config keys
-pull_label and loop_interval).
+pull_label and loop_interval), AISDLC_MAX_OPEN_PRS, AISDLC_MAX_RUN_USD (config keys
+max_open_prs and max_run_usd; absent or null = disabled).
 
 .aisdlc/settings.json is the permission set each headless phase runs under: editing files
 and using git are allowed because that is the job, force pushes and secrets are denied,

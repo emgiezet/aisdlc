@@ -1975,5 +1975,183 @@ AISDLC_STUB_READINESS='{"score":82,"gaps":[]}' \
 [ "$(task_field "$R" .readiness_score)" = "82" ] \
     && ok "omp: readiness_score:82" || bad "omp score" "$(task_field "$R" .readiness_score)"
 
+
+# --------------------------------------------------------------------------- #
+printf '\nGH-38: max-open-prs and max-run-usd run-admission caps\n'
+
+# UC-1 + UC-4a: PR cap (count=cap=2) → no task popped, exit 0; status names the limit
+R="$WORK/gh38-uc1"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker"
+printf '{"state":"open","labels":["ai-sdlc"],"number":1}\n{"state":"open","labels":["ai-sdlc"],"number":2}\n' \
+    > "$R/.aisdlc/tracker/prs.jsonl"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+out38a="$("$AISDLC" run --repo "$R" --max-open-prs 2 --workers 1 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "queued" ] && ok "GH-38 UC-1: no task popped when open PRs=cap=2" \
+    || bad "GH-38 UC-1" "status=$(task_field "$R" .status)"
+printf '%s\n' "$out38a" | grep -q 'max-open-prs' && ok "GH-38 UC-4a: status names max-open-prs cap" \
+    || bad "GH-38 UC-4a" "cap not mentioned in output"
+
+# UC-1b: count unavailable (malformed prs.jsonl) → exit non-zero
+R="$WORK/gh38-uc1b"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker"
+printf 'not-json\n' > "$R/.aisdlc/tracker/prs.jsonl"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --max-open-prs 2 --workers 1 >/dev/null 2>&1; _rc38b=$?
+[ "$_rc38b" -ne 0 ] && ok "GH-38 UC-1b: unavailable PR count exits non-zero" \
+    || bad "GH-38 UC-1b" "expected non-zero exit"
+
+# UC-2 + UC-4b: spend cap stops after 2 of 3 tasks (each --no-pr costs ~0.10; cap=0.15)
+R="$WORK/gh38-uc2"; fresh_repo "$R"
+for _n in 2 3; do cp -R "$R/specs/SBX-1" "$R/specs/SBX-$_n"; sed -i "s/SBX-1/SBX-$_n/" "$R/specs/SBX-$_n/spec.md"; done
+git -C "$R" add -A >/dev/null && git -C "$R" commit -q -m "chore: uc2 specs" && git -C "$R" update-ref refs/remotes/origin/master HEAD
+for _n in 1 2 3; do "$AISDLC" add "SBX-$_n" --repo "$R" --no-pr >/dev/null 2>&1; done
+out38b="$("$AISDLC" run --repo "$R" --max-run-usd 0.15 --workers 1 2>/dev/null)"
+_done38b="$(jq -sr '[.[] | select(.status=="done")] | length' "$R"/.aisdlc/tasks/*/task.json 2>/dev/null || echo 0)"
+[ "$_done38b" -eq 2 ] && ok "GH-38 UC-2: exactly 2 tasks done before spend cap" \
+    || bad "GH-38 UC-2" "done=$_done38b (expected 2)"
+printf '%s\n' "$out38b" | grep -q 'max-run-usd' && ok "GH-38 UC-4b: status names max-run-usd cap with spend" \
+    || bad "GH-38 UC-4b" "cap not mentioned in output"
+# Regression: accumulator must produce non-zero accumulated spend (bug: "$a+$b" shell-expanded to "+")
+_sp38b="$(jq -r '.accumulated_spend // empty' "$WORK/gh38-uc2/.aisdlc/last-run.json" 2>/dev/null)"
+jq -n --argjson v "${_sp38b:-0}" '$v > 0' 2>/dev/null | grep -q true \
+    && ok "GH-38 reg-accum: spend accumulator > \$0 (jq arithmetic regression)" \
+    || bad "GH-38 reg-accum" "accumulated_spend=${_sp38b:-0} (expected > 0; jq arithmetic bug?)"
+
+# Regression: uncapped run after count-unavailable must exit 0 and show no stale stop message.
+R_REG="$WORK/gh38-reg-stale"; fresh_repo "$R_REG"
+mkdir -p "$R_REG/.aisdlc/tracker"
+printf 'not-json\n' > "$R_REG/.aisdlc/tracker/prs.jsonl"
+"$AISDLC" add SBX-1 --repo "$R_REG" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R_REG" --max-open-prs 1 --workers 1 >/dev/null 2>&1 || true
+# Fix prs.jsonl so count succeeds; task is still queued (cap fired before pop).
+printf '{"state":"open","labels":["ai-sdlc"],"number":1}\n' \
+    > "$R_REG/.aisdlc/tracker/prs.jsonl"
+out_reg="$("$AISDLC" run --repo "$R_REG" --workers 1 2>/dev/null)"; rc_reg=$?
+[ "$rc_reg" -eq 0 ] && ok "GH-38 reg-stale: uncapped run after count-unavailable exits 0" \
+    || bad "GH-38 reg-stale exit" "exit=$rc_reg (expected 0)"
+printf '%s\n' "$out_reg" | grep -q 'count-unavailable' \
+    && bad "GH-38 reg-stale msg" "stale 'count-unavailable' message from prior run" \
+    || ok "GH-38 reg-stale: no stale stop-reason from prior run"
+
+# UC-3: null config defaults (as init/update writes) must not enable any cap; queue drains.
+# Also covers config>env precedence: config key 2 overrides env 3 — cap fires at count=2.
+R="$WORK/gh38-uc3"; fresh_repo "$R"
+jq '. + {"max_open_prs":null,"max_run_usd":null}' "$R/.aisdlc/config.json" \
+    > "$R/.aisdlc/config.json.tmp" && mv "$R/.aisdlc/config.json.tmp" "$R/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+out38c="$("$AISDLC" run --repo "$R" --workers 1 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "done" ] && ok "GH-38 UC-3: null config defaults → queue drains fully" \
+    || bad "GH-38 UC-3" "status=$(task_field "$R" .status)"
+printf '%s\n' "$out38c" | grep -qE 'stopped|max-open-prs|max-run-usd' \
+    && bad "GH-38 UC-3 nocap" "cap message with null defaults" \
+    || ok "GH-38 UC-3: no cap message or PR-count lookup with null defaults"
+R3b="$WORK/gh38-uc3b"; fresh_repo "$R3b"
+mkdir -p "$R3b/.aisdlc/tracker"
+printf '{"state":"open","labels":["ai-sdlc"],"number":1}\n{"state":"open","labels":["ai-sdlc"],"number":2}\n' \
+    > "$R3b/.aisdlc/tracker/prs.jsonl"
+jq '. + {"max_open_prs":2}' "$R3b/.aisdlc/config.json" \
+    > "$R3b/.aisdlc/config.json.tmp" && mv "$R3b/.aisdlc/config.json.tmp" "$R3b/.aisdlc/config.json"
+"$AISDLC" add SBX-1 --repo "$R3b" --no-pr >/dev/null 2>&1
+AISDLC_MAX_OPEN_PRS=3 "$AISDLC" run --repo "$R3b" --workers 1 >/dev/null 2>&1
+[ "$(task_field "$R3b" .status)" = "queued" ] \
+    && ok "GH-38 UC-3b: config key(2) overrides env(3) — cap fires" \
+    || bad "GH-38 UC-3b" "status=$(task_field "$R3b" .status)"
+
+# UC-5: all-subscription billing → warns and ignores spend cap; null cost not shown as $0
+R="$WORK/gh38-uc5"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr --billing subscription >/dev/null 2>&1
+out38d="$("$AISDLC" run --repo "$R" --max-run-usd 0.01 --workers 1 2>/dev/null)"
+[ "$(task_field "$R" .status)" = "done" ] && ok "GH-38 UC-5: subscription task completes despite spend cap" \
+    || bad "GH-38 UC-5" "status=$(task_field "$R" .status)"
+printf '%s\n' "$out38d" | grep -qi 'subscription' && ok "GH-38 UC-5: warns that spend cap is ignored" \
+    || bad "GH-38 UC-5 warn" "no subscription warning in output"
+printf '%s\n' "$out38d" | grep -q 'total spend \$n/a' \
+    && ok "GH-38 UC-5: subscription null cost shown as n/a (not coerced to \$0)" \
+    || bad "GH-38 UC-5 null" "expected 'total spend \$n/a' in: $(printf '%s\n' "$out38d" | tail -3)"
+
+# UC-6: env cap over the GitHub tracker; the two labelled PRs sit on different pages.
+R="$WORK/gh38-uc6"; fresh_repo "$R"; mkdir -p "$R/.claude"
+git -C "$R" remote add origin git@github.com:acme/widget.git
+printf -- '- **Tracker descriptor:** `.claude/trackers/github.md`\n' > "$R/.claude/sdlc.md"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+ln -sf "$HARNESS_DIR/stub-gh" "$STUB_DIR/gh"
+export STUB_GH_STATE="$WORK/gh38-gh-state.json" STUB_GH_PULLS="$WORK/gh38-pulls.json"
+{ jq -c '[range(100) | {number: ., labels: (if . == 0 then [{name:"ai-sdlc"}] else [] end)}]' -n
+  printf '[{"number":100,"labels":[{"name":"ai-sdlc"}]}]\n'; } > "$STUB_GH_PULLS"
+out="$(AISDLC_MAX_OPEN_PRS=2 "$AISDLC" run --repo "$R" --workers 1 2>&1)"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(task_field "$R" .status)" = "queued" ] \
+    && printf '%s' "$out" | grep -q '2 open PR(s) — --max-open-prs 2 reached' \
+    && ok "GH-38 UC-6: env cap counts labelled PRs across GitHub pages; nothing popped" \
+    || bad "GH-38 UC-6" "rc=$rc status=$(task_field "$R" .status): $out"
+out="$(STUB_GH_PULLS_FAIL=1 AISDLC_MAX_OPEN_PRS=2 "$AISDLC" run --repo "$R" --workers 1 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && [ "$(task_field "$R" .status)" = "queued" ] \
+    && printf '%s' "$out" | grep -q 'PR count unavailable' \
+    && ok "GH-38 UC-1: failed GitHub count stops non-zero without popping" \
+    || bad "GH-38 UC-6 fail-closed" "rc=$rc status=$(task_field "$R" .status): $out"
+unset STUB_GH_PULLS STUB_GH_STATE; rm -f "$STUB_DIR/gh"
+
+# UC-7: workers=2, max-open-prs=1. Both tasks are in flight when the PR count reaches the cap;
+# they complete normally and task 3 is refused at the next admission check.
+R="$WORK/gh38-uc7"; fresh_repo "$R"
+mkdir -p "$R/.aisdlc/tracker"
+for _n in 2 3; do cp -R "$R/specs/SBX-1" "$R/specs/SBX-$_n"; sed -i "s/SBX-1/SBX-$_n/" "$R/specs/SBX-$_n/spec.md"; done
+git -C "$R" add -A >/dev/null && git -C "$R" commit -q -m "chore: uc7" && git -C "$R" update-ref refs/remotes/origin/master HEAD
+for _n in 1 2 3; do "$AISDLC" add "SBX-$_n" --repo "$R" >/dev/null 2>&1; done
+# Barrier: each implement call drops a ready file and waits for go; the controller waits for
+# both, writes the labelled PR, then releases. Every wait has a 30 s deadline, never a hang.
+_uc7_rdy="$WORK/gh38-uc7-rdy"; _uc7_go="$WORK/gh38-uc7-go"; mkdir -p "$_uc7_rdy"
+_uc7_bin="$WORK/gh38-uc7-bin"; mkdir -p "$_uc7_bin"
+cat > "$_uc7_bin/claude" <<UC7WRAP
+#!/usr/bin/env bash
+_args=("\$@"); _p=""
+while [ \$# -gt 0 ]; do case "\$1" in -p) _p="\$2"; shift 2 ;; *) shift ;; esac; done
+case "\$_p" in *implement*)
+    : > "$_uc7_rdy/\$\$"
+    for _ in \$(seq 300); do [ -e "$_uc7_go" ] && break; sleep 0.1; done ;;
+esac
+exec "$HARNESS_DIR/stub-claude" "\${_args[@]}"
+UC7WRAP
+chmod +x "$_uc7_bin/claude"
+{ for _ in $(seq 300); do [ "$(ls "$_uc7_rdy" | wc -l)" -ge 2 ] && break; sleep 0.1; done
+  printf '{"state":"open","labels":["ai-sdlc"],"number":77}\n' >> "$R/.aisdlc/tracker/prs.jsonl"
+  : > "$_uc7_go"; } &
+_uc7_ctrl=$!
+PATH="$_uc7_bin:$PATH" "$AISDLC" run --repo "$R" --workers 2 --max-open-prs 1 >/dev/null 2>&1
+wait "$_uc7_ctrl"
+_rdy7="$(ls "$_uc7_rdy" | wc -l | tr -d ' ')"
+[ "$_rdy7" -eq 2 ] && ok "GH-38 UC-7: both tasks were in flight when the PR count reached the cap" \
+    || bad "GH-38 UC-7 barrier" "ready=$_rdy7 (expected 2)"
+_done7="$(jq -sr '[.[] | select(.status=="done")] | length' "$R"/.aisdlc/tasks/*/task.json 2>/dev/null || echo 0)"
+_q7="$(wc -l < "$R/.aisdlc/queue.jsonl" | tr -d ' ')"
+[ "$_done7" -eq 2 ] && ok "GH-38 UC-7: both in-flight tasks completed (done=$_done7)" \
+    || bad "GH-38 UC-7 done" "done=$_done7 (expected 2)"
+[ "$_q7" -eq 1 ] && ok "GH-38 UC-7: exactly 1 task queued — cap blocked task 3 after in-flight ship" \
+    || bad "GH-38 UC-7 cap" "queued=$_q7 (expected 1)"
+
+# UC-8: non-numeric max-open-prs → exit non-zero before any task is popped
+R="$WORK/gh38-uc8"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R" --max-open-prs abc --workers 1 >/dev/null 2>&1; _rc38h=$?
+[ "$_rc38h" -ne 0 ] && ok "GH-38 UC-8: non-numeric max-open-prs exits non-zero" \
+    || bad "GH-38 UC-8" "expected non-zero exit for 'abc'"
+[ "$(task_field "$R" .status)" = "queued" ] && ok "GH-38 UC-8: no task popped on invalid cap value" \
+    || bad "GH-38 UC-8 nopop" "status=$(task_field "$R" .status)"
+
+# Retry cost delta: retried task accumulates only this-run delta, not prior attempt total.
+# cap=0.18; retry's prior cost_usd=0.10; delta=0.10 → accum=0.10 < 0.18 → SBX-2 admitted.
+# Bug (no delta): accumulates full 0.20 → cap fires → SBX-2 never runs → only 1 done.
+R_RD="$WORK/gh38-retry-delta"; fresh_repo "$R_RD"
+cp -R "$R_RD/specs/SBX-1" "$R_RD/specs/SBX-2"; sed -i "s/SBX-1/SBX-2/" "$R_RD/specs/SBX-2/spec.md"
+git -C "$R_RD" add -A >/dev/null && git -C "$R_RD" commit -q -m "chore: rd" \
+    && git -C "$R_RD" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R_RD" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R_RD" --workers 1 >/dev/null 2>&1    # task done; cost_usd=0.10
+_rd_id="$(task_field "$R_RD" .id)"
+"$AISDLC" retry "$_rd_id" --repo "$R_RD" >/dev/null 2>&1   # re-queue; cost_usd NOT reset
+"$AISDLC" add SBX-2 --repo "$R_RD" --no-pr >/dev/null 2>&1
+"$AISDLC" run --repo "$R_RD" --max-run-usd 0.18 --workers 1 >/dev/null 2>&1
+_rd_done="$(jq -sr '[.[] | select(.status=="done")] | length' "$R_RD"/.aisdlc/tasks/*/task.json 2>/dev/null || echo 0)"
+[ "$_rd_done" -eq 2 ] && ok "GH-38 retry-delta: both done (delta cost only; regression: cumulative would cap at 1)" \
+    || bad "GH-38 retry-delta" "done=$_rd_done (expected 2; bug accumulates full prior cost)"
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
