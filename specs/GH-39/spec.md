@@ -32,6 +32,8 @@ In:
 - `plugins/sdlc/templates/sdlc.md` — add the literal bullet ``- **review-adversarial:** `false` ``
   with a short explanation; `true` enables the second pass. Use this one spelling throughout.
 - `README.md` — update the `/sdlc:review` row: `[--autofix] [--adversarial]`.
+- `plugins/sdlc/templates/trackers/local.md` — compare PR diff and mergeability against
+  stored `baseRefName`, not the currently checked-out PR head.
 
 Out:
 - Running the two passes on different models.
@@ -41,7 +43,7 @@ Out:
 - Prescribing concurrent vs. sequential dispatch (implementation choice; issue requires independence
   only — the adversarial pass must not see the first pass's findings).
 
-Change budget: 75 added lines, 5 files, 2 modules
+Change budget: 75 added lines, 6 files, 2 modules
 
 ## Context
 
@@ -68,6 +70,7 @@ Change budget: 75 added lines, 5 files, 2 modules
 | UC-6 | reviewer | runs `/sdlc:review <n>` without `--adversarial` and without profile key set | Phase 9 report has no `Pass N:` lines; format is identical to a pre-feature run on the same PR | e2e |
 | UC-7 | repo maintainer | sets the literal profile bullet ``- **review-adversarial:** `true` ``, then runs `/sdlc:review <n>` without flags | behaves like UC-1/UC-2; Phase 9 includes per-pass counts | e2e |
 | UC-8 | reviewer | runs `/sdlc:review <n> --adversarial` on a spec-only PR (all changed files under `specs/`) | spec-only review path is taken; adversarial pass is skipped; Phase 9 format remains unchanged | e2e |
+| UC-9 | reviewer | reads a local PR while its head is checked out; repeat with a conflicting base change and a missing base ref | diff includes the changes against stored `baseRefName`; real base/head conflict reports `CONFLICTING`; unavailable base fails rather than reporting mergeable | instruction-consumer smoke |
 
 ## Non-functional
 

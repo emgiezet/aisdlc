@@ -146,3 +146,10 @@ the following corrected limits are now reflected in the approved specs:
 | GH-43-d | 500 | 3 | 3 |
 | GH-43-f | 300 | 3 | 3 |
 
+## Local review prerequisite approval
+
+Live descriptor probes returned an empty diff at the PR head and `MERGEABLE` for a
+real base/head add/add conflict. The user selected “Napraw w ramach #39”: include
+`templates/trackers/local.md`, keeping the 75-line/2-module limit and widening the
+file limit from 5 to 6. GH-39 now includes the stored-base comparison regression.
+
