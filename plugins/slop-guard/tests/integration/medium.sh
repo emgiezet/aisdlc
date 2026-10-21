@@ -202,6 +202,23 @@ fi
 
 it_project "opengrep-bad"
 _it_med_og_bad="$_IT_CUR_PROJ"
+_og_ts_setup() {
+    cat > "$1/tsconfig.json" <<'OGTS'
+{ "compilerOptions": { "strict": true, "noEmit": true, "lib": ["ES2020", "DOM"] },
+  "include": ["*.ts"] }
+OGTS
+    cat > "$1/schema.ts" <<'OGSCHEMA'
+export interface Account { id: string }
+export interface TokenEnvelope { token: string }
+export const accountSchema = {
+    parse: (input: unknown): Account => ({ id: String(input) }),
+};
+export const tokenSchema = {
+    parse: (input: unknown): TokenEnvelope => ({ token: String(input) }),
+};
+OGSCHEMA
+}
+_og_ts_setup "${_it_med_og_bad}"
 if it_skip_unless_tool opengrep; then
     cp "${_IT_FIXTURES}/ts/bad/AP-TS-MAINT-001.ts" "${_it_med_og_bad}/cast.ts"
 
@@ -221,6 +238,7 @@ if it_skip_unless_tool opengrep; then
     it_project "opengrep-good"
     _it_med_og_good="$_IT_CUR_PROJ"
     it_skip_unless_tool opengrep  # re-symlinks; never skips here
+    _og_ts_setup "${_it_med_og_good}"
     cp "${_IT_FIXTURES}/ts/good/AP-TS-MAINT-001.ts" "${_it_med_og_good}/cast.ts"
 
     _it_med_og_good_out="$(CLAUDE_PLUGIN_OPTION_CONFIG_SOURCE=full \

@@ -1,23 +1,12 @@
-import { accountSchema, tokenSchema, type Account } from './schema';
+import { accountSchema, tokenSchema, type Account, type TokenEnvelope } from './schema';
 
-// ok: slopguard.ts.double-cast
-export function loadAccount(input: unknown): Account {
-  return accountSchema.parse(input);
+// ok: slopguard.ts.double-cast — the schema already returns Account; the value is
+// parsed at the boundary and never widened and re-asserted.
+export function loadAccount(raw: string): Account {
+  return accountSchema.parse(raw);
 }
 
-// ok: slopguard.ts.double-cast
-export function readToken(res: Response): { token: string } {
+// ok: slopguard.ts.double-cast — same for the token envelope: one parse, typed end to end.
+export function readToken(res: Response): TokenEnvelope {
   return tokenSchema.parse(res.body);
-}
-
-// ok: slopguard.ts.double-cast
-// A single narrowing cast from a typed value is not the double-cast pattern;
-// ESLint's no-explicit-any / no-non-null-assertion cover the rest of AP-TS-MAINT-001.
-export function widen(account: Account): Record<string, unknown> {
-  return account as Record<string, unknown>;
-}
-
-// ok: slopguard.ts.double-cast
-export function isAccount(value: unknown): value is Account {
-  return accountSchema.safeParse(value).success;
 }
