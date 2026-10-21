@@ -1,18 +1,18 @@
-# AP-TS-PERF-005 — O(n²) reduce accumulator spreading
+# AP-TS-PERF-005 — O(n²) reduce accumulator copying
 
 **Category:** performance | **Severity:** warn
 **Frameworks:** [plain]
 
 ## Summary
-Spreading the accumulator on every reduce iteration creates a new object at each step, making the whole operation O(n²) in both time and memory allocations. The accumulated result from all previous iterations is copied on each call. Mutate the accumulator in place instead and return it; total allocation becomes O(1) objects rather than O(n).
+Copying the accumulator on every reduce iteration (`Object.assign({}, acc, …)`, `Array.from(acc)`, `acc.concat(…)`, `acc.slice()` and similar) copies every earlier result at each step, making the whole operation O(n²). Spread copies (`{ ...acc }`) have the same cost; the pinned ESLint detector reports the non-spread forms only. Mutate a locally owned accumulator and return it.
 
 ## Do Not Write
 ```typescript
-const index = items.reduce((acc, x) => ({ ...acc, [x.id]: x }), {} as Record<string, Item>);
+const index = items.reduce<Record<string, Item>>((acc, x) => Object.assign({}, acc, { [x.id]: x }), {});
 ```
 
 ## Instead Write
 ```typescript
-const index = items.reduce((acc, x) => { acc[x.id] = x; return acc; }, {} as Record<string, Item>);
+const index = items.reduce<Record<string, Item>>((acc, x) => { acc[x.id] = x; return acc; }, {});
 ```
 

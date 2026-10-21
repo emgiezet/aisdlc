@@ -4,10 +4,10 @@ interface Item { id: string; value: number }
 
 declare const items: Item[];
 
-// Mutates accumulator in place — O(n) allocations, O(1) new objects per iteration.
-const index = items.reduce(
+// Mutates a locally owned accumulator — linear work.
+const index = items.reduce<Record<string, Item>>(
     (acc, x) => { acc[x.id] = x; return acc; },
-    {} as Record<string, Item>,
+    {},
 );
 
 export { index };

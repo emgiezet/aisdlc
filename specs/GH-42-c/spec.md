@@ -36,8 +36,9 @@ In:
   TypeScript block. Neither rule is turned off in the `tests and scripts: relaxed` block:
   `no-reduce-accumulator-copy` catches production code patterns; `no-module-mocking` is
   specifically designed to fire in test files where `jest.mock`/`vi.mock` appear.
-- `plugins/slop-guard/tests/fixtures/ts/bad/AP-TS-PERF-005.ts`: a `reduce` call that spreads the
-  accumulator on each iteration (`({ ...acc, [x.id]: x })`), creating O(n²) allocation.
+- `plugins/slop-guard/tests/fixtures/ts/bad/AP-TS-PERF-005.ts`: a `reduce` call that copies the
+  accumulator on each iteration (`Object.assign({}, acc, { [x.id]: x })`), creating O(n²) work.
+  The pinned rule leaves spread copies to oxc and does not report `({ ...acc })`.
 - `plugins/slop-guard/tests/fixtures/ts/bad/AP-TS-MAINT-009.ts`: a `jest.mock('./auth')` call at
   module level replacing the entire module.
 - `plugins/slop-guard/tests/fixtures/ts/good/AP-TS-PERF-005.ts`: equivalent reduce that mutates
@@ -87,7 +88,7 @@ Change budget: 224 added lines, 12 files, 2 modules
 
 | id | actor | action | expected observable result | test |
 |----|-------|--------|----------------------------|------|
-| UC-1 | agent | writes `items.reduce((acc, x) => ({ ...acc, [x.id]: x }), {})` | fast tier (`CONFIG_SOURCE=full`) reports `AP-TS-PERF-005` from `anti-slop/no-reduce-accumulator-copy` | integration |
+| UC-1 | agent | writes `items.reduce<Record<string, Item>>((acc, x) => Object.assign({}, acc, { [x.id]: x }), {})` | fast tier (`CONFIG_SOURCE=full`) reports `AP-TS-PERF-005` from `anti-slop/no-reduce-accumulator-copy` | integration |
 | UC-2 | agent | the good fixture: `reduce` that mutates `acc[x.id] = x; return acc;` | no `AP-TS-PERF-005` finding | integration |
 | UC-3 | agent | writes `jest.mock('../auth')` at module scope in a test file | fast tier reports `AP-TS-MAINT-009` from `anti-slop/no-module-mocking` | integration |
 | UC-4 | agent | writes `vi.spyOn(auth, 'getUser').mockReturnValue(fakeUser)` (targeted spy, no module replacement) | no `AP-TS-MAINT-009` finding | integration |

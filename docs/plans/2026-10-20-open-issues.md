@@ -153,3 +153,13 @@ real base/head add/add conflict. The user selected “Napraw w ramach #39”: in
 `templates/trackers/local.md`, keeping the 75-line/2-module limit and widening the
 file limit from 5 to 6. GH-39 now includes the stored-base comparison regression.
 
+## TypeScript detector corrections
+
+The real pinned-tool suite showed two approved premises were wrong. The user selected
+“Popraw UC-1 do realnego detektora”: `anti-slop/no-reduce-accumulator-copy` 0.3.0 reports
+`Object.assign`/`Array.from`/array-copy accumulators and explicitly leaves spread copies to
+oxc, so GH-42-c UC-1 uses `Object.assign`. The user also selected “Tak, popraw fixture’y w
+GH-42-b”: GH-42-a's two good fixtures declared `unknown`-returning functions, which GH-42-b's
+`no-unknown-returns` correctly reports; they now declare an `unknown` boundary value, raising
+GH-42-b's file limit from 12 to 14.
+
