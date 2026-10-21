@@ -12,12 +12,19 @@
 # Behaviour is chosen by AISDLC_STUB:
 #   ok        (default) implement + qa succeed and commit
 #   noop      returns "Unknown command" with 0 turns — the silent no-op the runner must catch
+#   nosid     result omits session_id — session entry must still appear with null id/transcript
 #   nouc      implement's test carries no UC id — verify must fail the UC coverage check
 #   skiptest  implement's test is switched off with t.Skip — verify must see it
 #   deltest   implement deletes the baseline's existing test file — verify must see it
 #   selfretire  deltest, and the branch adds its own .claude/retired-tests entry for it
 #   dirty     implement commits the test but leaves the code change uncommitted
+#   mdonly    implement commits only a .md file (for testing structure check with non-code changes)
+#
+# AISDLC_STUB_READINESS: when set and the prompt is NOT a phase command (does not start with /),
+#   the stub returns the variable's value as the model result text verbatim (readiness JSON).
+#   This lets selftest exercise readiness_check without a real model.
 set -uo pipefail
+[ "${1:-}" = "--version" ] && { printf 'Claude stub 1.0.0\n'; exit 0; }
 printf 'stub-claude args: %s\n' "$*" >&2
 
 cat > /dev/null   # consume stdin, exactly as the real CLI does
@@ -33,13 +40,20 @@ prompt="${prompt/sdlc:/}"
 ticket="${prompt##* }"
 
 result() {
-    local obj
-    obj="$(printf '{"type":"result","subtype":"success","is_error":%s,"num_turns":%s,' "$1" "$2"
-           printf '"result":"%s","session_id":"stub","total_cost_usd":%s}' "$3" "$4")"
-    if [ "${AISDLC_STUB_JSON:-object}" = "array" ]; then
-        printf '[{"type":"system","subtype":"init","session_id":"stub"},%s]\n' "$obj"
+    local ph sid obj
+    ph="${prompt%% *}"; ph="${ph#/}"; sid="stub-${ph:-phase}"
+    [ "${AISDLC_STUB:-ok}" = "nosid" ] && sid=""
+    if [ -n "$sid" ]; then
+        obj="$(printf '{"type":"result","subtype":"success","is_error":%s,"num_turns":%s,"result":"%s","session_id":"%s","total_cost_usd":%s}' \
+               "$1" "$2" "$3" "$sid" "$4")"
+        if [ "${AISDLC_STUB_JSON:-object}" = "array" ]; then
+            printf '[{"type":"system","subtype":"init","session_id":"%s"},%s]\n' "$sid" "$obj"
+        else
+            printf '%s\n' "$obj"
+        fi
     else
-        printf '%s\n' "$obj"
+        printf '{"type":"result","subtype":"success","is_error":%s,"num_turns":%s,"result":"%s","total_cost_usd":%s}\n' \
+            "$1" "$2" "$3" "$4"
     fi
 }
 
@@ -65,30 +79,90 @@ case "${AISDLC_STUB:-ok}" in
                 ;;
         esac
         ;;
+    refuse)
+        case "$prompt" in
+            /implement*)
+                mkdir -p "specs/$ticket"
+                printf '# BLOCKED\n' > "specs/$ticket/BLOCKED.md"
+                commit "chore($ticket): BLOCKED"
+                result false 3 "stopped" 0.04; exit 0 ;;
+        esac ;;
+    keyleak)
+        # Like ok but implement embeds a fake Anthropic key in its result, which lands in the log.
+        case "$prompt" in
+            /implement*) ;;  # handled below in the shared case; see keyleak branch there
+        esac
+        ;;
+    refuse-blocked)
+        # For --issue tasks: triage writes a draft (non-approved) spec + BLOCKED.md so the
+        # implement gate refuses while BLOCKED.md is still present in the worktree.
+        case "$prompt" in
+            /triage*)
+                issue_n="${ticket#GH-}"
+                mkdir -p "specs/$ticket"
+                printf -- '---\nticket: %s\nkind: bugfix\nstatus: draft\n---\n\n| id | actor | action | expected observable result | test |\n|----|-------|--------|----------------------------|------|\n| UC-1 | caller | calls Stub() | returns a non-empty string | unit |\n' \
+                    "$ticket" > "specs/$ticket/spec.md"
+                printf '# BLOCKED — %s\n**Stopped at:** triage\n\n## What I need from a human\ntriage could not reproduce\n' \
+                    "$ticket" > "specs/$ticket/BLOCKED.md"
+                commit "docs: triage spec for $ticket (draft + BLOCKED.md)"
+                result false 2 "triage blocked — draft spec written" 0.02
+                exit 0
+        esac
+        ;;
 esac
+
+# GH-40: readiness check invocations are plain-text prompts (not starting with /).
+# AISDLC_STUB_READINESS — return as model result text (readiness JSON).
+# READINESS_ERROR_ENVELOPE — set is_error in envelope (tests envelope fail-closed).
+# READINESS_FAIL_EXIT — exit code to use (tests process-exit fail-closed).
+case "$prompt" in
+    /*) ;;
+    *)
+        if [ -n "${AISDLC_STUB_READINESS:-}" ]; then
+            jq -cn --arg r "$AISDLC_STUB_READINESS" \
+                --argjson err "${READINESS_ERROR_ENVELOPE:-false}" \
+                '{"type":"result","subtype":"success","is_error":$err,"num_turns":1,
+                  "result":$r,"session_id":"stub-readiness","total_cost_usd":0.01}'
+            exit "${READINESS_FAIL_EXIT:-0}"
+        fi
+        ;;
+esac
+
 
 case "$prompt" in
     /implement*)
-        mkdir -p pkg
-        printf 'package pkg\n\n// Stub implementation for %s.\nfunc Stub() string { return "%s" }\n' "$ticket" "$ticket" > "pkg/stub.go"
-        name="TestStub_UC1"; skip=""
-        [ "${AISDLC_STUB:-ok}" = "nouc" ] && name="TestStub_ReturnsSomething"
-        [ "${AISDLC_STUB:-ok}" = "skiptest" ] && skip='\tt.Skip("flaky")\n'
-        printf "package pkg\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n${skip}\tif Stub() == \"\" {\n\t\tt.Fatal(\"empty\")\n\t}\n}\n" "$name" > "pkg/stub_test.go"
-        case "${AISDLC_STUB:-ok}" in
-            deltest) git rm -q legacy/old_test.go ;;
-            selfretire)
-                git rm -q legacy/old_test.go
-                mkdir -p .claude && printf 'legacy/old_test.go  obsolete, says the agent\n' > .claude/retired-tests
-                ;;
-        esac
-        if [ "${AISDLC_STUB:-ok}" = "dirty" ]; then
-            git add pkg/stub_test.go >/dev/null 2>&1
-            git -c user.name=stub -c user.email=stub@localhost commit -qm "test: UC-1 ($ticket)" >/dev/null 2>&1
-            result false 6 "stub phase complete" 0.05; exit 0
+        if [ "${AISDLC_STUB:-ok}" = "mdonly" ]; then
+            # mdonly: commit only a .md file so _struct_code_files() finds nothing
+            mkdir -p docs
+            printf '# Implementation notes for %s\n\nStub notes.\n' "$ticket" > "docs/impl-notes.md"
+            commit "docs($ticket): implementation notes"
+            result false 6 "stub phase complete" 0.05
+        else
+            mkdir -p pkg
+            printf 'package pkg\n\n// Stub implementation for %s.\nfunc Stub() string { return "%s" }\n' "$ticket" "$ticket" > "pkg/stub.go"
+            name="TestStub_UC1"; skip=""
+            [ "${AISDLC_STUB:-ok}" = "nouc" ] && name="TestStub_ReturnsSomething"
+            [ "${AISDLC_STUB:-ok}" = "skiptest" ] && skip='\tt.Skip("flaky")\n'
+            printf "package pkg\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n${skip}\tif Stub() == \"\" {\n\t\tt.Fatal(\"empty\")\n\t}\n}\n" "$name" > "pkg/stub_test.go"
+            case "${AISDLC_STUB:-ok}" in
+                deltest) git rm -q legacy/old_test.go ;;
+                selfretire)
+                    git rm -q legacy/old_test.go
+                    mkdir -p .claude && printf 'legacy/old_test.go  obsolete, says the agent\n' > .claude/retired-tests
+                    ;;
+            esac
+            if [ "${AISDLC_STUB:-ok}" = "dirty" ]; then
+                git add pkg/stub_test.go >/dev/null 2>&1
+                git -c user.name=stub -c user.email=stub@localhost commit -qm "test: UC-1 ($ticket)" >/dev/null 2>&1
+                result false 6 "stub phase complete" 0.05; exit 0
+            fi
+            commit "feat(pkg): stub implementation for UC-1 ($ticket)"
+            if [ "${AISDLC_STUB:-ok}" = "keyleak" ]; then
+                result false 6 "stub phase complete sk-ant-api03-abcdefABCDEF0123456789abcdefABCDEF0123456789" 0.05
+            else
+                result false 6 "stub phase complete" 0.05
+            fi
         fi
-        commit "feat(pkg): stub implementation for UC-1 ($ticket)"
-        result false 6 "stub phase complete" 0.05
         ;;
     /qa*)
         mkdir -p "specs/$ticket"
@@ -101,7 +175,19 @@ case "$prompt" in
         mkdir -p "specs/$ticket"
         printf 'stub PR body\n' > "specs/$ticket/pr-body.md"
         commit "docs: PR body ($ticket)"
-        result false 6 "stub ship done\\nPR: #7 (specs/$ticket/pr-body.md)" 0.05
+        if [ "${AISDLC_STUB:-ok}" = "localpr" ]; then
+            # GH-60: mirror what the local tracker's create-pr operation does — append one
+            # JSON PR record to .aisdlc/tracker/prs.jsonl relative to cwd (the worktree).
+            mkdir -p ".aisdlc/tracker"
+            _now="$(date -u +%FT%TZ)"
+            jq -nc --arg b "$(git branch --show-current 2>/dev/null || echo '')" \
+                --arg t "$ticket" --arg p "specs/$ticket/pr-body.md" --arg d "$_now" \
+                '{number:1,branch:$b,baseRefName:"master",title:$t,labels:[],state:"open",isDraft:false,createdAt:$d,verdict:null,reviews:[],body_path:$p,url:"local#1",author:"local-user",assignees:[],mergeCommit:null}' \
+                >> ".aisdlc/tracker/prs.jsonl"
+            result false 6 "stub ship done\\nPR: #1 (specs/$ticket/pr-body.md)" 0.05
+        else
+            result false 6 "stub ship done\\nPR: #7 (specs/$ticket/pr-body.md)" 0.05
+        fi
         ;;
     /review*)
         result false 2 "Verdict: APPROVED" 0.02

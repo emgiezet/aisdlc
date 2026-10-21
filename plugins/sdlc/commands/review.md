@@ -5,7 +5,7 @@ allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, SlashCommand
 
 # /sdlc:review
 
-`$ARGUMENTS`: `<pr#> [--autofix] [--force]`. Read `.claude/sdlc.md` for the Tracker descriptor,
+`$ARGUMENTS`: `<pr#> [--autofix] [--adversarial] [--force]`. Read `.claude/sdlc.md` for the Tracker descriptor,
 profile label, and spec directory.
 
 Every tracker action is a bold operation (**get-pr**). Execute it exactly as the descriptor
@@ -24,6 +24,8 @@ Stop with a one-line reason if:
 
 **auth-check**: failure is not a stop; record it as a Phase 3 signal.
 
+Set **adversarial mode** if `--adversarial` is present, OR the profile (`.claude/sdlc.md`) contains
+``- **review-adversarial:** `true` ``. Absent or false: one pass only.
 ---
 
 ## Phase 2: Claim [GATE]
@@ -100,7 +102,29 @@ phase before ship). Import its findings as follows:
 - Any `## Size` finding → `[major] over change budget: <measure> (<n> vs <budget>)`, and
   `[blocker]` when the hard ceiling was passed or the finding names shotgun surgery. The fix is
   never "reviewers should try harder": it is `/sdlc:decompose <TICKET>` and a stack of slices.
+- Any `## Structure` finding `erosion:` or `new hotspot:` → `[major] structural erosion: <finding
+  text> — split the function or run /sdlc:decompose`
+- Any `## Structure` finding `hotspot over 25:` → `[blocker] structural erosion: <finding text>
+  — split the function or run /sdlc:decompose`
 
+**Adversarial pass** — adversarial mode on a **code review** (not spec-only): dispatch a second
+`code-reviewer` with exactly this block, first line verbatim, without pass 1's findings or verdict:
+
+```
+Adversarial: true
+Ticket: <same as pass 1>
+PR: #{n}
+Phase-3 signals: <same as pass 1>
+Diff: <get-pr-diff output>
+```
+
+The agent follows its `## Adversarial mode` and returns an independent findings list and `Verdict:`.
+
+**Merge rule:**
+1. **Verdict:** `CHANGES_REQUESTED` wins over `APPROVED`; both `APPROVED` → `APPROVED`,
+   unless the imported scope/slop-guard findings require a stricter verdict under `code-review`.
+2. **Findings:** identify by `(file, line)`. A match in both passes appears once at the higher severity, without a tag.
+   Adversarial-only findings carry `(adversarial)` appended to the description. Rank into one list.
 
 ---
 
@@ -126,14 +150,25 @@ If verdict is `APPROVED`: skip autofix.
 Fix in this order; push each category as a separate commit (never `--force`; never bypass `guard`):
 
 1. **Conflicts** — merge or rebase onto the base branch; resolve.
-2. **Findings** — address every `blocker` and `major` from Phase 5.
+2. **Findings** — for **code review** (`specs/<TICKET>/spec.md` is read-only at all times):
+
+   | Finding class | Autofix action |
+   |---|---|
+   | `[major] scope gap: <file>` — change is extraneous | remove its changes from the diff: restore the base version of an existing file; delete only a branch-added file; re-review |
+   | `[major] scope gap: <file>` — change is required by the deliverable | emit `⚠ NEEDS HUMAN: scope gap: <file> — widen the spec or waive`; stop |
+   | `[major] over change budget: <details>` | emit `⚠ NEEDS HUMAN: over change budget: <details> — widen the spec or waive`; stop |
+   | `[blocker] over change budget: <details>` (including hard-ceiling breaches) | emit `⚠ NEEDS HUMAN: over change budget: <details> — widen the spec or waive`; stop |
+   | all other `blocker` / `major` findings | fix in code as before |
+
+   For **spec-only review**: autofix edits the spec directly; no `⚠ NEEDS HUMAN` for scope findings (behaviour unchanged from pre-fix).
 3. **CI** — after findings are pushed, **get-pr-checks** `{n}`; for each failing check classify
    `real-bug | test-bug | flake | infra`:
    - `flake`: **get-run-failed-logs** `{run-id}`; **rerun-check** `{run-id}`; if it fails again → treat as `real-bug`.
    - `infra`: record `⚠ NEEDS HUMAN: infra failure in <check>`; **unlabel-pr** `review`; **unlabel-pr** `merge-ready`; **unlabel-pr** `changes-requested`; **label-pr** `blocked`; stop.
    - Never skip, comment-out, or lower a threshold.
 
-After each push, re-dispatch Phase 5 (`code-reviewer`). On `APPROVED`: proceed to Phase 8.
+After each push, re-dispatch Phase 5 (`code-reviewer`). When adversarial mode is active, re-dispatch
+repeats both passes; the merged verdict governs the autofix loop. On `APPROVED`: proceed to Phase 8.
 
 Stop immediately on `⚠ NEEDS HUMAN`: **unlabel-pr** `review`; **unlabel-pr** `merge-ready`; **unlabel-pr** `changes-requested`; **label-pr** `blocked`; do not loop further.
 
@@ -162,6 +197,14 @@ Findings: <n> blocker · <n> major · <n> minor · <n> nit
 
 Verdict: APPROVED | CHANGES_REQUESTED
 PR: #<n> (<url>)
+```
+
+Only when the second pass actually ran (never for spec-only PRs), include counts above merged totals:
+
+```
+Pass 1: <n> blocker · <n> major · <n> minor · <n> nit
+Pass 2 (adversarial): <n> blocker · <n> major · <n> minor · <n> nit
+Findings: <n> blocker · <n> major · <n> minor · <n> nit
 ```
 
 The last two lines are C4 chain markers. Print them exactly, last, once.

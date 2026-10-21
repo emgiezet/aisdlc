@@ -171,7 +171,10 @@ Every PR-producing command ends with a `PR: #<n> (<url>)` line the next command 
 command that acts on an issue or PR claims it first (assignee + `in-progress` + a 🤖 comment) so
 two agents never build the same branch. The queue runs the chain phase by phase, each in a fresh
 context: `implement → qa → scope-check → verify → ship → review`, or `triage → root-cause →
-implement → …` for an issue. `scope-check` and `verify` run no model: `verify` runs the
+implement → …` for an issue. `scope-check` and `verify` run no model: `scope-check` classifies
+changed files against the spec scope, measures review surface against the change budget, and —
+when `lizard` is on the runner PATH — measures structural erosion (SlopCodeBench v2) to catch
+functions that grew past CC 10 or CC 25; `verify` runs the
 `.aisdlc/config.json` `verify` commands on the final commit (none configured is a FAIL), checks
 every spec `UC-<n>` is named by a changed test and that no test was deleted or switched off (a
 deletion retired in `.claude/retired-tests` on the base passes), and ship does not run without its PASS.
@@ -192,6 +195,11 @@ deletion retired in `.claude/retired-tests` on the base passes), and ship does n
   runs it. The queue never merges.
 - **Cost is bounded and recorded.** A per-phase spend cap, the actual cost in each task's record,
   and `/sdlc:retro` to rank what the harness cost, by cause.
+- **Evidence survives.** Every terminal task is archived locally before its worktree is removed:
+  phase logs (redacted), spec artefacts, and a `manifest.json` with per-file sha256 checksums.
+  Archive root: `$AISDLC_ARCHIVE` or `~/.local/share/aisdlc/archive`. Set `AISDLC_ARCHIVE=off`
+  to disable. Details: [`docs/ai-sdlc.md` → Archive](docs/ai-sdlc.md#archive).
+
 
 ## 📦 Catalog
 
@@ -204,8 +212,8 @@ never ask, and end with a verdict and a chain marker.
 |---|---|
 | `/sdlc:implement <T>` | Refuses anything not `approved`; one playbook; a test carrying each `UC-<n>` before its code; full CI matrix; `BLOCKED.md` rather than a broken finish. |
 | `/sdlc:qa <T>` | Independent verification: use cases re-derived from the spec, gaps closed, a browser pass with screenshots for UI use cases when a browser is configured, `qa-report.md` with `PASS`/`GAPS`. |
-| `/sdlc:ship <T> [--docs]` | Draft PR with the verdict and the riskiest changes up front, QA report as a comment, label `review`. `--docs` ships a documentation-only branch without a spec. |
-| `/sdlc:review <pr#> [--autofix]` | Spec-first review in an isolated worktree: blocker/major/minor/nit, `APPROVED` or `CHANGES_REQUESTED`, pipeline label. On its own PRs an autofix loop — conflicts, then findings, then CI — with new commits only. |
+| `/sdlc:ship <T> [--docs]` | Draft PR with the verdict and riskiest changes up front, a visual Change map (mermaid module graph + before/after UC table), QA report as a comment, label `review`. `--docs` ships a documentation-only branch without a spec. |
+| `/sdlc:review <pr#> [--autofix] [--adversarial]` | Spec-first review in an isolated worktree: blocker/major/minor/nit, `APPROVED` or `CHANGES_REQUESTED`, pipeline label. With `--adversarial` (or profile `review-adversarial: true`): a second independent pass; stricter verdict wins. On its own PRs an autofix loop — conflicts, then findings, then CI — with new commits only. |
 | `/sdlc:fix-pr <pr#> [--ci-only]` | Drives one PR to `merge-ready`: base merge, review + autofix, CI stabilisation that classifies each red check (`real-bug` / `test-bug` / `flake` / `infra`) and never weakens one. |
 | `/sdlc:continue <T\|pr#>` | Resumes a `BLOCKED.md`, a `changes-requested` review, or a PR with no plan, then re-runs implement → qa. |
 | `/sdlc:autopilot <pr#> [--allow-merge]` | Diagnoses a PR's state and runs the right chain of the commands above. Never merges without the flag. |
@@ -589,6 +597,9 @@ Releases are not hand-made. When `Validate` goes green on `main`,
 tag — `feat!`/`BREAKING CHANGE` → major, `feat` → minor, anything else → patch — runs the matching
 `make bump-*`, bumps `slop-guard` by the same step only when `plugins/slop-guard/` changed, then
 commits `chore(release): vX.Y.Z`, tags it and publishes the GitHub release with generated notes.
+Superseded validation runs skip the release when their commit is no longer the tip of `main`.
+The bump commit and its tag are pushed atomically: if `main` advances after that check, neither
+ref is published, leaving the newer validation run to release.
 Run it by hand with a forced level from the Actions tab (`workflow_dispatch`, `level:`); the manual
 path is still `make bump-patch|bump-minor|bump-major` and `make bump-slopguard`.
 

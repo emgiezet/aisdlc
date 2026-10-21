@@ -8,3 +8,12 @@
 # Local scratch: git worktrees and subagent-driven-development ledgers
 .worktrees/
 .superpowers/
+
+# npm ci output when the pinned ESLint stack is installed in place; package-lock.json is the pin
+/plugins/slop-guard/tools/node/node_modules/
+
+# Runtime session state written by slop-guard hooks during tests/use
+/plugins/slop-guard/sessions/
+
+# ESLint config copy placed by dispatcher for ESM module resolution (§6.1 D29)
+/plugins/slop-guard/tools/node/eslint.config.mjs

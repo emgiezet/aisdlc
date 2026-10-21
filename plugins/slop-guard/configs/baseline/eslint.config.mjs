@@ -8,6 +8,7 @@ import security from 'eslint-plugin-security';
 import regexp from 'eslint-plugin-regexp';
 import noUnsanitized from 'eslint-plugin-no-unsanitized';
 import n from 'eslint-plugin-n';
+import antiSlop from '@spacemansh/anti-slop/eslint';
 
 // Plugins registered explicitly + rules listed explicitly:
 // preset names in flat config change between plugin versions; rule names rarely do.
@@ -64,6 +65,7 @@ export default defineConfig(
     languageOptions: TYPED
       ? { parserOptions: { projectService: true, tsconfigRootDir: process.cwd() } }
       : {},
+    plugins: { 'anti-slop': antiSlop },
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-non-null-assertion': 'warn',
@@ -78,6 +80,19 @@ export default defineConfig(
         '@typescript-eslint/only-throw-error': 'error',
         '@typescript-eslint/switch-exhaustiveness-check': 'error',
       } : {}),
+      'anti-slop/no-chained-type-assertions': 'warn',
+      'anti-slop/require-safety-comment-for-type-assertion': 'warn',
+      'anti-slop/no-known-value-widening': 'warn',
+      'anti-slop/no-widen-then-assert': 'warn',
+      'anti-slop/no-unknown-parameters': 'warn',
+      'anti-slop/no-unknown-returns': 'warn',
+      'anti-slop/no-unknown-type-aliases': 'warn',
+      'anti-slop/no-object-parameters': 'warn',
+      'anti-slop/no-unsafe-dictionary-type': 'warn',
+      'anti-slop/no-reflect-get': 'warn',
+      'anti-slop/no-reflect-apply': 'warn',
+      'anti-slop/no-reduce-accumulator-copy': 'warn',
+      'anti-slop/no-module-mocking': 'warn',
     },
   },
 

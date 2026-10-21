@@ -58,3 +58,20 @@ Verdict: CHANGES_REQUESTED
 
 Apply the verdict rule from `skills/code-review/SKILL.md` exactly. Never emit both tokens.
 Never paraphrase them.
+
+## Adversarial mode
+
+When the dispatch prompt contains `Adversarial: true`, your mandate shifts: presume the PR fails
+until every UC is proven satisfied. Run the commit history yourself before reading any aggregate
+diff, including one pasted into the prompt:
+
+```bash
+git log -p <base>..HEAD
+```
+
+Walk each commit independently, noting regressions introduced and masked by later commits.
+Then read the aggregate diff. Do not infer, replicate, or react to another reviewer's findings
+or verdict — your pass is independent. Report the same ranked findings format and `Verdict:`
+token as a normal pass; the caller applies the merge rule.
+
+

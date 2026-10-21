@@ -64,6 +64,17 @@ for a more careful reviewer: the remedy named in the finding is `/sdlc:decompose
 A spec that declared a wider `Change budget:` for a mechanical slice is compliant — the budget
 it set is the budget that applies.
 
+### Structure rule
+
+Structure findings come from `specs/<TICKET>/scope-report.md` `## Structure`, written by the
+`scope-check` phase (requires `lizard` on the runner PATH). Import as follows:
+- `erosion:` finding → `[major]`; remedy is splitting the function or `/sdlc:decompose`
+- `new hotspot:` finding → `[major]`; remedy is splitting the function or `/sdlc:decompose`
+- `hotspot over 25:` finding → `[blocker]`; remedy is splitting the function or `/sdlc:decompose`
+
+When `## Structure` says `skipped: …`, no structure findings are imported.
+Structure never causes `BLOCKED`; it promotes `PASS` → `GAPS` only.
+
 ## Spec-review lenses
 
 When every changed file is under `specs/`, skip the code checklist and apply these lenses:

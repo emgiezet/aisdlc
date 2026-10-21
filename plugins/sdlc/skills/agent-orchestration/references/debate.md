@@ -52,4 +52,6 @@ Prevented by role objectives that conflict by construction and by criteria fixed
 
 No implementation here — this is a specification for systems built with the harness. The record
 it produces belongs next to the architecture document the decision changes; review it with
-`architecture-review`.
+`architecture-review`. The `/sdlc:review --adversarial` two-pass is a direct application of the
+proposer/sceptic shape: the first reviewer proposes the verdict; the adversarial pass plays
+sceptic with an independent read order; the stricter verdict wins.

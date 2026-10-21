@@ -93,7 +93,8 @@ the `## Change budget` section of `.claude/sdlc.md` when the spec is silent. Ove
 UCs still unbuilt is not a reason to speed up: finish the UC in hand, commit it, and go to
 Phase 4 with `Blocked by: change budget` — the spec was mis-sized and `/sdlc:decompose` splits
 the remainder. Past the hard ceiling `scope-check` refuses the branch anyway, after the work is
-already spent.
+already spent. When the profile carries `Tolerance: <n>%`, the effective limit per metric is
+`budget × (1 + n/100)`; the hard ceiling is never raised by tolerance.
 
 ---
 

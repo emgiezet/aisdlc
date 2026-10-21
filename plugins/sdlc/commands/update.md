@@ -120,11 +120,13 @@ If `/sdlc:init --discovery` wrote a `## Definition of Ready` block, leave it exa
 ## Phase 4: Runner config and directories
 
 `.aisdlc/config.json` — the keys the queue runner resolves: `model`, `budget`, `base`, `workers`,
-`label`, `specs_dir`; optional `billing` and `model_roles`.
+`label`, `specs_dir`; optional `billing`, `model_roles`, `readiness_min`, `max_open_prs`
+(null = unlimited), `max_run_usd` (null = unlimited) and `archive_transcripts`.
 
 - Add **absent** keys with the defaults `aisdlc help` prints, except `base`, which comes from this
   repo: `git symbolic-ref --short refs/remotes/origin/HEAD` (fall back to the checked-out branch).
-- **Never rewrite a value that is there.** A budget someone lowered on purpose stays lowered.
+- **Never rewrite a value that is there.** A budget someone lowered on purpose stays lowered; a
+  `readiness_min` someone configured stays configured.
 - No `.aisdlc/config.json` at all → write one with those keys. The runner works without it; the
   file exists so the defaults are visible and reviewable.
 
