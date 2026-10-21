@@ -123,6 +123,70 @@ case "$_sb_out" in
     *) ok "GH-59 UC-2a: no tolerance suffix when tolerance=0" ;;
 esac
 
+# UC-3: each metric one past its toleranced limit — effective limit named per case
+_sb_out="$(_size_eval 801 10 3 "a/b" 400 10 3 3000 100)"; _sb_rc=$?
+[ "$_sb_rc" -eq 1 ] && case "$_sb_out" in
+    *"801 added lines > 800 (400 + 100% tolerance)"*) ok "GH-59 UC-3a: added lines past toleranced limit names effective limit" ;;
+    *) bad "GH-59 UC-3a" "unexpected finding: '$_sb_out'" ;;
+esac
+_sb_out="$(_size_eval 100 16 3 "a/b" 400 10 3 3000 50)"; _sb_rc=$?
+[ "$_sb_rc" -eq 1 ] && case "$_sb_out" in
+    *"16 files touched > 15 (10 + 50% tolerance)"*) ok "GH-59 UC-3b: files past toleranced limit names effective limit" ;;
+    *) bad "GH-59 UC-3b" "unexpected finding: '$_sb_out'" ;;
+esac
+_sb_out="$(_size_eval 100 10 5 "a/b,c/d,e/f" 400 10 3 3000 50)"; _sb_rc=$?
+[ "$_sb_rc" -eq 1 ] && case "$_sb_out" in
+    *"5 modules touched > 4 (3 + 50% tolerance)"*) ok "GH-59 UC-3c: modules past toleranced limit names effective limit" ;;
+    *) bad "GH-59 UC-3c" "unexpected finding: '$_sb_out'" ;;
+esac
+
+# UC-4: at or below the toleranced limit is clean per metric
+_size_eval 655 8 2 "a/b" 400 10 3 3000 100 >/dev/null; _sb_rc=$?
+[ "$_sb_rc" -eq 0 ] && ok "GH-59 UC-4a: added below toleranced limit is clean" \
+    || bad "GH-59 UC-4a" "expected rc 0, got $_sb_rc"
+_size_eval 800 8 2 "a/b" 400 10 3 3000 100 >/dev/null; _sb_rc=$?
+[ "$_sb_rc" -eq 0 ] && ok "GH-59 UC-4a: added exactly at toleranced limit is clean" \
+    || bad "GH-59 UC-4a" "expected rc 0 at the exact limit, got $_sb_rc"
+_size_eval 100 15 2 "a/b" 400 10 3 3000 50 >/dev/null; _sb_rc=$?
+[ "$_sb_rc" -eq 0 ] && ok "GH-59 UC-4b: files exactly at toleranced limit is clean" \
+    || bad "GH-59 UC-4b" "expected rc 0 at the exact limit, got $_sb_rc"
+_size_eval 100 8 4 "a/b,c/d,e/f" 400 10 3 3000 50 >/dev/null; _sb_rc=$?
+[ "$_sb_rc" -eq 0 ] && ok "GH-59 UC-4c: modules exactly at toleranced limit is clean" \
+    || bad "GH-59 UC-4c" "expected rc 0 at the exact limit, got $_sb_rc"
+
+# UC-5: tolerance never raises or suppresses the hard ceiling
+_sb_out="$(_size_eval 3001 10 3 "a/b" 400 10 3 3000 100)"; _sb_rc=$?
+[ "$_sb_rc" -eq 2 ] && case "$_sb_out" in
+    *"3000"*) ok "GH-59 UC-5: ceiling stays 3000 despite tolerance 100" ;;
+    *) bad "GH-59 UC-5" "ceiling not named: '$_sb_out'" ;;
+esac
+# The ceiling line itself carries no tolerance suffix; the parallel over-budget
+# finding may legitimately name the toleranced limit.
+_sb_ceilline="$(printf '%s\n' "$_sb_out" | grep -m1 '3000')"
+case "$_sb_ceilline" in
+    *tolerance*) bad "GH-59 UC-5" "ceiling line mentions tolerance: '$_sb_ceilline'" ;;
+    *) ok "GH-59 UC-5: ceiling line carries no tolerance suffix" ;;
+esac
+
+# UC-6: modules within the toleranced limit are neither over budget nor shotgun surgery
+_sb_out="$(_size_eval 90 8 4 "a/b,c/d,e/f" 400 10 3 3000 50)"; _sb_rc=$?
+[ "$_sb_rc" -eq 0 ] && case "$_sb_out" in
+    "") ok "GH-59 UC-6: 4 modules within toleranced limit 4 — no finding, no shotgun surgery" ;;
+    *) bad "GH-59 UC-6" "unexpected finding: '$_sb_out'" ;;
+esac
+
+# UC-8: the Budget column renders the tolerance suffix; tolerance 0 renders bare
+_sb_tmp2="$(mktemp -d)"
+_write_size_section "$_sb_tmp2/report.md" 655 8 2 "a/b" 400 10 3 3000 "" 100
+grep -q '400 +100%' "$_sb_tmp2/report.md" \
+    && ok "GH-59 UC-8a: Budget column shows 400 +100% with tolerance" \
+    || bad "GH-59 UC-8a" "no '400 +100%' in: $(grep -A1 '| Added lines' "$_sb_tmp2/report.md")"
+_write_size_section "$_sb_tmp2/report0.md" 401 8 2 "a/b" 400 10 3 3000 "" 0
+grep -q '| 400 ' "$_sb_tmp2/report0.md" && ! grep -q '%)' "$_sb_tmp2/report0.md" \
+    && ok "GH-59 UC-8b: Budget column shows bare 400 with tolerance 0" \
+    || bad "GH-59 UC-8b" "unexpected column: $(grep -A1 '| Added lines' "$_sb_tmp2/report0.md")"
+rm -rf "$_sb_tmp2"
+
 # UC-2b, UC-10 (native): real run_scope_check — Tolerance is profile-only;
 # profile wins; absent profile Tolerance defaults to 0.
 # Fixture: git repo with 181 added lines in src/; spec has budget 120 and an

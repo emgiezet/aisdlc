@@ -50,9 +50,8 @@ the descriptor file; never substitute bare CLI calls.
 
 5. **Filter to `done` or `failed` status only.** Exclude `refused` and `cancelled` before
    Phases 2–4. The surviving `<path>/task.json` files, one per deduplicated task, replace
-   `.aisdlc/tasks/*/task.json` as the input of every Phase 2–4 command, including the Phase 3
-   `jq` (drop its `.updated >= $since` clause; `--since` already applied to `.archived_at`
-   during filtering in step 3).
+   `.aisdlc/tasks/*/task.json` as the input of every Phase 2–4 command; never re-apply a
+   date filter there — `--since` was already applied to `.archived_at` in step 3.
 
 6. **Resolve supplementary files from the archive path:** `<path>/spec/qa-report.md` for the
    `gaps` class check (Phase 2), `<path>/spec/BLOCKED.md` for top causes (Phase 4).

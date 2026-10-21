@@ -599,6 +599,10 @@ readiness_check() {
     rmin="$(jq -r 'if (.readiness_min // null) == null then "" else (.readiness_min | tostring) end' \
         "$cfg" 2>/dev/null)"
     [ -z "$rmin" ] && return 0
+    case "$rmin" in
+        *[!0-9]*) READINESS_REASON="readiness_min must be an integer 0-100 (got '$rmin')"; return 1 ;;
+    esac
+    [ "$rmin" -le 100 ] || { READINESS_REASON="readiness_min must be an integer 0-100 (got '$rmin')"; return 1; }
     # Smol model: model_roles.smol when configured, else the task's default model.
     local smol="$model"
     local mr_smol; mr_smol="$(jq -r '.model_roles.smol // empty' "$cfg" 2>/dev/null)"
@@ -2265,28 +2269,33 @@ _arc_redact() (
         [ "$bl_abort" -eq 1 ] && return 1
     fi
     # --- end betterleaks ---
+    # grep -oE with a real exit check: a read error aborts, only "no match" (rc 1) continues.
+    _arc_count() {
+        grep -oE "$1" "$2" > "$scratch/grep.matches" || [ "$?" -le 1 ] || return 1
+        wc -l < "$scratch/grep.matches" | tr -d ' '
+    }
     # A grep exit of 1 means no match; read/transform errors must not publish a file.
-    n="$(grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
+    n="$(_arc_count 'sk-ant-[A-Za-z0-9_-]{20,}' "$t")" || return 1
     if [ "${n:-0}" -gt 0 ]; then
         sed -i -E 's/sk-ant-[A-Za-z0-9_-]{20,}/[REDACTED:anthropic-key]/g' "$t" || return 1
         counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"anthropic-key":$n}')" || return 1
     fi
-    n="$(grep -oE 'sk-[A-Za-z0-9_-]{20,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
+    n="$(_arc_count 'sk-[A-Za-z0-9_-]{20,}' "$t")" || return 1
     if [ "${n:-0}" -gt 0 ]; then
         sed -i -E 's/sk-[A-Za-z0-9_-]{20,}/[REDACTED:openai-key]/g' "$t" || return 1
         counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"openai-key":$n}')" || return 1
     fi
-    n="$(grep -oE '(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]{10,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
+    n="$(_arc_count '(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]{10,}' "$t")" || return 1
     if [ "${n:-0}" -gt 0 ]; then
         sed -i -E 's/(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]{10,}/[REDACTED:github-token]/g' "$t" || return 1
         counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"github-token":$n}')" || return 1
     fi
-    n="$(grep -oE 'AKIA[A-Z0-9]{16}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
+    n="$(_arc_count 'AKIA[A-Z0-9]{16}' "$t")" || return 1
     if [ "${n:-0}" -gt 0 ]; then
         sed -i -E 's/AKIA[A-Z0-9]{16}/[REDACTED:aws-key-id]/g' "$t" || return 1
         counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"aws-key-id":$n}')" || return 1
     fi
-    n="$(grep -oE 'Bearer [A-Za-z0-9._~+/=-]{8,}' "$t" | wc -l | tr -d ' ')" || [ "$?" -eq 1 ] || return 1
+    n="$(_arc_count 'Bearer [A-Za-z0-9._~+/=-]{8,}' "$t")" || return 1
     if [ "${n:-0}" -gt 0 ]; then
         sed -i -E 's/Bearer [A-Za-z0-9._~+\/=-]{8,}/[REDACTED:bearer-token]/g' "$t" || return 1
         counts="$(jq -n --argjson c "$counts" --argjson n "$n" '$c+{"bearer-token":$n}')" || return 1
@@ -2967,6 +2976,10 @@ cmd_run() {
     _rsf="$(state_dir "$repo")/last-run.json"
     _adm_lock="$(state_dir "$repo")/admission.lock"
     _lbl="$(resolve_default "$repo" label "" "${AISDLC_LABEL:-}" "$BUILTIN_LABEL")"
+    # One run at a time: a second run would reset this run's spend and stop decision.
+    local _run_fd _run_lock; _run_lock="$(state_dir "$repo")/run.lock"
+    exec {_run_fd}>"$_run_lock"
+    flock -n "$_run_fd" || { exec {_run_fd}>&-; die "another aisdlc run is already active for this repo"; }
     printf '0\n' > "$_rsp"; : > "${_rsp}.lock"; : > "$_adm_lock"
     # Clear any stop decision from a prior run so an uncapped run does not inherit it.
     rm -f "$_rsf"
@@ -3054,7 +3067,8 @@ cmd_run() {
     wait
 
     say ""
-    rm -f "$_rsp" "${_rsp}.lock"
+    rm -f "$_rsp" "${_rsp}.lock" "$_adm_lock"
+    exec {_run_fd}>&-
     local _stop_rc=0
     if [ -f "$_rsf" ]; then
         [ "$(jq -r '.stop_reason // empty' "$_rsf" 2>/dev/null)" = "count-unavailable" ] && _stop_rc=1
@@ -3369,15 +3383,19 @@ _arc_show() {
         # Match when queried id equals entry id (first attempt) or the full path arc_name matches
         local entry_arc
         entry_arc="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null | xargs -I{} basename {} 2>/dev/null)"
-        if [ "$entry_id" = "$base_id" ] && \
-           { [ "$id" = "$entry_id" ] || [ "$id" = "$entry_arc" ] || [ "$entry_arc" = "${base_id}" ] || \
-             printf '%s' "$entry_arc" | grep -qE "^${base_id}(\.[0-9]+)?$"; }; then
-            entry_path="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null)"
-            if [ -f "${entry_path}/manifest.json" ]; then
-                printf '=== %s ===\n' "$entry_arc"
-                jq . "${entry_path}/manifest.json"
-                found=1
-            fi
+        # Bare id shows every attempt; <id>.<n> shows exactly that attempt.
+        if [ "$entry_id" != "$base_id" ]; then
+            continue
+        elif [ "$id" != "$base_id" ]; then
+            [ "$entry_arc" = "$id" ] || continue
+        elif ! printf '%s' "$entry_arc" | grep -qE "^${base_id}(\.[0-9]+)?$"; then
+            continue
+        fi
+        entry_path="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null)"
+        if [ -f "${entry_path}/manifest.json" ]; then
+            printf '=== %s ===\n' "$entry_arc"
+            jq . "${entry_path}/manifest.json"
+            found=1
         fi
     done < "$idx"
     if [ "$found" -eq 0 ]; then
@@ -3390,11 +3408,14 @@ _arc_grep() {
     local root="$1" pattern="${2:-}"
     [ -n "$pattern" ] || { printf 'usage: aisdlc archive grep <pattern>\n' >&2; return 1; }
     local idx="${root}/index.jsonl"
-    [ -f "$idx" ] || return 0
+    local seen_paths=""
     while IFS= read -r line; do
         local entry_path entry_arc
         entry_path="$(printf '%s' "$line" | jq -r '.path // empty' 2>/dev/null)"
         [ -d "$entry_path" ] || continue
+        # Retry attempts share one path; grep each archived directory once.
+        case "|${seen_paths}|" in *"|$entry_path|"*) continue ;; esac
+        seen_paths="${seen_paths}|$entry_path"
         entry_arc="$(basename "$entry_path")"
         local parent_slug parent_ym
         parent_ym="$(basename "$(dirname "$entry_path")")"
@@ -3424,6 +3445,7 @@ _arc_prune() {
         esac
     done
     [ -n "$older_than_days" ] || { printf 'usage: aisdlc archive prune --older-than <N>d\n' >&2; return 1; }
+    case "$older_than_days" in *[!0-9]*) printf 'aisdlc: --older-than must be <N>d with N a non-negative integer\n' >&2; return 1 ;; esac
     local idx="${root}/index.jsonl"
     [ -f "$idx" ] || return 0
 
