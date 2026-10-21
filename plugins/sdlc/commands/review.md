@@ -107,10 +107,18 @@ phase before ship). Import its findings as follows:
 - Any `## Structure` finding `hotspot over 25:` → `[blocker] structural erosion: <finding text>
   — split the function or run /sdlc:decompose`
 
-**Adversarial pass** — if adversarial mode is active and this is a **code review** (not spec-only),
-dispatch a second `code-reviewer` agent with `Adversarial: true`. Omit the first pass's findings
-and verdict; include the same `Ticket`, `PR`, `Phase-3 signals`, and `Diff` fields. The agent
-reads `## Adversarial mode` and returns an independent ranked findings list and `Verdict:` line.
+**Adversarial pass** — adversarial mode on a **code review** (not spec-only): dispatch a second
+`code-reviewer` with exactly this block, first line verbatim, without pass 1's findings or verdict:
+
+```
+Adversarial: true
+Ticket: <same as pass 1>
+PR: #{n}
+Phase-3 signals: <same as pass 1>
+Diff: <get-pr-diff output>
+```
+
+The agent follows its `## Adversarial mode` and returns an independent findings list and `Verdict:`.
 
 **Merge rule:**
 1. **Verdict:** `CHANGES_REQUESTED` wins over `APPROVED`; both `APPROVED` → `APPROVED`,

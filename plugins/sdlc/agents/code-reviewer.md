@@ -62,7 +62,8 @@ Never paraphrase them.
 ## Adversarial mode
 
 When the dispatch prompt contains `Adversarial: true`, your mandate shifts: presume the PR fails
-until every UC is proven satisfied. Read the commit history before the aggregate diff:
+until every UC is proven satisfied. Run the commit history yourself before reading any aggregate
+diff, including one pasted into the prompt:
 
 ```bash
 git log -p <base>..HEAD
