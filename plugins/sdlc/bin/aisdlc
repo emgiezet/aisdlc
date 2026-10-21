@@ -583,16 +583,15 @@ tracker_release() {
 # .aisdlc/config.json. When enabled, invokes the smol model with the spec and a rubric,
 # expects JSON {"score":<0-100>,"gaps":[…≤5]}, and fails if score < readiness_min.
 #
-# Side effects: sets globals READINESS_SCORE READINESS_MIN READINESS_REASON.
-#   READINESS_SCORE — parsed integer score, or empty on parse failure or disabled.
-#   READINESS_MIN   — configured threshold, or empty when disabled.
-#   READINESS_REASON — human-readable failure reason, set when returning non-zero.
+# Side effects: sets globals READINESS_SCORE READINESS_REASON.
+#   READINESS_SCORE  — the model's integer score, or empty when the gate did not run.
+#   READINESS_REASON — why a below-threshold or invalid spec was refused.
 # Returns 0: feature disabled or score >= threshold.
 # Returns 1: below threshold (writes specs/<ticket>/readiness.md), parse failure, or missing rubric.
 readiness_check() {
     local repo="$1" spec="$2" model="$3" budget="$4" billing="$5" runtime="$6"
     local specs_dir="$7" ticket="$8"
-    READINESS_SCORE=""; READINESS_MIN=""; READINESS_REASON=""
+    READINESS_SCORE=""; READINESS_REASON=""
 
     # Feature is off when readiness_min is absent or null.
     local cfg rmin
@@ -600,8 +599,6 @@ readiness_check() {
     rmin="$(jq -r 'if (.readiness_min // null) == null then "" else (.readiness_min | tostring) end' \
         "$cfg" 2>/dev/null)"
     [ -z "$rmin" ] && return 0
-    READINESS_MIN="$rmin"
-
     # Smol model: model_roles.smol when configured, else the task's default model.
     local smol="$model"
     local mr_smol; mr_smol="$(jq -r '.model_roles.smol // empty' "$cfg" 2>/dev/null)"
@@ -754,7 +751,7 @@ cmd_add() {
         fi
         # Readiness gate — only when check_spec passed cleanly; --force bypass of check_spec
         # skips readiness per spec (scoring a known-flawed spec adds noise, not signal).
-        READINESS_SCORE=""; READINESS_MIN=""; READINESS_REASON=""
+        READINESS_SCORE=""; READINESS_REASON=""
         if [ "$spec_passed" -eq 1 ]; then
             if ! readiness_check "$repo" "$spec" "$model" "$budget" "$billing" "$runtime" \
                     "$specs_dir" "$ticket"; then
@@ -2178,7 +2175,8 @@ _arc_redact() (
                 [ -z "$_sgpdata" ] && _sgpdata="${GROK_PLUGIN_DATA:-}"
                 [ -z "$_sgpdata" ] && \
                     _sgpdata="${XDG_DATA_HOME:-$HOME/.local/share}/claude/plugins/slop-guard"
-                export CLAUDE_PLUGIN_ROOT="$(cd "${_sg_lib%/lib/tools.sh}" && pwd 2>/dev/null || true)"
+                CLAUDE_PLUGIN_ROOT="$(cd "${_sg_lib%/lib/tools.sh}" && pwd 2>/dev/null || true)"
+                export CLAUDE_PLUGIN_ROOT
                 export CLAUDE_PLUGIN_DATA="$_sgpdata"
                 # shellcheck source=/dev/null
                 . "$_sg_lib" 2>/dev/null && resolve_tool betterleaks 2>/dev/null || true

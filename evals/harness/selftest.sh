@@ -2216,7 +2216,7 @@ XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC15" "$AISDLC" run --repo "$R" --onc
 [ "$(task_field "$R" .status)" = "done" ] && ok "UC-15: omp task done" || bad "UC-15 pre" "$(task_field "$R" .status)"
 _ARC15_ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
 _ARC15_DIR="$ARC15/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC15_ID"
-_arc15_omp="$(ls -1 "$_ARC15_DIR/sessions/" 2>/dev/null | grep '^omp-' | head -1)"
+_arc15_omp=""; for _arc15_f in "$_ARC15_DIR/sessions/"omp-*; do _arc15_omp="$_arc15_f"; break; done
 [ -n "$_arc15_omp" ] \
     && ok "UC-15: sessions/omp-* file present" \
     || bad "UC-15 omp session" "no omp-* file in sessions/: $(ls "$_ARC15_DIR/sessions/" 2>/dev/null)"
@@ -2360,7 +2360,7 @@ printf '%s' "$_ls_out" | grep -q 'done' \
     && ok "UC-19: output contains status done" \
     || bad "UC-19 status" "done not found"
 # UC-20: filter by status=done → both tasks; filter by status=failed → none
-_ls_done="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --status done 2>/dev/null | wc -l | tr -d ' ')"
+_ls_done="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls --status 'done' 2>/dev/null | wc -l | tr -d ' ')"
 [ "${_ls_done:-0}" -eq 2 ] \
     && ok "UC-20: --status done returns both done tasks" \
     || bad "UC-20 status-done" "got $_ls_done rows"
