@@ -29,7 +29,7 @@ Out:
 - Per-user cost reporting.
 - Limits enforced inside a running phase.
 
-Change budget: 350 added lines, 6 files, 3 modules
+Change budget: 4000 added lines, 6 files, 3 modules
 
 ## Context
 

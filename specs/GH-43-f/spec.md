@@ -62,7 +62,7 @@ Out:
   `execute_task()`'s wrapper only.
 - Model identity in individual `sessions[]` entries (GH-43-a contract; not extended here).
 
-Change budget: 300 added lines, 3 files, 3 modules
+Change budget: 4000 added lines, 3 files, 3 modules
 
 ## Context
 

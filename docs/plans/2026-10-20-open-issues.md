@@ -163,3 +163,9 @@ GH-42-b”: GH-42-a's two good fixtures declared `unknown`-returning functions, 
 `no-unknown-returns` correctly reports; they now declare an `unknown` boundary value, raising
 GH-42-b's file limit from 12 to 14.
 
+## Line-limit increase
+
+Measured after repairs: GH-43-f 444 added lines (approved 300), GH-38 362 (approved 350).
+The user answered “limity trzeba podnieść do 4000”: both specs now allow 4000 added lines,
+with file and module limits unchanged. The profile hard ceiling (3000) still applies to scope-check.
+
