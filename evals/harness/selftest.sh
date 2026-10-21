@@ -2225,6 +2225,21 @@ _arc15_copied="$(jq -r '[.transcripts[]? | select(.copied==true)] | length' \
 [ "${_arc15_copied:-0}" -ge 1 ] \
     && ok "UC-15: manifest.transcripts has copied:true" \
     || bad "UC-15 transcripts" "copied=$_arc15_copied"
+# A second session file in the task's sessions/ dir must also be copied —
+# omp transcripts are a whole-directory glob, not only the newest file.
+_ARC15_TASK="$R/.aisdlc/tasks/$_ARC15_ID"
+mkdir -p "$_ARC15_TASK/sessions"
+printf '{"session":"second"}\n' > "$_ARC15_TASK/sessions/20260101T000000Z_secondsid.jsonl"
+_ARC15_DIR2="$ARC15/$(arc_slug "$R")/$(date -u +%Y-%m)/$_ARC15_ID.1"
+rm -rf "$_ARC15_DIR2"
+( export AISDLC_ARCHIVE="$ARC15" XDG_DATA_HOME="$ARC_XDG"
+  # shellcheck source=/dev/null
+  source "$AISDLC" help >/dev/null 2>&1; archive_task "$R" "$_ARC15_ID" ) >/dev/null 2>&1
+_arc15_n="$(jq -r '[.transcripts[]? | select(.copied==true)] | length' "$_ARC15_DIR2/manifest.json" 2>/dev/null)"
+[ "${_arc15_n:-0}" -ge 2 ] \
+    && ok "UC-15: every sessions/*.jsonl file is copied, not only the newest" \
+    || bad "UC-15 multi" "copied=$_arc15_n (expected ≥2)"
+unset _ARC15_TASK _ARC15_DIR2 _arc15_n
 unset _arc15_omp _arc15_copied _ARC15_ID _ARC15_DIR R
 
 # --------------------------------------------------------------------------- #
@@ -2423,9 +2438,9 @@ _grep_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive grep "$_uc23_pattern" 2>
 printf '%s' "$_grep_out" | grep -q 'phases/implement.log' \
     && ok "UC-23: grep finds pattern in phases/implement.log" \
     || bad "UC-23 phases" "phases/implement.log not matched; output: $_grep_out"
-printf '%s' "$_grep_out" | grep -qv 'spec/' \
+! printf '%s' "$_grep_out" | grep -q 'spec/spec.md' \
     && ok "UC-23: grep does not search spec/ files" \
-    || bad "UC-23 spec" "spec/ content appeared in grep output: $_grep_out"
+    || bad "UC-23 spec" "spec/spec.md match in grep output: $_grep_out"
 unset _LS2_ID _LS2_SLUG _LS2_DIR _uc23_pattern _grep_out
 
 # --------------------------------------------------------------------------- #
@@ -2779,6 +2794,155 @@ jq -e '.phases | map(select(.name == "verify")) | all(.session_id == null and .s
     && ok "UC-34: verify session_id null, started/ended non-null" \
     || bad "UC-34 verify-fields" "$(jq -c '[.phases[] | select(.name=="verify")]' "$_ARC34_DIR/manifest.json" 2>/dev/null)"
 unset _ARC34_ID _ARC34_DIR R
+
+# --------------------------------------------------------------------------- #
+printf '\nship Change map contract (GH-41) and archive subcommand fixes\n'
+# UC-4: ship.md's example mermaid block is parseable-shaped: ≥2 nodes, ≥1 edge, ≤12 nodes.
+_cm_nodes="$(awk '/^```mermaid$/{g=1;next} g && /^```$/{g=0} g && /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*\[/{
+    sub(/\[.*/, "", $0); gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print}' \
+    "$REPO_ROOT/plugins/sdlc/commands/ship.md" | sort -u | wc -l | tr -d ' ')"
+_cm_edges="$(awk '/^```mermaid$/{g=1;next} g && /^```$/{g=0} g && /-->/' \
+    "$REPO_ROOT/plugins/sdlc/commands/ship.md" | wc -l | tr -d ' ')"
+[ "${_cm_nodes:-0}" -ge 2 ] && [ "${_cm_edges:-0}" -ge 1 ] \
+    && ok "GH-41 UC-4: ship.md example mermaid has ≥2 nodes and ≥1 edge" \
+    || bad "GH-41 UC-4" "nodes=${_cm_nodes:-0} edges=${_cm_edges:-0}"
+# UC-5: the cap instruction exists.
+grep -q 'Hard cap: 12 nodes' "$REPO_ROOT/plugins/sdlc/commands/ship.md" \
+    && ok "GH-41 UC-5: 12-node cap is stated in ship.md" \
+    || bad "GH-41 UC-5" "cap text absent"
+# UC-6: README row names the Change map.
+grep -q 'Change map' "$REPO_ROOT/README.md" \
+    && ok "GH-41 UC-6: README ship row mentions the visual Change map" \
+    || bad "GH-41 UC-6" "README row lacks Change map"
+# UC-2 mechanism: the classification loop ship.md embeds — a path outside the
+# spec's In: scope WARNs, a declared path stays silent.
+(
+    # shellcheck source=/dev/null
+    source "$AISDLC" help >/dev/null 2>&1
+    patterns="$(_path_tokens "$(_scope_bullets "$REPO_ROOT/specs/GH-41/spec.md" In)")"
+    [ -z "$patterns" ] && { echo "no In patterns"; exit 1; }
+    for f in plugins/sdlc/commands/ship.md src/out-of-scope.js; do
+        declared=0
+        while IFS= read -r pat; do _glob_match "$f" "$pat" && declared=1; done <<< "$patterns"
+        [ "$declared" = 1 ] || printf 'WARN %s\n' "$f"
+    done
+) > "$WORK/gh41-class.out" 2>&1
+grep -q '^WARN src/out-of-scope.js$' "$WORK/gh41-class.out" \
+    && ! grep -q 'WARN plugins/sdlc/commands/ship.md' "$WORK/gh41-class.out" \
+    && ok "GH-41 UC-2: undeclared path WARNs, declared path stays silent" \
+    || bad "GH-41 UC-2" "classification: $(cat "$WORK/gh41-class.out")"
+unset _cm_nodes _cm_edges R
+
+# GH-43-d fix: show <id>.<n> prints only that attempt; grep dedups a shared path;
+# prune rejects a non-numeric N; a second concurrent run is refused.
+_arcfix="$WORK/arc-fixes"; mkdir -p "$_arcfix"
+printf '{"id":"t-1","path":"%s/t-1"}\n{"id":"t-1","path":"%s/t-1.2"}\n' \
+    "$_arcfix" "$_arcfix" > "$_arcfix/index.jsonl"
+for _d in t-1 t-1.2; do
+    mkdir -p "$_arcfix/$_d/phases"
+    printf '{"id":"t-1"}\n' > "$_arcfix/$_d/manifest.json"
+    printf 'needle\n' > "$_arcfix/$_d/phases/implement.log"
+done
+_show_out="$(AISDLC_ARCHIVE="$_arcfix" "$AISDLC" archive show t-1.2 2>&1)"
+printf '%s' "$_show_out" | grep -q '^=== t-1.2 ===$' && ! printf '%s' "$_show_out" | grep -q '^=== t-1 ===$' \
+    && ok "GH-43-d: show t-1.2 prints only the second attempt" \
+    || bad "GH-43-d show" "$_show_out"
+_show_all="$(AISDLC_ARCHIVE="$_arcfix" "$AISDLC" archive show t-1 2>&1)"
+[ "$(printf '%s' "$_show_all" | grep -c '^=== ')" = "2" ] \
+    && ok "GH-43-d: bare show t-1 still prints both attempts" \
+    || bad "GH-43-d show-all" "$_show_all"
+printf '{"id":"t-1","path":"%s/t-1"}\n{"id":"t-1","path":"%s/t-1"}\n' \
+    "$_arcfix" "$_arcfix" > "$_arcfix/index.jsonl"
+_grep_out="$(AISDLC_ARCHIVE="$_arcfix" "$AISDLC" archive grep needle 2>&1)"
+[ "$(printf '%s' "$_grep_out" | grep -c needle)" = "1" ] \
+    && ok "GH-43-d: grep prints a shared-path directory once" \
+    || bad "GH-43-d grep-dedup" "$_grep_out"
+AISDLC_ARCHIVE="$_arcfix" "$AISDLC" archive prune --older-than abc >/dev/null 2>&1; _rc_af=$?
+[ "$_rc_af" -ne 0 ] \
+    && ok "GH-43-d: prune --older-than abc exits non-zero" \
+    || bad "GH-43-d prune-arg" "rc=0 for 'abc'"
+unset _arcfix _show_out _show_all _grep_out _rc_af _d
+
+# --------------------------------------------------------------------------- #
+printf '\nGH-40 data-only invocation and threshold; GH-39 local base ops; GH-38 run guard\n'
+# Data-only readiness invocation: exact tool-isolation flags on both runtimes.
+grep -q -- '--tools "" --strict-mcp-config --mcp-config' "$AISDLC" \
+    && ok "GH-40: claude data-only disables tools and MCP" \
+    || bad "GH-40 data-only claude" "isolation flags absent"
+grep -q -- '--no-tools --no-extensions' "$AISDLC" \
+    && ok "GH-40: omp data-only disables tools and extensions" \
+    || bad "GH-40 data-only omp" "isolation flags absent"
+grep -q 'invoke_claude "$prompt" "$smol" "$budget" "$settings" "$rdir" "$result" "$log" "false" "$billing" "true"' "$AISDLC" \
+    && ok "GH-40: readiness_check invokes claude with data_only=true" \
+    || bad "GH-40 readiness invoke" "call signature changed"
+# Non-integer readiness_min fails closed with a clear reason, not a bogus score line.
+R="$WORK/ready-nonint"; fresh_repo "$R"; rdy_setup "$R" 80
+jq '.readiness_min = 80.5' "$R/.aisdlc/config.json" > "$R/.aisdlc/c.tmp" && mv "$R/.aisdlc/c.tmp" "$R/.aisdlc/config.json"
+out="$(AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' "$AISDLC" add SBX-1 --repo "$R" --no-pr 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'integer 0-100' \
+    && ok "GH-40: non-integer readiness_min refuses with a clear reason" \
+    || bad "GH-40 nonint" "rc=$rc out=$out"
+unset R out rc
+
+# GH-39 UC-9: local get-pr/get-pr-diff compare against the stored base, fail closed.
+# The operations are read from the shipped template — this exercises the contract
+# /sdlc:review executes, not a hand-copied variant of it.
+_tmpl="$REPO_ROOT/plugins/sdlc/templates/trackers/local.md"
+_op_getpr="$(awk '/^### get-pr$/    {getline; print; exit}' "$_tmpl")"
+_op_diff="$(awk '/^### get-pr-diff$/{getline; print; exit}' "$_tmpl")"
+_op_getpr="${_op_getpr//\{n\}/1}"; _op_diff="${_op_diff//\{n\}/1}"
+# The template wraps each operation in a markdown code span; strip the backticks.
+_op_getpr="${_op_getpr#\`}"; _op_getpr="${_op_getpr%\`}"
+_op_diff="${_op_diff#\`}"; _op_diff="${_op_diff%\`}"
+R="$WORK/gh39-local"; fresh_repo "$R"
+git -C "$R" checkout -q -b review-39
+mkdir -p "$R/src"; printf 'change\n' > "$R/src/probe.js"
+git -C "$R" add -A >/dev/null; git -C "$R" commit -qm "branch change"
+git -C "$R" checkout -q master
+mkdir -p "$R/.aisdlc/tracker"
+jq -cn '{number:1,branch:"review-39",baseRefName:"master"}' > "$R/.aisdlc/tracker/prs.jsonl"
+_gp_out="$(cd "$R" && P=.aisdlc/tracker/prs.jsonl bash -c "$_op_getpr" 2>/dev/null)"
+printf '%s' "$_gp_out" | grep -q '"mergeable":"MERGEABLE"' \
+    && ok "GH-39 UC-9: clean branch reports MERGEABLE" \
+    || bad "GH-39 UC-9 clean" "$_gp_out"
+_df_out="$(cd "$R" && P=.aisdlc/tracker/prs.jsonl bash -c "$_op_diff" 2>/dev/null)"
+printf '%s' "$_df_out" | grep -q 'src/probe.js' \
+    && ok "GH-39 UC-9: diff lists the branch change against the stored base" \
+    || bad "GH-39 UC-9 diff" "$_df_out"
+mkdir -p "$R/src"; printf 'conflict\n' > "$R/src/probe.js"
+git -C "$R" add -A >/dev/null; git -C "$R" commit -qm "base change"
+_gp_out="$(cd "$R" && P=.aisdlc/tracker/prs.jsonl bash -c "$_op_getpr" 2>/dev/null)"
+printf '%s' "$_gp_out" | grep -q '"mergeable":"CONFLICTING"' \
+    && ok "GH-39 UC-9: real base/head conflict reports CONFLICTING" \
+    || bad "GH-39 UC-9 conflict" "$_gp_out"
+jq -c '.baseRefName="missing-ref"' "$R/.aisdlc/tracker/prs.jsonl" > "$R/.aisdlc/t.tmp" \
+    && mv "$R/.aisdlc/t.tmp" "$R/.aisdlc/tracker/prs.jsonl"
+(cd "$R" && P=.aisdlc/tracker/prs.jsonl bash -c "$_op_getpr" >/dev/null 2>&1); _rc39=$?
+(cd "$R" && P=.aisdlc/tracker/prs.jsonl bash -c "$_op_diff" >/dev/null 2>&1); _rc39b=$?
+[ "$_rc39" -ne 0 ] && [ "$_rc39b" -ne 0 ] \
+    && ok "GH-39 UC-9: missing base ref fails closed on both operations" \
+    || bad "GH-39 UC-9 fail-closed" "get-pr rc=$_rc39 diff rc=$_rc39b"
+unset R _tmpl _op_getpr _op_diff _gp_out _df_out _rc39 _rc39b
+
+# GH-38: a second concurrent run is refused instead of resetting the first's caps.
+R="$WORK/gh38-conc"; fresh_repo "$R"
+cp -R "$R/specs/SBX-1" "$R/specs/SBX-2"; sed -i "s/SBX-1/SBX-2/" "$R/specs/SBX-2/spec.md"
+git -C "$R" add -A >/dev/null && git -C "$R" commit -qm conc >/dev/null \
+    && git -C "$R" update-ref refs/remotes/origin/master HEAD
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC" add SBX-2 --repo "$R" --no-pr >/dev/null 2>&1
+_conc_bin="$WORK/gh38-conc-bin"; mkdir -p "$_conc_bin"
+printf '#!/usr/bin/env bash\nsleep 3\nexec "%s" "$@"\n' "$HARNESS_DIR/stub-claude" > "$_conc_bin/claude"
+chmod +x "$_conc_bin/claude"
+PATH="$_conc_bin:$PATH" "$AISDLC" run --repo "$R" --workers 1 >/dev/null 2>&1 &
+_conc_pid=$!
+sleep 1
+_conc_out="$(PATH="$_conc_bin:$PATH" "$AISDLC" run --repo "$R" --workers 1 2>&1)"; _conc_rc=$?
+wait "$_conc_pid"
+printf '%s' "$_conc_out" | grep -q 'already active' \
+    && ok "GH-38: second concurrent run refused, first run's caps preserved" \
+    || bad "GH-38 concurrent" "rc=$_conc_rc out=$_conc_out"
+unset R _conc_bin _conc_pid _conc_out _conc_rc
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
