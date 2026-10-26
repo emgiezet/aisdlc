@@ -7,15 +7,16 @@ rules:
   - id: slopguard.rs.unsafe-block
     languages: [rust]
     message: >-
-      Unsafe block found. Every unsafe block must carry a // SAFETY: comment
-      that explains the invariants upholding the block's correctness. Without
-      documentation the block cannot be audited or maintained safely.
+      Unsafe block found without a SAFETY: comment inside the block explaining
+      the invariants that uphold correctness. Every unsafe block must carry an
+      inline // SAFETY: annotation so it can be audited and maintained.
     severity: WARNING
     metadata:
       ap_id: AP-RS-SEC-001
       category: security
-    pattern: unsafe { ... }
-
+    patterns:
+      - pattern: unsafe { ... }
+      - pattern-not-regex: '(?m)^\s*//\s*SAFETY:'
   - id: slopguard.rs.unwrap-in-library
     languages: [rust]
     message: >-
@@ -76,10 +77,9 @@ rules:
     metadata:
       ap_id: AP-RS-SEC-005
       category: security
-    pattern: |
-      unsafe {
-        ... *$PTR ...
-      }
+    patterns:
+      - pattern-inside: "unsafe { ... }"
+      - pattern: "*$PTR"
 
   - id: slopguard.rs.mem-transmute
     languages: [rust]

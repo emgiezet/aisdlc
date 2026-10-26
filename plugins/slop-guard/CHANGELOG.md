@@ -3,6 +3,32 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **GH-65: OpenGrep fixture contract — real fixtures, repaired patterns, per-rule bad/good gate** (2026-10-26, #65)
+  - **Fixtures** (`tests/fixtures/`): C#, Rust, and Ruby bad-fixture classes that contained only a
+    stub placeholder (e.g. `public class StubAP-CS-SEC-00X {}`) were replaced with genuine unsafe
+    API calls; JVM and React good fixtures that happened to match an existing bad pattern were
+    replaced with safe alternatives that correctly do not trigger their rule.
+  - **Pattern repairs** (`rules/opengrep/`): C# `slopguard.cs.process-start-user-input` was
+    over-broad — `FileName = $VAR` matched any expression including string literals, so the safe
+    fixture produced a false positive. The rule was tightened: a direct-variable assignment branch
+    (`FileName = $FNAME`) is retained alongside new interpolation and concatenation branches
+    (`FileName = $"..."`, `FileName = $FNAME + $VAR`); the safe literal `FileName = "myapp"` now
+    correctly produces zero hits. C# XXE now distinguishes a disabled XML resolver from one
+    subsequently re-enabled before parsing. Go zero-valued timeouts, Node request-key loops
+    with a null-prototype safe target, React sanitizer shadows (including arrow components),
+    Rust, and Laravel patterns were repaired to eliminate confirmed false negatives or false
+    positives. Additional adversarial bad examples cover distinct bypass shapes.
+  - **Integration gate** (`tests/integration/opengrep.sh`): per-rule dynamic assertions — rule IDs
+    and AP IDs are discovered from `rules/opengrep/*.yaml` at runtime; for every rule the gate
+    confirms the bad fixture produces ≥1 matching hit and the good fixture produces zero hits.
+    Language-group UC pairs cover C#, Rust, Ruby, JVM/Go/Node, and React/Laravel; a final
+    whole-ruleset pass sweeps every configured rule. Absent binary → `it_skip`; failed scan or
+    invalid JSON is a hard failure, never an empty-success pass.
+  - **Why.** The prior check validated only YAML structure (offline, no binary). It could not
+    detect that stub fixtures contained no unsafe calls (OpenGrep never fired → silent false
+    negatives) nor that an over-broad pattern fired on the safe fixture (false positive). Because
+    the binary was never invoked against real fixture files, both classes of defect went
+    undetected; the new integration script is the first check that catches both.
 - **Double-cast detection, AP-AGENT-011, deslop duplicate check — and the Opengrep pass actually runs** (2026-10-20, #63)
   - `rules/opengrep/react.yaml`: `slopguard.ts.double-cast` matches `$X as unknown as $T` and `<$T>(<unknown>$X)` → AP-TS-MAINT-001, severity `error` (a single `as` stays `warn` via ESLint). The catalogue entry's `detect:` and `bad:`/`good:` show the validate → widen → assert-back detour. Fixtures `tests/fixtures/ts/{bad,good}/AP-TS-MAINT-001.ts`: 3 hits / 0 hits against opengrep 1.30.0.
   - `rules/catalog.yaml`, `rules/policies/always-on.yaml`, `hooks/session-start`: AP-AGENT-011 "Clearing a finding without establishing the guarantee it protects" — `warn`, skill-only, no `detect`. Swapping a broad type for a derived one while the input stays unvalidated, deleting a `typeof` guard while the data is still dispatched unparsed, moving a cast or commenting "already validated" all clear the warning and keep the defect; a finding is resolved when the value is parsed or narrowed at its source and the failure path has a test. The digest is ten lines; the pointer reads `AP-AGENT-001..009, 011` (010 is the Stop-gate docs check, §7.6, not a catalogue entry). `skills/agent-discipline` regenerated.
