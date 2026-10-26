@@ -59,8 +59,10 @@ Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI (for the queue runner).
 
 ### 🔐 Credentials for the queue runner
 
-`aisdlc run` shells out to `claude -p` — or to `omp -p` for a task queued with `--runtime omp`
-(also `"runtime": "omp"` in `.aisdlc/config.json`, or `AISDLC_RUNTIME`). It sets no credentials
+`aisdlc run` shells out to `omp -p` or `claude -p`. By default (`runtime: auto`) `aisdlc add`
+picks the first one installed, omp before claude, and stores it on the task; pin one with
+`--runtime omp|claude`, `"runtime"` in `.aisdlc/config.json`, or `AISDLC_RUNTIME` — `claude` for
+a CI stage, for example. It sets no credentials
 of its own — whatever authenticates that CLI authenticates the queue. An API key is one option of four, not a requirement:
 
 | Option | How | Billed against |
@@ -97,7 +99,7 @@ Then ship something (Claude Code syntax shown; substitute `$spec`/`$implement` o
 ```
 /sdlc:spec ABC-123            → specs/ABC-123/spec.md, status: draft
    ↓ you read it, flip status: approved, commit         ← the only approval point
-aisdlc add ABC-123 && aisdlc run    ← queue runner is Claude-only
+aisdlc add ABC-123 && aisdlc run    ← queue runner: omp or Claude Code, auto-detected
 ```
 
 ## 🔄 Update

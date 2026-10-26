@@ -120,7 +120,7 @@ If `/sdlc:init --discovery` wrote a `## Definition of Ready` block, leave it exa
 ## Phase 4: Runner config and directories
 
 `.aisdlc/config.json` — the keys the queue runner resolves: `model`, `budget`, `base`, `workers`,
-`label`, `specs_dir`; optional `billing`, `model_roles`, `readiness_min`, `max_open_prs`
+`label`, `specs_dir`; optional `billing`, `runtime`, `model_roles`, `readiness_min`, `max_open_prs`
 (null = unlimited), `max_run_usd` (null = unlimited) and `archive_transcripts`.
 
 - Add **absent** keys with the defaults `aisdlc help` prints, except `base`, which comes from this

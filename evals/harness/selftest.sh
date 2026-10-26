@@ -79,6 +79,9 @@ mkdir -p "$STUB_DIR"
 ln -sf "$HARNESS_DIR/stub-claude" "$STUB_DIR/claude"
 ln -sf "$HARNESS_DIR/stub-omp" "$STUB_DIR/omp"
 export PATH="$STUB_DIR:$PATH"
+# Both stubs are on PATH, so the built-in `auto` runtime would pick omp for every case. Pin the
+# baseline to claude; the auto-detection cases unset this and control PATH themselves.
+export AISDLC_RUNTIME=claude
 
 printf 'aisdlc runner selftest (stub claude and stub omp, no API calls)\n\n'
 
@@ -1344,6 +1347,52 @@ PATH="$NO_OMP" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1 \
     && bad "runtime" "run started without omp installed" || ok "run refuses when a queued task's runtime is missing"
 [ "$(task_field "$R" .status)" = "queued" ] && ok "the task stays queued" \
     || bad "runtime" "status is $(task_field "$R" .status)"
+
+printf '\nruntime auto: omp before claude, explicit choice wins, none installed fails\n'
+AUTO_NONE="$WORK/auto-none-bin"; AUTO_CLAUDE="$WORK/auto-claude-bin"; AUTO_BOTH="$WORK/auto-both-bin"
+mkdir -p "$AUTO_NONE" "$AUTO_CLAUDE" "$AUTO_BOTH"
+for tool in git jq flock bash sed awk grep find sort sha256sum cut tr wc head tail date dirname basename mkdir cat printf readlink ls mktemp rm mv cp touch tee uname env; do
+    p="$(command -v "$tool")" || continue
+    for d in "$AUTO_NONE" "$AUTO_CLAUDE" "$AUTO_BOTH"; do ln -sf "$p" "$d/$tool"; done
+done
+ln -sf "$HARNESS_DIR/stub-claude" "$AUTO_CLAUDE/claude"
+ln -sf "$HARNESS_DIR/stub-claude" "$AUTO_BOTH/claude"
+ln -sf "$HARNESS_DIR/stub-omp" "$AUTO_BOTH/omp"
+auto_add() { local bin="$1"; shift; env -u AISDLC_RUNTIME PATH="$bin" "$AISDLC" add SBX-1 "$@" 2>&1; }
+
+R="$WORK/auto-both"; fresh_repo "$R"
+out="$(auto_add "$AUTO_BOTH" --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "omp" ] && ok "auto picks omp when omp and claude are installed" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+printf '%s\n' "$out" | grep -q 'on omp (auto-detected)' && ok "add says the runtime was auto-detected" \
+    || bad "runtime auto" "no auto-detected note: $out"
+
+R="$WORK/auto-claude"; fresh_repo "$R"
+out="$(auto_add "$AUTO_CLAUDE" --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "claude" ] && ok "auto falls back to claude without omp" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-explicit"; fresh_repo "$R"
+out="$(auto_add "$AUTO_BOTH" --repo "$R" --runtime claude)"
+[ "$(task_field "$R" .runtime)" = "claude" ] && ok "--runtime claude wins over auto-detection" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-config"; fresh_repo "$R"
+printf '{"verify":["true"],"runtime":"auto"}\n' > "$R/.aisdlc/config.json"
+out="$(auto_add "$AUTO_CLAUDE" --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "claude" ] && ok "runtime \"auto\" in config.json detects too" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-none"; fresh_repo "$R"
+if out="$(auto_add "$AUTO_NONE" --repo "$R")"; then
+    bad "runtime auto" "add succeeded with no runtime installed: $out"
+else
+    printf '%s\n' "$out" | grep -q 'neither omp nor claude is installed' \
+        && ok "auto with no runtime installed refuses with the reason" \
+        || bad "runtime auto" "unexpected refusal: $out"
+fi
+[ -z "$(task_field "$R" .id)" ] && ok "nothing is queued when no runtime is installed" \
+    || bad "runtime auto" "a task was queued without a runtime"
 
 printf '\nsessions: claude records phase sessions (UC-1)\n'
 R="$WORK/sessions-uc1"; fresh_repo "$R"
