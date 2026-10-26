@@ -3,6 +3,11 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **Generated skill frontmatter loads correctly** (2026-10-20)
+  - `scripts/gen-skills`: JSON-quote descriptions with jq (valid YAML strings), preserving colons, quotes and backslashes; regenerate the thirteen catalogue skills.
+  - `evals/skill-frontmatter.py`: offline regression eval runs the real generator in a temporary directory and parses both generated and shipped skill metadata with PyYAML. Requires `agent-discipline`, matching skill names, non-empty descriptions and boolean `user-invocable` values.
+  - `tests/catalog_test.sh`: run the eval instead of checking only field prefixes; `.github/workflows/validate.yml` installs the already toolchain-pinned `PyYAML==6.0.3` for this gate.
+  - **Why.** The unquoted `rules: ` inside `agent-discipline`'s description caused OMP to reject its YAML and report `Unknown skill`. Field-presence checks could not detect this. Run the eval with `python3 plugins/slop-guard/evals/skill-frontmatter.py`; set `PYTHON` when the catalogue suite needs a different Python with PyYAML installed.
 - **Double-cast detection, AP-AGENT-011, deslop duplicate check — and the Opengrep pass actually runs** (2026-10-20, #63)
   - `rules/opengrep/react.yaml`: `slopguard.ts.double-cast` matches `$X as unknown as $T` and `<$T>(<unknown>$X)` → AP-TS-MAINT-001, severity `error` (a single `as` stays `warn` via ESLint). The catalogue entry's `detect:` and `bad:`/`good:` show the validate → widen → assert-back detour. Fixtures `tests/fixtures/ts/{bad,good}/AP-TS-MAINT-001.ts`: 3 hits / 0 hits against opengrep 1.30.0.
   - `rules/catalog.yaml`, `rules/policies/always-on.yaml`, `hooks/session-start`: AP-AGENT-011 "Clearing a finding without establishing the guarantee it protects" — `warn`, skill-only, no `detect`. Swapping a broad type for a derived one while the input stays unvalidated, deleting a `typeof` guard while the data is still dispatched unparsed, moving a cast or commenting "already validated" all clear the warning and keep the defect; a finding is resolved when the value is parsed or narrowed at its source and the failure path has a test. The digest is ten lines; the pointer reads `AP-AGENT-001..009, 011` (010 is the Stop-gate docs check, §7.6, not a catalogue entry). `skills/agent-discipline` regenerated.

@@ -151,7 +151,7 @@ gen_skill_md() {
 
     local paths desc title_txt
     paths="$(skill_paths "$skill_name")"
-    desc="$(skill_desc "$skill_name")"
+    desc="$(skill_desc "$skill_name" | jq -Rs .)"
     title_txt="$(skill_title "$skill_name")"
 
     local out

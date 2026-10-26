@@ -246,31 +246,12 @@ for skill_dir in "${SKILLS_DIR}"/*/; do
 done
 [ "$SKILLS_OVER_BUDGET" -eq 0 ] && ok "all generated SKILL.md files within §3 budgets (150 lines, 3000 tokens)"
 
-# ─── 9. Every SKILL.md has valid frontmatter ──────────────────────────────────
-FM_FAILURES=0
-for skill_dir in "${SKILLS_DIR}"/*/; do
-    skill_name="$(basename "$skill_dir")"
-    md="${skill_dir}/SKILL.md"
-    [ -f "$md" ] || continue
-    has_name=false; has_desc=false; has_uinv=false
-    in_fm=false; fm_done=false
-    while IFS= read -r line; do
-        case "$line" in
-            "---") 
-                if ! $in_fm && ! $fm_done; then in_fm=true
-                elif $in_fm; then in_fm=false; fm_done=true; break
-                fi ;;
-            "name: "*)        $in_fm && has_name=true ;;
-            "description: "*) $in_fm && has_desc=true ;;
-            "user-invocable: "*) $in_fm && has_uinv=true ;;
-        esac
-    done < "$md"
-    if ! $has_name || ! $has_desc || ! $has_uinv; then
-        bad "SKILL.md frontmatter" "${skill_name}: missing name/description/user-invocable"
-        FM_FAILURES=$(( FM_FAILURES + 1 ))
-    fi
-done
-[ "$FM_FAILURES" -eq 0 ] && ok "all SKILL.md files have valid frontmatter"
+# ─── 9. Shipped and freshly generated skills load as YAML metadata ─────────────
+if frontmatter_output="$("${PYTHON:-python3}" "${PLUGIN_ROOT}/evals/skill-frontmatter.py" 2>&1)"; then
+    ok "skill frontmatter eval: ${frontmatter_output}"
+else
+    bad "skill frontmatter eval" "$frontmatter_output"
+fi
 
 # ─── 10. gen-skills idempotency (run twice, diff SKILL.md files) ──────────────
 TMP_IDEMPOTENT="$(mktemp -d)"

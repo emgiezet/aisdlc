@@ -1,6 +1,6 @@
 ---
 name: auth-antipatterns
-description: Forbidden authentication and session-management patterns — weak token generation, insecure password hashing, session fixation, JWT algorithm confusion, missing rate limits, and account enumeration. Applies when writing auth, login, session, token, password, or OAuth code.
+description: "Forbidden authentication and session-management patterns — weak token generation, insecure password hashing, session fixation, JWT algorithm confusion, missing rate limits, and account enumeration. Applies when writing auth, login, session, token, password, or OAuth code."
 paths: ["**/auth/**","**/*auth*","**/*login*","**/*session*","**/*token*","**/*password*","**/*oauth*"]
 user-invocable: false
 ---

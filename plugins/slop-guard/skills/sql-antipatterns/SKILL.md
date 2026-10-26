@@ -1,6 +1,6 @@
 ---
 name: sql-antipatterns
-description: Forbidden SQL patterns — SELECT *, missing CONCURRENTLY on indexes, unsafe migrations, missing FK indexes. Applies when editing SQL files.
+description: "Forbidden SQL patterns — SELECT *, missing CONCURRENTLY on indexes, unsafe migrations, missing FK indexes. Applies when editing SQL files."
 user-invocable: false
 ---
 

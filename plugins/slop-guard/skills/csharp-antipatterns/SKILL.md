@@ -1,6 +1,6 @@
 ---
 name: csharp-antipatterns
-description: Forbidden C# patterns — SQL injection, BinaryFormatter, weak random, async void, exception swallowing. Applies when editing C# files.
+description: "Forbidden C# patterns — SQL injection, BinaryFormatter, weak random, async void, exception swallowing. Applies when editing C# files."
 paths: ["**/*.cs"]
 user-invocable: false
 ---
