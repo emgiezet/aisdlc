@@ -1,8 +1,6 @@
 ---
 name: php-antipatterns
 description: "Forbidden PHP/Laravel/Symfony patterns — SQL injection, shell injection, weak crypto, N+1, and maintainability anti-patterns. Applies when editing PHP or Blade files."
-paths: ["**/*.blade.php","**/*.php","**/*.twig"]
-user-invocable: false
 ---
 
 # PHP anti-patterns — do not write these

@@ -1,8 +1,6 @@
 ---
 name: python-antipatterns
 description: "Forbidden Python patterns — SQL injection, shell injection, unsafe deserialization, missing timeouts, blocking async calls. Applies when editing Python files."
-paths: ["**/*.py"]
-user-invocable: false
 ---
 
 # Python anti-patterns — do not write these

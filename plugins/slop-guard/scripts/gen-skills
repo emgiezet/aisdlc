@@ -16,7 +16,6 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CATALOG="${SLOPGUARD_CATALOG:-${PLUGIN_ROOT}/rules/catalog.yaml}"
-STACKS="${SLOPGUARD_STACKS_JSON:-${PLUGIN_ROOT}/rules/stacks.json}"
 SKILLS_DIR="${SLOPGUARD_SKILLS_DIR:-${PLUGIN_ROOT}/skills}"
 
 MAX_LINES=150
@@ -36,7 +35,6 @@ while [ $# -gt 0 ]; do
 done
 
 [ -f "$CATALOG" ] || { printf 'gen-skills: catalog not found: %s\n' "$CATALOG" >&2 ; exit 1 ; }
-[ -f "$STACKS"  ] || { printf 'gen-skills: stacks not found: %s\n'  "$STACKS"  >&2 ; exit 1 ; }
 
 # ─── atomic write ─────────────────────────────────────────────────────────────
 write_atomic() {
@@ -70,19 +68,6 @@ lang_to_skill() {
         rust)                   printf 'rust-antipatterns' ;;
         auth)                   printf 'auth-antipatterns' ;;
         *) printf '' ;;
-    esac
-}
-
-# ─── paths JSON for a skill (from stacks.json) ────────────────────────────────
-skill_paths() {
-    case "$1" in
-        # auth is a cross-cutting concern, not a stack — enumerate globs explicitly
-        auth-antipatterns)
-            printf '["**/auth/**","**/*auth*","**/*login*","**/*session*","**/*token*","**/*password*","**/*oauth*"]' ;;
-        *)
-            jq -r --arg s "$1" \
-                '[.[] | select(.skill==$s) | (.globs//[])[]] | unique | @json' \
-                "$STACKS" 2>/dev/null || printf '[]' ;;
     esac
 }
 
@@ -149,17 +134,13 @@ gen_skill_md() {
     local skill_dir="${SKILLS_DIR}/${skill_name}"
     mkdir -p "$skill_dir"
 
-    local paths desc title_txt
-    paths="$(skill_paths "$skill_name")"
+    local desc title_txt
     desc="$(skill_desc "$skill_name" | jq -Rs .)"
     title_txt="$(skill_title "$skill_name")"
 
+    # Portable frontmatter only (agentskills.io): omp rejects any other key.
     local out
-    out="---"$'\n'"name: ${skill_name}"$'\n'"description: ${desc}"$'\n'
-    if [ "$paths" != "[]" ] && [ -n "$paths" ]; then
-        out+="paths: ${paths}"$'\n'
-    fi
-    out+="user-invocable: false"$'\n'"---"$'\n\n'
+    out="---"$'\n'"name: ${skill_name}"$'\n'"description: ${desc}"$'\n'"---"$'\n\n'
     out+="# ${title_txt} — do not write these"$'\n\n'
 
     case "$skill_name" in

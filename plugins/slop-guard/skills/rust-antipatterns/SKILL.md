@@ -1,8 +1,6 @@
 ---
 name: rust-antipatterns
 description: "Forbidden Rust patterns — unsafe without safety comment, unwrap in library code, unchecked integer arithmetic. Applies when editing Rust files."
-paths: ["**/*.rs"]
-user-invocable: false
 ---
 
 # Rust anti-patterns — do not write these

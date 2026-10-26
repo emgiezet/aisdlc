@@ -262,8 +262,7 @@ find "$SKILLS_DIR" -name 'SKILL.md' | sort | xargs md5sum 2>/dev/null \
     | sed "s|${SKILLS_DIR}/||g" > "${TMP_IDEMPOTENT}/before.md5"
 
 # Re-run generator
-SLOPGUARD_CATALOG="$CATALOG" SLOPGUARD_STACKS_JSON="$STACKS" \
-    bash "$GEN_SKILLS" >/dev/null 2>&1
+SLOPGUARD_CATALOG="$CATALOG" bash "$GEN_SKILLS" >/dev/null 2>&1
 
 # Re-hash
 find "$SKILLS_DIR" -name 'SKILL.md' | sort | xargs md5sum 2>/dev/null \
@@ -301,7 +300,7 @@ OVER_BUDGET_CATALOG="${TMP_IDEMPOTENT}/overbud.yaml"
 
 OB_TMP="${TMP_IDEMPOTENT}/ob_skills"
 mkdir -p "$OB_TMP"
-if SLOPGUARD_CATALOG="$OVER_BUDGET_CATALOG" SLOPGUARD_STACKS_JSON="$STACKS" \
+if SLOPGUARD_CATALOG="$OVER_BUDGET_CATALOG" \
     SLOPGUARD_SKILLS_DIR="$OB_TMP" bash "$GEN_SKILLS" >/dev/null 2>&1; then
     bad "over-budget catalog" "gen-skills should have exited non-zero on over-budget catalog"
 else
@@ -345,17 +344,12 @@ else
     fi
 fi
 
-# ─── 15. secure-review SKILL.md has context: fork ─────────────────────────────
+# ─── 15. secure-review SKILL.md exists ────────────────────────────────────────
 SECURE_REVIEW="${SKILLS_DIR}/secure-review/SKILL.md"
-if [ ! -f "$SECURE_REVIEW" ]; then
-    bad "secure-review SKILL.md" "not found: skills/secure-review/SKILL.md"
-else
+if [ -f "$SECURE_REVIEW" ]; then
     ok "skills/secure-review/SKILL.md exists"
-    if grep -q '^context: fork' "$SECURE_REVIEW"; then
-        ok "secure-review skill has context: fork"
-    else
-        bad "secure-review context" "SKILL.md missing 'context: fork' in frontmatter"
-    fi
+else
+    bad "secure-review SKILL.md" "not found: skills/secure-review/SKILL.md"
 fi
 
 # ─── 16. Shell checks on scripts ──────────────────────────────────────────────

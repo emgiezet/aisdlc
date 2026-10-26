@@ -1,8 +1,6 @@
 ---
 name: ruby-antipatterns
 description: "Forbidden Ruby/Rails patterns — eval with user input, YAML.load, mass assignment without permit, shell injection. Applies when editing Ruby files."
-paths: ["**/*.erb","**/*.rake","**/*.rb"]
-user-invocable: false
 ---
 
 # Ruby anti-patterns — do not write these
