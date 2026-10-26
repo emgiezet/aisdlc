@@ -241,12 +241,13 @@ Precedence for every setting: CLI flag > `.aisdlc/config.json` > environment var
 | Setting | Config key | Env variable | Default | Notes |
 |---------|------------|--------------|---------|-------|
 | model | `model` | `AISDLC_MODEL` | `sonnet` | Any model name accepted by `claude --model` |
-| per-phase budget | `budget` | `AISDLC_BUDGET` | `5` | USD ceiling per phase; ignored when `billing=subscription` |
+| per-phase budget | `budget` | `AISDLC_BUDGET` | `5` | USD ceiling per phase, enforced by `claude` only; ignored when `billing=subscription` and on the `omp` runtime, which has no spend cap |
 | base ref | `base` | `AISDLC_BASE` | auto-detected | Branch or remote ref to branch from |
 | workers | `workers` | `AISDLC_WORKERS` | `3` | Parallel workers for `aisdlc run` |
 | label | `label` | `AISDLC_LABEL` | `ai-sdlc` | PR label applied by ship |
 | specs dir | `specs_dir` | `AISDLC_SPECS_DIR` | `specs` | Root for spec files |
 | billing | `billing` | `AISDLC_BILLING` | `api` | `api` or `subscription` — see below |
+| runtime | `runtime` | `AISDLC_RUNTIME` | `auto` | `auto` (omp if installed, else claude — resolved at `add` and stored on the task), `omp` or `claude`. No installed runtime → `add` refuses |
 | model roles | `model_roles` | — | *(absent)* | Maps `smol`/`default`/`slow` roles to model names; see below. Absent = today's behaviour |
 | pull label | `pull_label` | `AISDLC_PULL_LABEL` | `bug` | The approval label `aisdlc pull` selects on |
 | loop interval | `loop_interval` | `AISDLC_LOOP_INTERVAL` | `900` | Seconds between `aisdlc loop` ticks |
@@ -460,14 +461,14 @@ Not a temporary list — these are the parts where being accountable is the job:
 
 ## Host support
 
-The harness runs on Claude Code, Codex, Grok, and omp. The queue runner is Claude-only.
+The harness runs on Claude Code, Codex, Grok, and omp. The queue runner runs on omp or Claude Code.
 
 | Capability | Claude Code | Codex | Grok | omp |
 |------------|-------------|-------|------|-----|
 | Knowledge skills (`npx skills`) | ✓ | ✓ | ✓ | ✓ |
 | Full plugin (marketplace install) | ✓ | ✓ | ✓ | ✓ |
 | Interactive commands (`init`, `spec`, `mockup`, `implement`, `qa`, `ship`, `review`, …) | `/sdlc:<name>` | `$<name>` | `/<name>` | `/sdlc:<name>` |
-| Unattended queue (`aisdlc run`) | ✓ | — | — | — |
+| Unattended queue (`aisdlc run`) | ✓ | — | — | ✓ |
 | `Stop` hook (test-deletion guard) | blocking | blocking | advisory (exit 0, stderr) | — |
 | `PreToolUse` hooks (force-push guard, secrets) | blocking | blocking | blocking | extension adapter |
 | Model roles (`model_roles`) | queue phases + `sdlc-scribe` delegation | — | — | `sdlc-scribe` delegation; optional `@role` aliases |
@@ -483,8 +484,8 @@ workflow step.
 
 ## Credentials for the queue runner
 
-`aisdlc run` shells out to `claude -p` — or `omp -p --mode json` for tasks queued with
-`--runtime omp`, which loads this plugin through `--plugin-dir` (and with it the guard extension)
+`aisdlc run` shells out to `claude -p` — or `omp -p --mode json` for tasks whose runtime is
+`omp` (the `auto` default when omp is installed), which loads this plugin through `--plugin-dir` (and with it the guard extension)
 — and sets no credentials of its own: whatever authenticates that CLI authenticates the queue.
 omp forwards an unknown `/command` to the model as plain text and strips HTML comments from a
 command before the model sees it, so the runner checks the command file exists and reads the

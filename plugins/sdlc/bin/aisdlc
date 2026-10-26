@@ -35,12 +35,13 @@ BUILTIN_WORKERS="3"
 BUILTIN_LABEL="ai-sdlc"
 BUILTIN_SPECS_DIR="specs"
 BUILTIN_BILLING="api"
-BUILTIN_RUNTIME="claude"
+BUILTIN_RUNTIME="auto"
 
 # The CLI that runs each phase. claude is `claude -p`; omp is `omp -p --mode json`, which loads
-# this plugin through --plugin-dir and expands /<plugin>:<phase> itself.
+# this plugin through --plugin-dir and expands /<plugin>:<phase> itself. auto is resolved once,
+# at add: the first of omp, claude on PATH; the task stores the concrete runtime.
 check_runtime() {
-    case "$1" in claude|omp) ;; *) die "runtime must be 'claude' or 'omp' (got '$1')" ;; esac
+    case "$1" in auto|claude|omp) ;; *) die "runtime must be 'auto', 'claude' or 'omp' (got '$1')" ;; esac
 }
 
 # Change budget: the review surface one task may add before scope-check says so. Overridable
@@ -708,7 +709,7 @@ cmd_add() {
         [ -n "$phases" ] || phases="$ISSUE_PHASES"
     fi
 
-    [ -n "$ticket" ] || die "usage: aisdlc add <TICKET> [--repo .] [--model sonnet] [--budget 5] [--runtime claude|omp]"
+    [ -n "$ticket" ] || die "usage: aisdlc add <TICKET> [--repo .] [--model sonnet] [--budget 5] [--runtime auto|claude|omp]"
 
     repo="$(resolve_repo "$repo")"
     init_state "$repo"
@@ -723,6 +724,16 @@ cmd_add() {
     [ -n "$phases" ] || phases="$ALL_PHASES"
     runtime="$(resolve_default "$repo" runtime "$runtime" "${AISDLC_RUNTIME:-}" "$BUILTIN_RUNTIME")"
     check_runtime "$runtime"
+    local runtime_note=""
+    if [ "$runtime" = "auto" ]; then
+        runtime=""
+        local rt
+        for rt in omp claude; do
+            command -v "$rt" >/dev/null 2>&1 && { runtime="$rt"; break; }
+        done
+        [ -n "$runtime" ] || die "runtime auto: neither omp nor claude is installed — install one, or pass --runtime"
+        runtime_note=" (auto-detected)"
+    fi
 
     local specs_dir
     specs_dir="$(resolve_default "$repo" specs_dir "" "${AISDLC_SPECS_DIR:-}" "$BUILTIN_SPECS_DIR")"
@@ -819,7 +830,7 @@ cmd_add() {
     flock "$(state_dir "$repo")/queue.lock" \
         bash -c "printf '%s\n' \"$id\" >> \"$(state_dir "$repo")/queue.jsonl\""
 
-    say "queued $id  ($ticket → $model on $runtime, budget \$$budget, phases: $phases)"
+    say "queued $id  ($ticket → $model on $runtime$runtime_note, budget \$$budget, phases: $phases)"
     say "run it:  aisdlc run --repo $repo"
 }
 
@@ -3573,6 +3584,7 @@ aisdlc $VERSION — fire-and-forget queue for the AI SDLC pipeline
       --repo <path>     target repository (default: .)
       --model <name>    haiku | sonnet | opus (default: $BUILTIN_MODEL)
       --budget <usd>    hard spend cap per phase (default: $BUILTIN_BUDGET)
+      --runtime <name>  auto | omp | claude (default: $BUILTIN_RUNTIME — omp if installed, else claude)
       --base <ref>      branch off this ref (default: origin/master, then origin/main)
       --phase <list>    subset of phases (default: all; see phases below)
       --issue <n>       queue issue #<n> as GH-<n>; claims it; phases: $ISSUE_PHASES

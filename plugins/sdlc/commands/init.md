@@ -154,6 +154,8 @@ Router near the top, and leave the rest alone.
   stale generated files. Pick `base` from the actual default branch. Set `"billing":
   "subscription"` under a Claude Pro/Max plan (no per-token cost: the queue omits the spend cap
   and records `cost_usd: null`, not a misleading zero); omit it or use `"api"` otherwise.
+  Leave `"runtime"` out — `auto` runs on omp if installed, else claude; set `"claude"` or
+  `"omp"` only to pin one (a CI stage, say).
   `"archive_transcripts": "off"` keeps transcripts out of the archive. The three `null` keys mean
   disabled/unlimited; set a threshold to opt in. Never overwrite a value the operator set.
 - `specs/.gitkeep` and `specs/briefs/.gitkeep` — so both directories exist before the first artefact.
