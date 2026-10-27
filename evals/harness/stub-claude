@@ -25,6 +25,14 @@
 #   This lets selftest exercise readiness_check without a real model.
 set -uo pipefail
 [ "${1:-}" = "--version" ] && { printf 'Claude stub 1.0.0\n'; exit 0; }
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "list" ] && [ "${3:-}" = "--json" ]; then
+    if [ "${AISDLC_STUB_GUARD_INSTALLED:-false}" = "true" ]; then
+        printf '[{"id":"slop-guard@aisdlc","enabled":true,"scope":"user"}]\n'
+    else
+        printf '[]\n'
+    fi
+    exit 0
+fi
 printf 'stub-claude args: %s\n' "$*" >&2
 
 cat > /dev/null   # consume stdin, exactly as the real CLI does

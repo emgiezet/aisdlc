@@ -484,8 +484,21 @@ workflow step.
 ## Credentials for the queue runner
 
 `aisdlc run` shells out to `claude -p` — or `omp -p --mode json` for tasks queued with
-`--runtime omp`, which loads this plugin through `--plugin-dir` (and with it the guard extension)
-— and sets no credentials of its own: whatever authenticates that CLI authenticates the queue.
+`--runtime omp`, which loads this plugin through `--plugin-dir` — and sets no credentials
+of its own: whatever authenticates that CLI authenticates the queue.
+
+The queue loads Slop Guard for guarded model phases. Without an override,
+Claude phases preserve an enabled marketplace installation and its plugin data;
+otherwise they load the bundled sibling inline. Omp phases explicitly load the
+bundled sibling until Slop Guard's separate marketplace migration is complete.
+To use the [independent Slop Guard repository](https://github.com/emgiezet/slopguard)
+now, clone it and set `SLOPGUARD_PLUGIN_DIR` to its root (the directory containing
+`bin/slopguard` and `.claude-plugin/plugin.json`) before `aisdlc run`. This
+override selects the independent plugin for either runtime. The runner checks
+that path before invoking a model; a wrong override fails the task instead
+of running unguarded. The PyPI `slopguard` command alone does not register
+agent hooks.
+
 omp forwards an unknown `/command` to the model as plain text and strips HTML comments from a
 command before the model sees it, so the runner checks the command file exists and reads the
 expanded prompt back from the event stream; an unexpanded one fails the phase. An API key is one option of four:
