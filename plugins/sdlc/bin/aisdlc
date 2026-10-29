@@ -13,9 +13,17 @@
 # writing the PR body to a file).
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# Follow the documented ~/.local/bin symlink before resolving sibling plugins.
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+while [ -L "$SCRIPT_PATH" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    case "$SCRIPT_PATH" in /*) ;; *) SCRIPT_PATH="${SCRIPT_DIR}/${SCRIPT_PATH}" ;; esac
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_PATH")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MANIFEST="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
+SLOPGUARD_OVERRIDE="${SLOPGUARD_PLUGIN_DIR:-}"
 
 # Read identity from the manifest rather than carrying copies that drift. The plugin name
 # is also the command namespace, so nothing here has to know it is called "sdlc".
@@ -993,14 +1001,14 @@ seed_spec() {
         commit -q -m "docs(spec): add spec for $ticket" >> "$log" 2>&1
 }
 
-# The directories a phase loads the pipeline from. One marketplace, two plugins: --plugin-dir
-# names a single directory, so without the sibling a queued phase runs the pipeline with none of
-# the Slop Guard hooks. The sibling is optional, so a checkout without it still runs.
-plugin_dirs() {
-    printf '%s\n' "$PLUGIN_ROOT"
-    local sibling="$PLUGIN_ROOT/../slop-guard"
-    [ -d "$sibling" ] && (cd "$sibling" && pwd)
-    return 0
+# Explicit plugin root wins; the sibling remains the migration default. Never load both.
+guard_plugin_dir() {
+    local root="${SLOPGUARD_PLUGIN_DIR:-${PLUGIN_ROOT}/../slop-guard}"
+    if [ ! -x "$root/bin/slopguard" ] \
+        || ! jq -e '.name == "slop-guard"' "$root/.claude-plugin/plugin.json" >/dev/null 2>&1; then
+        return 1
+    fi
+    (cd "$root" && pwd)
 }
 
 # A fingerprint of the worktree's policy layer. `.claude/` is gitignored, so git cannot see an
@@ -1055,8 +1063,7 @@ invoke_omp() {
         # Data-only: disable all tools and load no extension-provided tools.
         args+=(--no-tools --no-extensions)
     else
-        local d
-        while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+        args+=(--plugin-dir "$PLUGIN_ROOT" --plugin-dir "$SLOPGUARD_PLUGIN_DIR")
     fi
 
     # omp has no spend cap, so none is claimed. Under api billing the cost is still recorded.
@@ -1084,9 +1091,17 @@ invoke_omp() {
     return $rc
 }
 
+# Preserve an enabled Claude marketplace installation (including its plugin data and
+# options); otherwise load the checked-out guard inline so headless phases stay guarded.
+claude_guard_installed() {
+    ( cd "$1" && claude plugin list --json ) 2>/dev/null \
+        | jq -e 'type == "array" and any(.[]; (.id // "" | startswith("slop-guard@")) and .enabled == true)' \
+            >/dev/null 2>&1
+}
+
 # One headless invocation. Prints nothing; writes $out and appends to $log.
 invoke_claude() {
-    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}" data_only="${10}"
+    local prompt="$1" model="$2" budget="$3" settings="$4" wt="$5" out="$6" log="$7" use_plugin_dir="$8" billing="${9:-api}" data_only="${10}" inline_guard="${11:-true}"
 
     local -a args=(
         -p "$prompt"
@@ -1101,9 +1116,9 @@ invoke_claude() {
     [ "$billing" != "subscription" ] && args+=(--max-budget-usd "$budget")
     # Data-only mode: disable all tools so the model cannot perform side effects.
     [ "$data_only" = "true" ] && args+=(--tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}')
-    if [ "$use_plugin_dir" = "true" ]; then
-        local d
-        while read -r d; do args+=(--plugin-dir "$d"); done < <(plugin_dirs)
+    if [ "$data_only" != "true" ]; then
+        [ "$use_plugin_dir" = "true" ] && args+=(--plugin-dir "$PLUGIN_ROOT")
+        [ "$inline_guard" = "true" ] && args+=(--plugin-dir "$SLOPGUARD_PLUGIN_DIR")
     fi
 
     if [ "$billing" = "subscription" ]; then
@@ -1172,11 +1187,11 @@ run_claude_phase() {
         alternate="/${PLUGIN_NAME}:${phase} ${ticket}"
     fi
 
-    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" || rc=$?
+    invoke_claude "$primary" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" "$inline_guard" || rc=$?
     if grep -q '"result":"Unknown command' "$out" 2>/dev/null; then
         printf '[%s] %s not registered — retrying as "%s"\n' "$(ts)" "${primary%% *}" "${alternate%% *}" >> "$log"
         rc=0
-        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" || rc=$?
+        invoke_claude "$alternate" "$model" "$budget" "$settings" "$wt" "$out" "$log" "$plugin_dir" "$billing" "" "$inline_guard" || rc=$?
     fi
     return $rc
 }
@@ -1198,6 +1213,18 @@ run_phase() {
         task_set "$repo" "$id" --arg v "$("$runtime" --version 2>/dev/null | head -1 || true)" '.runtime_version = $v'
     fi
     phase_started="$(ts)"
+    local guard_root
+    if ! guard_root="$(guard_plugin_dir)"; then
+        printf '[%s] %s FAILED — Slop Guard plugin unavailable; set SLOPGUARD_PLUGIN_DIR to its plugin root\n' \
+            "$(ts)" "$phase" >> "$log"
+        return 1
+    fi
+    SLOPGUARD_PLUGIN_DIR="$guard_root"
+    export SLOPGUARD_PLUGIN_DIR
+    local inline_guard=true
+    if [ "$runtime" = "claude" ] && [ -z "$SLOPGUARD_OVERRIDE" ] && claude_guard_installed "$wt"; then
+        inline_guard=false
+    fi
 
     local rc=0
     if [ "$runtime" = "omp" ]; then
@@ -2171,7 +2198,7 @@ _arc_redact() (
     fi
     # 2. Managed: source slop-guard's resolver (CLAUDE_PLUGIN_DATA/GROK_PLUGIN_DATA normalization).
     if [ -z "$bl_cmd" ]; then
-        local _sg_lib="${PLUGIN_ROOT}/../slop-guard/lib/tools.sh"
+        local _sg_lib="${SLOPGUARD_PLUGIN_DIR:-${PLUGIN_ROOT}/../slop-guard}/lib/tools.sh"
         if [ -f "$_sg_lib" ]; then
             local _sg_managed
             _sg_managed="$(
