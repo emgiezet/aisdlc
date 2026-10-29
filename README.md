@@ -69,9 +69,8 @@ sibling inline. Omp phases load the selected directory explicitly. An invalid
 override stops the phase before the model starts. A PyPI CLI installation
 alone does not enable agent hooks.
 
-For an immediate `slopguard` shell command while PyPI publication is pending,
-run `uv tool install git+https://github.com/emgiezet/slopguard.git` (pin a commit
-SHA in automation). From the target project's root, run
+For an immediate `slopguard` shell command, run
+`uv tool install aisdlc-guard`. From the target project's root, run
 `CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true slopguard deps-check` to query registries;
 without that flag, dependency checks make no network requests.
 
