@@ -612,16 +612,20 @@ make tool-integration              # real-binary parser tests; needs pinned tool
 found that `claude` consumes stdin, which silently ate the queue's phase list — the kind of defect
 no amount of reading catches.
 
-Releases are not hand-made. When `Validate` goes green on `main`,
-[`.github/workflows/release.yml`](.github/workflows/release.yml) reads the commits since the last
-tag — `feat!`/`BREAKING CHANGE` → major, `feat` → minor, anything else → patch — runs the matching
-`make bump-*`, bumps `slop-guard` by the same step only when `plugins/slop-guard/` changed, then
-commits `chore(release): vX.Y.Z`, tags it and publishes the GitHub release with generated notes.
-Superseded validation runs skip the release when their commit is no longer the tip of `main`.
-The bump commit and its tag are pushed atomically: if `main` advances after that check, neither
-ref is published, leaving the newer validation run to release.
-Run it by hand with a forced level from the Actions tab (`workflow_dispatch`, `level:`); the manual
-path is still `make bump-patch|bump-minor|bump-major` and `make bump-slopguard`.
+`main` requires a pull request, including for version changes. On a release
+branch, run `make bump-patch`, `make bump-minor` or `make bump-major`; if the
+bundled `plugins/slop-guard/` changed, run `make bump-slopguard` too. Open a PR
+with the exact title `chore(release): vX.Y.Z`, verify its checks, then squash
+merge it. After `Validate` succeeds on `main`,
+[`.github/workflows/release.yml`](.github/workflows/release.yml) checks the
+commit subject and all plugin manifest versions, tags that validated commit,
+and publishes the GitHub release with generated notes. A superseded validation
+run cannot tag an old commit. Rerunning a failed release keeps an existing
+tag pointing at the same commit and only creates the missing GitHub release.
+
+The independently published `aisdlc-guard` Python package is versioned and
+released in its [own repository](https://github.com/emgiezet/slopguard);
+changing only the `sdlc` runner does not bump the bundled `slop-guard` plugin.
 
 The operating manual is [`docs/ai-sdlc.md`](docs/ai-sdlc.md); the specs this harness was built from
 are under [`specs/`](specs/), written in its own format.

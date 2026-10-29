@@ -48,9 +48,9 @@ one gets picked, which is worse than picking none.
 ## Invariants
 
 1. Conventional commits `type(scope): description`, scopes `sdlc`, `slopguard`, `aisdlc`.
-   `chore(release):` belongs to the release workflow only.
+   `chore(release): vX.Y.Z` is reserved for the squash commit of a version PR.
 2. Never commit to `main`; branch, PR, squash merge. Never force-push. Never edit a `version`
-   field by hand — the release workflow runs `make bump-*` after merge.
+   field by hand — run `make bump-*` on the release branch and validate its PR before merging.
 3. All new behaviour needs tests. Never delete, skip or weaken a test to get green; a retired
    test goes in `.claude/retired-tests` with a reason, and only a human adds that line.
 4. One rule lives in one file — a skill or command links its neighbour, never restates it. The
