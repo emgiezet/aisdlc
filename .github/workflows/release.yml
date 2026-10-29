@@ -51,7 +51,12 @@ jobs:
           esac
 
           version=$(jq -r .version plugins/sdlc/.claude-plugin/plugin.json)
-          if [ "$subject" != "chore(release): v$version" ]; then
+          # GitHub adds "(#<PR>)" to squash commit subjects by default.
+          release_subject="$subject"
+          if [[ "$subject" =~ ^(.*)\ \(#[0-9]+\)$ ]]; then
+            release_subject="${BASH_REMATCH[1]}"
+          fi
+          if [ "$release_subject" != "chore(release): v$version" ]; then
             echo "Release commit $subject disagrees with sdlc manifest v$version" >&2
             exit 1
           fi
