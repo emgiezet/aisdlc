@@ -167,10 +167,10 @@ Plugin, który na trzech warstwach:
 
 ### 3.3 Skille — kontrakt
 
-- Frontmatter `paths` (glob): skill ładuje się automatycznie tylko przy pracy z pasującymi plikami. **Tym realizujemy prewencję per język bez kosztu kontekstu dla innych języków.**
+- Frontmatter tylko z pól agentskills.io (`name`, `description`, `license`, `allowed-tools`, `metadata`, `compatibility`). omp odrzuca skill portable pluginu z każdym innym kluczem (`Unknown skill`), więc klucze tylko dla Claude Code (`paths`, `user-invocable`, `agent`, `context`, `disallowedTools`) nie są używane; pilnuje tego `evals/skill-frontmatter.py`. Prewencję per język niesie `description` („Applies when editing … files”) i kontekst `pre-write` przy pierwszej edycji (§8.8).
 - Treść wywołanego skilla zostaje w kontekście przez kolejne tury. Po kompaktowaniu każdy skill jest dołączany ponownie do 5000 tokenów, łącznie 25 000 tokenów. **Limit projektowy: SKILL.md ≤ 150 linii i ≤ 3000 tokenów.** Szczegóły trafiają do plików `reference/*.md` ładowanych na żądanie.
 - `description` + `when_to_use` są obcinane do 1536 znaków w liście skilli.
-- `context: fork` + `agent: <typ>` uruchamia skill w subagencie — do komendy `/secure-review`.
+- Subagenta uruchamia treść skilla („deleguj do subagenta `security-reviewer`”), nie frontmatter; ograniczenia narzędzi są we frontmatterze agenta (`agents/security-reviewer.md`: `disallowedTools`).
 
 ### 3.4 Narzędzia deweloperskie pluginu
 
@@ -291,7 +291,7 @@ slop-guard/
 │   ├── docs.sh                       # śledzenie wywołań Context7, pamięć między sesjami
 │   └── deps.sh                       # sprawdzanie świeżości zależności
 ├── skills/
-│   ├── php-antipatterns/           # paths: **/*.php, **/*.blade.php
+│   ├── php-antipatterns/           # PHP + Blade
 │   │   ├── SKILL.md                # GENEROWANY z rules/catalog.yaml
 │   │   └── reference/              # szczegóły ładowane na żądanie
 │   ├── go-antipatterns/
@@ -300,7 +300,7 @@ slop-guard/
 │   ├── node-antipatterns/
 │   ├── sql-antipatterns/
 │   ├── iac-antipatterns/           # terraform, k8s, helm, docker, CI
-│   ├── secure-review/              # /slop-guard:secure-review (context: fork)
+│   ├── secure-review/              # /slop-guard:secure-review (deleguje do agents/security-reviewer.md)
 │   ├── jvm-antipatterns/           # tier 2: Java + Kotlin
 │   ├── csharp-antipatterns/        # tier 2: C#
 │   ├── ruby-antipatterns/          # tier 2: Ruby
@@ -2126,20 +2126,18 @@ Tabele poniżej to minimalny zakres wersji 1.0.
 | AP-AGENT-009 | Nowa zależność dodana bez weryfikacji aktualności; wersja przypięta do `@latest`, `*` lub mutowalnego tagu | pre-bash ask (dodanie zależności); `slopguard deps-check` warn/error wg `dependency_freshness` |
 | AP-AGENT-011 | „Naprawa" findingu przez zniknięcie ostrzeżenia: przesunięcie casta, zamiana szerokiego typu na wyprowadzony przy dalej niewalidowanym wejściu, usunięcie guarda przy dalej niesparsowanym dispatchu, komentarz „already validated" | skill (digest `session-start`); nie do wykrycia hookiem — finding jest rozwiązany, gdy program potrafi pokazać gwarancję (parse/zawężenie u źródła, obsłużona i przetestowana ścieżka błędu) |
 
-Reguły AP-AGENT-* muszą być w kontekście zawsze, a skill bez `paths` ładuje do kontekstu tylko opis (pełna treść dopiero po wywołaniu). Blok wstrzykiwany przez `session-start` jest ograniczony do **maks. 15 linii i 1500 znaków** — ta granica obejmuje AP-AGENT-001 do AP-AGENT-011 i każdy przyszły wpis (AP-AGENT-010 jest kontrolą sesyjną bramki Stop z §7.6, nie wpisem katalogu). Dlatego:
+Reguły AP-AGENT-* muszą być w kontekście zawsze, a skill ładuje do kontekstu tylko opis (pełna treść dopiero po wywołaniu). Blok wstrzykiwany przez `session-start` jest ograniczony do **maks. 15 linii i 1500 znaków** — ta granica obejmuje AP-AGENT-001 do AP-AGENT-011 i każdy przyszły wpis (AP-AGENT-010 jest kontrolą sesyjną bramki Stop z §7.6, nie wpisem katalogu). Dlatego:
 - skrót AP-AGENT-* jest wstrzykiwany przez `session-start` na stdout — stdout `SessionStart` trafia do kontekstu;
 - pełna wersja jest w skillu `agent-discipline`.
 
-**Gwarancja prewencji per język.** Skille z `paths` ładują się automatycznie przy pracy z pasującymi plikami, ale to decyzja modelu. Dlatego `pre-write` przy **pierwszej** edycji pliku danego języka w sesji zwraca w `additionalContext` listę blockerów tego języka (maks. 1500 znaków) z odesłaniem do skilla. Kolejne edycje tego języka — już bez tego kontekstu.
+**Gwarancja prewencji per język.** Skille językowe ładują się na podstawie `description`, ale to decyzja modelu. Dlatego `pre-write` przy **pierwszej** edycji pliku danego języka w sesji zwraca w `additionalContext` listę blockerów tego języka (maks. 1500 znaków) z odesłaniem do skilla. Kolejne edycje tego języka — już bez tego kontekstu.
 
 ### 8.9 Format SKILL.md (generowany)
 
 ```markdown
 ---
 name: php-antipatterns
-description: Forbidden PHP/Laravel/Symfony constructs (security, performance, maintainability) with safe alternatives. Applies when writing or editing PHP or Blade files.
-paths: ["**/*.php", "**/*.blade.php"]
-user-invocable: false
+description: "Forbidden PHP/Laravel/Symfony constructs (security, performance, maintainability) with safe alternatives. Applies when writing or editing PHP or Blade files."
 ---
 
 # PHP anti-patterns — do not write these
@@ -2497,10 +2495,10 @@ Do momentu spinowania każdego z powyższych narzędzi bramka Stop przepuszcza z
 **Dostarczone w tym etapie:**
 - `rules/catalog.yaml` — pełny seed z §8: tier 1 (AP-PHP-*, AP-GO-*, AP-PY-*, AP-TS-*, AP-NODE-*, AP-SQL-*, AP-TF-*, AP-K8S-*, AP-DOCKER-*, AP-CI-*, AP-AGENT-*); tier 2 (AP-JVM-*, AP-CS-*, AP-RB-*, AP-RS-*) dla języków, które przeszły sondę parsera Opengrep w Etapie 0. Każdy wpis tier 1 z `detect` ma fixture `bad`/`good`.
 - `scripts/gen-skills` — generator: `rules/catalog.yaml` → `skills/*/SKILL.md`; twardy limit 150 linii/3000 tokenów; przerywa z błędem przy przekroczeniu. Generuje `reference/<ID>.md` per wpis z `prevent_in_skill: true`.
-- Skille tier 1: `php-antipatterns`, `go-antipatterns`, `python-antipatterns`, `ts-react-antipatterns`, `node-antipatterns`, `sql-antipatterns`, `iac-antipatterns`; każdy z `paths` i `reference/`.
+- Skille tier 1: `php-antipatterns`, `go-antipatterns`, `python-antipatterns`, `ts-react-antipatterns`, `node-antipatterns`, `sql-antipatterns`, `iac-antipatterns`; każdy z `reference/`.
 - Skille tier 2 (per języki z przeszłą sondą Etapu 0): `jvm-antipatterns`, `csharp-antipatterns`, `ruby-antipatterns`, `rust-antipatterns`.
-- Skill `agent-discipline` (bez `paths`, zawsze dostępny; blok AP-AGENT-001–AP-AGENT-010 wstrzykiwany przez `session-start` w granicach 15 linii / 1500 znaków).
-- Subagent `agents/security-reviewer.md` + skill `secure-review` (`context: fork`, `disallowedTools: Write, Edit`).
+- Skill `agent-discipline` (zawsze dostępny; blok AP-AGENT-001–AP-AGENT-010 wstrzykiwany przez `session-start` w granicach 15 linii / 1500 znaków).
+- Subagent `agents/security-reviewer.md` (`disallowedTools: Write, Edit`) + skill `secure-review`, który do niego deleguje.
 
 **Kryteria akceptacji:**
 - Limity linii/tokenów skilli (w tym tier 2) spełnione ✅

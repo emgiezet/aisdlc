@@ -1,8 +1,6 @@
 ---
 name: ts-react-antipatterns
-description: Forbidden TypeScript/React patterns — XSS, eval, localStorage tokens, hook bugs, floating Promises. Applies when editing TS/TSX files.
-paths: ["**/*.js","**/*.jsx","**/*.ts","**/*.tsx"]
-user-invocable: false
+description: "Forbidden TypeScript/React patterns — XSS, eval, localStorage tokens, hook bugs, floating Promises. Applies when editing TS/TSX files."
 ---
 
 # TypeScript / React anti-patterns — do not write these
