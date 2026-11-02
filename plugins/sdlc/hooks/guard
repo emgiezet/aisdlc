@@ -3,6 +3,8 @@
 #
 # Usage (from hooks.json, via run-hook.cmd):
 #   guard pre-bash   — PreToolUse on Bash: deny force pushes, --no-verify, dangerous rm
+#   guard pre-write  — PreToolUse on Write/Edit/MultiEdit/NotebookEdit: while a decision map
+#                      holds .aisdlc/planning-mode, deny writes outside its allow: prefixes.
 #   guard stop       — Stop: deny finishing a session that deleted or skipped tests
 #                      (advisory warning on Grok — Stop hooks are passive there).
 #                      Deletions listed with a reason in .claude/retired-tests are allowed.
@@ -96,6 +98,59 @@ Fix what the hook reports instead of skipping it."
     fi
 
     exit 0
+}
+
+# --------------------------------------------------------------------------- #
+# pre-write — planning mode: a session charting a decision map plans and does not build.
+# The marker is written by /sdlc:chart; the rule lives here, outside text the agent edits.
+# --------------------------------------------------------------------------- #
+PLANNING_MARKER='.aisdlc/planning-mode'
+
+pre_write() {
+    local input path top marker abs rel map allow p
+    input="$INPUT"
+    # Normalize Grok camelCase: toolInput → tool_input (only field consumed here)
+    if [ -n "$IS_GROK" ]; then
+        input="$(printf '%s' "$input" | jq 'if .toolInput != null then .tool_input = .toolInput else . end')"
+    fi
+    path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // .tool_input.notebook_path // empty')"
+    [ -n "$path" ] || exit 0
+
+    top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+    marker="${top}/${PLANNING_MARKER}"
+    [ -f "$marker" ] || exit 0
+
+    # A crashed planning session must not block every later write.
+    if [ -n "$(find "$marker" -mmin +720 2>/dev/null)" ]; then
+        printf 'guard: stale %s (older than 12 h) — ignoring it. Remove it: rm %s\n' \
+            "$PLANNING_MARKER" "$PLANNING_MARKER" >&2
+        exit 0
+    fi
+
+    case "$path" in /*) abs="$path" ;; *) abs="${PWD}/${path}" ;; esac
+    # Resolve '..' and symlinks so 'specs/../src/x' cannot pass as 'specs/'.
+    abs="$(realpath -m -- "$abs" 2>/dev/null || printf '%s' "$abs")"
+    case "$abs" in
+        "$top"/*) rel="${abs#"$top"/}" ;;
+        *) exit 0 ;;
+    esac
+
+    map="$(sed -n 's/^map:[[:space:]]*//p' "$marker" | head -1)"
+    allow="$(sed -n 's/^allow:[[:space:]]*//p' "$marker" | head -1)"
+
+    [ "$rel" = "$PLANNING_MARKER" ] && exit 0
+    [ -n "$map" ] && [ "$rel" = "$map" ] && exit 0
+    set -f
+    for p in $allow; do
+        case "$rel" in "$p"*) set +f; exit 0 ;; esac
+    done
+    set +f
+
+    deny "guard: planning mode — ${map:-a decision map} is open, so this session plans and does not build.
+Blocked write: ${rel}
+A decision map may only write: ${allow:-${map}}.
+Implementation belongs in a separate session, after /sdlc:spec. If the map is finished and this
+marker is stale, remove it: rm ${PLANNING_MARKER}"
 }
 
 # --------------------------------------------------------------------------- #
@@ -254,9 +309,10 @@ ${retire_hint}"
 }
 
 case "$MODE" in
-    pre-bash) pre_bash ;;
-    stop)     stop_check ;;
-    *)        echo "guard: unknown mode '${MODE}' — allowing" >&2; exit 0 ;;
+    pre-bash)  pre_bash ;;
+    pre-write) pre_write ;;
+    stop)      stop_check ;;
+    *)         echo "guard: unknown mode '${MODE}' — allowing" >&2; exit 0 ;;
 esac
 
 exit 0

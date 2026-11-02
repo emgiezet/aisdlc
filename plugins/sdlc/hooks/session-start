@@ -75,6 +75,7 @@ The pipeline. A spec is the only approval point; everything after it runs unatte
 
 Before the spec:  /${NAME}:brainstorm, /${NAME}:discover, /${NAME}:synthetic-users, /${NAME}:backlog,
                   /${NAME}:ux-shape, /${NAME}:ux-setup → briefs under specs/briefs/
+                  /${NAME}:chart <destination> → decision map for an effort larger than one session; one decision per session
 From an issue:    /${NAME}:issue (file/normalize) · /${NAME}:triage · /${NAME}:root-cause · /${NAME}:fix-issue <n>
                   (a human-labelled bug is the approval; aisdlc add --issue <n> queues the chain,
                    aisdlc loop pulls the oldest unclaimed one on a timer — the fleet-loop skill)
@@ -84,6 +85,7 @@ After the PR:     /${NAME}:continue · /${NAME}:fix-pr · /${NAME}:autopilot · 
 QA surface:       /${NAME}:test-env · /${NAME}:integration-tests · /${NAME}:ux-review
 Harness:          /${NAME}:retro — rank what the runs cost, by cause
                   /${NAME}:update [--check] — after a plugin upgrade, re-sync this repo's descriptors, profile fields and runner config
+                  /${NAME}:slopguard-setup [--check] — install Slop Guard and the linters this repo's stacks need (offered by init)
 Architecture:     /${NAME}:arch-review <EPIC|path> — grade a planned architecture against its traffic profile, availability tier and RPO/RTO
 
 Skills (load with the Skill tool):
@@ -96,7 +98,7 @@ Skills (load with the Skill tool):
 - security-review     — trust boundaries, the auth/token/takeover lenses, and what counts as a finding
 - architecture-review — availability tiers and what each forces, dependency arithmetic, traffic profile, RPO/RTO
 - agent-orchestration — the seven shapes, the control each needs, budgets, deterministic backbone
-- discovery           — brief format, evidence tags, Definition of Ready
+- discovery           — brief format, decision maps, evidence tags, Definition of Ready
 - rest-api-design     — resource naming, status codes, one error envelope, bounded pagination, breaking changes
 - graphql-api-design  — nullability, mutation input/payload shape, connections, N+1, breaking schema changes
 

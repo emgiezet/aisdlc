@@ -5,6 +5,9 @@
   {"query": "Write a product brief for the benefits portal from these interview notes", "should_trigger": true, "note": "product-brief section list and evidence tagging"},
   {"query": "We have a brief but the Problem section is all assumptions — what do we do?", "should_trigger": true, "note": "backlog readiness gate and collection-plan rule"},
   {"query": "The brief has no UX states defined — what states does /sdlc:mockup need?", "should_trigger": true, "note": "ux-brief format (Direction/Scope/States) is in this skill"},
+  {"query": "This effort is too big for one session and I cannot see the route yet", "should_trigger": true, "note": "decision-map destination and fog live in this skill"},
+  {"query": "Which decision tickets can I take right now?", "should_trigger": true, "note": "frontier rule: open, unblocked, unclaimed"},
+  {"query": "An agent answered its own grilling ticket — is that a resolution?", "should_trigger": true, "note": "HITL resolution rule"},
   {"query": "Write tests for the payment endpoint so the QA report passes", "should_trigger": false, "note": "dense-testing owns coverage floors; this skill owns briefs"},
   {"query": "Set up the task router and playbooks for this repository", "should_trigger": false, "note": "task-router owns the instruction hierarchy; not a discovery concern"},
   {"query": "Review this pull request for security issues", "should_trigger": false, "note": "code-review and pipeline-contracts own PR review"}

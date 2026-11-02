@@ -157,8 +157,9 @@ A fix here changes instructions a person wrote for this repo. Name it, do not do
 ## Phase 6: Labels
 
 Tracker **Kind** `github` only: **ensure-labels** with the profile's PR label, the four pipeline
-labels and the claim label. Six labels, created if absent, never renamed. Other kinds: skip, and say
-which kind was detected.
+labels, the claim label and the six decision-map labels in the `pipeline-contracts` skill (`map`,
+`decision`, `decision:<type>`). Twelve labels, created if absent, never renamed. Other kinds: skip,
+and say which kind was detected.
 
 ---
 
