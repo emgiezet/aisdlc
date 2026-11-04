@@ -37,6 +37,7 @@ For code PRs, every item below is a finding when violated.
 |-------|----------|
 | Every `UC-<n>` in the spec has a passing test carrying its id | `blocker` |
 | Full CI matrix for every touched stack is green; skip count is zero | `blocker` |
+| New tests sit at the lowest tier that can observe their result; no higher tier re-asserts a behaviour a lower one pins | `minor` |
 | No file listed in the spec's `Out:` scope was modified | `major` |
 | `qa-report.md` present and says `PASS` with an explicit "Not verified" section | `major` |
 | Contract directory changed in the same commit as any handler whose contract moved | `minor` |
@@ -83,7 +84,7 @@ When every changed file is under `specs/`, skip the code checklist and apply the
 |------|-----------------|
 | Risks | Runtime failures if this spec ships as written |
 | Compatibility | Changes that break a contract surface, label set, or API shape |
-| Gaps | UCs lacking an observable result or a test column entry |
+| Gaps | UCs lacking an observable result, a test column entry, or marked e2e without a critical journey |
 | Improvements | Simpler ways to express the same intent |
 | Simplicity | Constraints that over-specify without adding safety |
 

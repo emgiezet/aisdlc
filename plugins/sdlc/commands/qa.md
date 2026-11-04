@@ -71,14 +71,18 @@ Then re-run the affected suites and refresh the matrix with the real numbers.
 ## Phase 3: Report
 
 Write `specs/<TICKET>/qa-report.md` in the `auto-qa` format: verdict on the first line, UC
-coverage table, exact suite output with skip counts, numbered findings with file and line, and
-an explicit "Not verified" section.
+coverage table, exact suite output with skip counts, per-tier counts of new tests, numbered
+findings with file and line, and an explicit "Not verified" section.
 
 Verdict rules:
 
 - **PASS** — every UC has a passing test carrying its id, zero skips, no blocking finding.
 - **GAPS** — anything else. A UC verified only by hand is `GAPS`: unattended work needs a
   regression net, not a one-time observation.
+- **Shape is a finding, never a verdict override.** Record
+  `Tiers (new tests): unit <n> / integration <n> / e2e <n>`. New unit tests not outnumbering new
+  integration + e2e tests, with no reason given, is a `major` finding; an e2e case asserting a
+  rule a unit test already pins is `minor`.
 
 Never round up to PASS. The queue's value depends on this verdict being trustworthy: a human
 who learns that PASS sometimes means "nearly" has to read every diff again, and the whole
