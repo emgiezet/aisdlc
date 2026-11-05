@@ -48,7 +48,13 @@ do not mention.
 
 - A `UC-<n>` with no test carrying its id.
 - A test that carries a UC id but asserts something weaker than the UC's stated result.
-- A test asserting on a mock where the real effect was checkable.
+- A test asserting on a mock where its tier required the real effect: a UC marked `integration`
+  proved only with fakes, or an `e2e` UC proved without the deployed app. Mocked collaborators at
+  the `unit` tier are correct, not a gap.
+- An e2e or integration test re-asserting a rule a unit test already pins — `minor`; CI pays for
+  it on every run.
+- More new `e2e` tests than `e2e` rows in the spec, or new unit tests not outnumbering new
+  integration + e2e tests with no reason given — `major`: an inverted pyramid.
 - A negative UC (validation, permission, not-found) with only a happy-path test.
 - A skipped, deleted, or `.only(`-focused test anywhere in the diff — report as a blocking
   finding, always, with the file and line.
@@ -78,6 +84,7 @@ it must be readable in 30 seconds:
 Covered: 6/8 UCs automated · 1 manual · 1 failing
 
 ## Test suites
+Tiers (new tests): unit 31 / integration 4 / e2e 1
 <exact commands run and their real results, including counts and skip counts>
 
 ## Findings

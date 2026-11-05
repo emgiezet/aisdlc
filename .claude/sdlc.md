@@ -98,6 +98,18 @@ runs them in this order and treats a second failure of the same command as a har
   <!-- make harness-eval MODEL=haiku drives real models against evals/harness/scenarios and
        costs money — run only with a human's go-ahead -->
 
+## Test tiers and CI stages
+
+| Tier | Command | Runs at | Must not touch |
+|------|---------|---------|----------------|
+| unit | `plugins/slop-guard/tests/run-tests` · `plugins/sdlc/tests/run-tests` · `node --test plugins/*/tests/omp_adapter_test.mjs` | pull requests and pushes to main (Validate) | the network, Docker |
+| integration | `make selftest` · `make tool-integration` · `cd evals/fixtures/sandbox && make verify` | pull requests and pushes to main (Validate + runner-and-fixture jobs) | the Anthropic API |
+| e2e | `make harness-eval MODEL=haiku` | manually, with a human's go-ahead — it spends API budget | — |
+
+- **Critical journeys:** `spec → implement → qa → ship against evals/harness/scenarios`
+- **Release gate:** `Validate green on the chore(release) PR; release.yml tags only on a
+  workflow_run of a green Validate on main`. No full-suite test-environment promotion gate exists.
+
 ## Repo-wide out of bounds
 
 Things an unattended run must never touch, whatever a spec says. Additive to each spec's own

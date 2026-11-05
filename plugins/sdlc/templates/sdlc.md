@@ -128,6 +128,25 @@ runs them in this order and treats a second failure of the same command as a har
 - **End-to-end runner:** `none`
   <!-- e.g. Playwright — used only for multi-screen flows the spec marks as e2e -->
 
+## Test tiers and CI stages
+
+One row per tier: the command CI runs for it, the stage that owns it, and what its tests must
+never touch. `none` means this repo has no suite at that tier yet.
+
+| Tier | Command | Runs at | Must not touch |
+|------|---------|---------|----------------|
+| unit | `<!-- e.g. go test -race ./... -->` | every commit, every branch | sockets, a real database, a browser |
+| integration | `<!-- e.g. go test -tags=integration ./... -->` | pull request + test environment | third-party networks, a browser |
+| e2e | `<!-- e.g. npx playwright test -->` | test environment only | — |
+
+- **Critical journeys:** `none`
+  <!-- the only flows a spec may mark `test: e2e`, e.g. sign-up, checkout, payout.
+       none → at most one e2e use case per spec -->
+- **Release gate:** `none`
+  <!-- what a production deploy requires: the full-suite run against the test environment for the
+       exact commit being promoted, green. The gate reads that recorded result; it never re-runs
+       the suite. none → production deploys are not gated by this pipeline -->
+
 ## Repo-wide out of bounds
 
 Things an unattended run must never touch, whatever a spec says. Additive to each spec's own

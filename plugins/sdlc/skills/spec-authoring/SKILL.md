@@ -51,8 +51,8 @@ stacks: [backend]
 | id | actor | action | expected observable result | test |
 |----|-------|--------|----------------------------|------|
 | UC-1 | account owner | `GET /v1/accounts/a-1001/balance` | 200, `balance` is an integer in minor units, `currency` present | integration |
-| UC-2 | account owner | `GET /v1/accounts/unknown/balance` | 404, shared error envelope with code `account_not_found`, no other field | integration |
-| UC-3 | other user | requests an account they do not own | 403, nothing about the account leaks into the body | integration |
+| UC-2 | account owner | `GET /v1/accounts/unknown/balance` | 404, shared error envelope with code `account_not_found`, no other field | unit |
+| UC-3 | other user | requests an account they do not own | 403, nothing about the account leaks into the body | unit |
 
 Rules:
 
@@ -64,8 +64,12 @@ Rules:
 - **Negative cases are first-class.** Every validation rule and permission boundary that
   matters gets its own UC. A spec of only happy paths produces an implementation of only
   happy paths.
-- **`test` column is a floor, not a cap** — `integration`, `unit`, or `e2e`. `dense-testing`
-  defines how many more tests the change needs beyond one per UC.
+- **`test` column is the tier, and a floor not a cap** — `unit` (default: in-process, fakes, no
+  socket or database), `integration` (a persisted row, migration, transaction boundary or
+  contract is the thing being proven), `e2e` (a flow named under `Critical journeys:` in
+  `.claude/sdlc.md`; at most one per spec when that is `none`). Pick the lowest tier that can
+  observe the stated result — `dense-testing`'s `references/test-tiers.md` has the decision list.
+  `dense-testing` defines how many more tests the change needs beyond one per UC.
 
 ## Sizing
 

@@ -108,6 +108,11 @@ grep -c '^## ' .claude/sdlc.md "${CLAUDE_PLUGIN_ROOT}/templates/sdlc.md"   # sec
 - **Fields the template has and this profile does not** → append them to the matching section with
   the template's default value *and* its `<!-- … -->` comment. A new field a command reads is a
   `none` the command must be able to find; an absent key makes it guess.
+- **Missing `## Test tiers and CI stages`** → copy the section and tier table from the template,
+  then discover actual commands and stages using `dense-testing`'s `references/ci-matrix.md`.
+  Record `none` when a tier or release gate is absent; do not invent an existing CI gate.
+- **Section exists but its tier table is missing** → add the table and discover its entries without
+  changing existing answers. Do not overwrite an existing tier table.
 - **Fields this profile has and the template dropped** → report only. Removing a line someone
   answered on purpose is not an update.
 - **Never touch an answered field.** Not the stacks table, not the verification commands, not

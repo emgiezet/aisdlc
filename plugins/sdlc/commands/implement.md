@@ -59,6 +59,9 @@ and the wandering that precedes the guess costs more than the whole task should.
    [`ci-matrix.md`](../skills/dense-testing/references/ci-matrix.md) for the touched stacks
    only. Verify each tool is actually installed now — discovering a missing binary after
    writing the code wastes the whole run.
+   Run the profile's `unit` row every time; the `integration` row only when the diff touches what
+   that tier covers or the spec has an `integration` UC; the `e2e` row only when the spec has an
+   `e2e` UC.
 4. Create the working branch if not already on one: `ai/<TICKET>-<slug>`.
 
 Output a 3–5 bullet grounding summary. Then start writing code — there is no gate here.
@@ -79,9 +82,11 @@ negatives last. For each UC in order:
 5. Commit per UC: `type(scope): <UC summary> (<TICKET>)`. Per-UC commits make the PR readable
    and give a bisect point when one UC turns out wrong.
 
-Then fill the density grid from `dense-testing`: unit test per public symbol, case per error
-return and validation rule, case per branch, render state per UI state. This is where most of
-the test count comes from, and it is not optional.
+Then fill the density grid from `dense-testing`, at the **unit** tier unless the behaviour cannot
+be observed there: unit test per public symbol, case per error return and validation rule, case
+per branch, render state per UI state. Integration cases cover persistence effects only; e2e stays
+at one scenario per `e2e` row in the spec. This is where most of the test count comes from, and it
+is not optional.
 
 Never touch anything in the spec's `Out:` scope. If the change appears to require it, that is
 Phase 4, not a judgement call.
@@ -108,6 +113,8 @@ self-check before handing off:
 - `git status` is clean; nothing untracked that should be committed, no debug leftovers, no
   commented-out code.
 - Every changed line traces to a UC or to the density grid.
+- New tests counted per tier: `unit` outnumbers `integration` + `e2e` combined, or the handoff
+  names the reason (a migration-only change, for example).
 
 All green → Phase 5. Anything red after its one fix → Phase 4.
 
