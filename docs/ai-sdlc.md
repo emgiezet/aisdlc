@@ -26,7 +26,9 @@ Three consequences shape everything below:
 | Step | Who | Artefact |
 |------|-----|----------|
 | `/sdlc:brainstorm`, `/sdlc:discover`, `/sdlc:backlog` (optional) | human with an agent | `specs/briefs/*.md`, issues |
+| `/sdlc:chart <destination>` (optional, an effort larger than one session) | human with an agent, one decision per session | `specs/briefs/map-<slug>.md` + one tracker issue per open decision; `guard pre-write` blocks writes outside the specs and briefs dirs while the map is open |
 | `/sdlc:init` (once per repo) | agent proposes, human approves | `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md`, `.claude/trackers/`, `.claude/browsers/` |
+| `/sdlc:slopguard-setup` (offered at the end of `init`) | agent proposes, human approves each install | `slop-guard` plugin enabled (project scope: `.claude/settings.json`), the stacks' pinned linters installed via `slopguard doctor --install`, optional `.slopguard.json` and adopted baseline linter configs |
 | `/sdlc:update` (after each plugin upgrade) | agent proposes, human approves | descriptor operations, `.claude/sdlc.md` fields and `.aisdlc/config.json` keys brought up to the installed version; drift in the router, playbooks and rules reported, never rewritten |
 | `/sdlc:spec <TICKET>` | agent drafts, human corrects | `specs/<TICKET>/spec.md`, `status: draft` |
 | `/sdlc:mockup <TICKET>` | agent builds, business reacts | `specs/<TICKET>/mockup/index.html` |

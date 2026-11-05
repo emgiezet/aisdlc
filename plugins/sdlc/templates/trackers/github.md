@@ -42,6 +42,20 @@ Returns: issue URL; number is its last path segment.
 `gh api -X DELETE repos/{owner}/{repo}/issues/{n}/labels/{label} >/dev/null 2>&1 || true`
 ### assign-issue
 `gh api -X POST repos/{owner}/{repo}/issues/{n}/assignees -f 'assignees[]={user}' >/dev/null`
+### link-blocks
+`gh api -X POST repos/{owner}/{repo}/issues/{blocked}/dependencies/blocked_by -F issue_id="$(gh api repos/{owner}/{repo}/issues/{blocker} --jq .id)" >/dev/null 2>&1 || true; gh issue view {blocked} --json body --jq .body | grep -qx 'Blocked by: #{blocker}' || { gh issue view {blocked} --json body --jq .body; printf '\nBlocked by: #{blocker}\n'; } | gh issue edit {blocked} --body-file -`
+The native dependency link is additive and best effort; the body marker is the record of truth, so
+a tracker without native dependency links behaves identically.
+### list-blockers
+`gh issue view {n} --json body --jq .body | grep -oE '^Blocked by: #[0-9]+' | grep -oE '[0-9]+' | while read -r b; do [ "$(gh issue view "$b" --json state --jq .state)" = OPEN ] && echo "$b"; done`
+Returns: one open blocker number per line; empty = takeable.
+### add-sub-issue
+`gh api -X POST repos/{owner}/{repo}/issues/{parent}/sub_issues -F sub_issue_id="$(gh api repos/{owner}/{repo}/issues/{child} --jq .id)" >/dev/null 2>&1 || true`
+Best effort; the map file's **Open tickets** table is the authoritative index.
+### list-frontier
+`gh issue list --label '{label}' --state open --json number,title,labels,assignees --limit 50 --jq '.[] | select((.assignees|length)==0) | [.number, ([.labels[].name] | map(select(startswith("decision:"))) | first // "decision:task"), .title] | @tsv'`
+Returns: TSV `number<TAB>type-label<TAB>title`. Blockers are not filtered here — the caller drops
+rows whose **list-blockers** is non-empty.
 ### get-pr
 `gh pr view {n} --json number,title,body,state,isDraft,labels,assignees,author,headRefName,baseRefName,mergeable,reviews,comments,url,files,mergeCommit`
 Returns: JSON; `mergeable` is `MERGEABLE|CONFLICTING|UNKNOWN`.

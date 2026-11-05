@@ -37,6 +37,7 @@ Read back every mutation before reporting it done. `local` is a real provider (f
 | Pull requests | **get-pr** **list-prs** **search-prs** **create-pr** **update-pr** **comment-pr** **label-pr** **unlabel-pr** **assign-pr** **review-pr** **merge-pr** **get-pr-diff** **get-pr-checks** **get-run-failed-logs** **checkout-pr** **rerun-check** **attach-image-evidence** |
 | Labels | **ensure-labels** (only `/sdlc:init` calls it) |
 | Lock | **claim** **check-claim** **release** |
+| Decision map | **link-blocks** **list-blockers** **add-sub-issue** **list-frontier** |
 | Browser | **boot-check** **open** **goto** **click** **fill** **assert-text** **screenshot** **close** |
 
 Parameters and returns: `templates/trackers/TEMPLATE.md`, `templates/browsers/TEMPLATE.md`.
@@ -67,6 +68,7 @@ commands travel in a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`, v
 | `/sdlc:arch-review` | `SOUND` `GAPS` | architecture verdict; `GAPS` = a blocker or unwaived major |
 | `/sdlc:verify-map` | `CREATED` `UPDATED` `CLEAN` `BLOCKED` | the verification map's state after the run |
 | `/sdlc:decompose` | `DECOMPOSED` `NOT NEEDED` `BLOCKED` | slicing outcome; `NOT NEEDED` = the estimate fits the change budget |
+| `/sdlc:chart` | `CHARTED` `RESOLVED` `CLEARED` `NOT NEEDED` `BLOCKED` | map state after the run; `NOT NEEDED` = no fog, the effort fits one session |
 | any autofix loop | `⚠ NEEDS HUMAN` | stop; a person decides |
 
 ## Claim lock
@@ -90,6 +92,27 @@ Hand-off issue → PR: **claim** the PR, then **release** the issue with outcome
 **review-pr** on a PR the current user authored (GitHub refuses self-review): the descriptor posts
 the body as a comment headed `🤖 Review (self-authored PR) — Verdict: <token>` and returns success;
 the command sets labels exactly as for a real review.
+
+## Decision map
+
+Format: the `discovery` skill. Labels, created by **ensure-labels** in `/sdlc:init` and
+`/sdlc:update`: `map` `decision` `decision:grilling` `decision:prototype` `decision:research`
+`decision:task`. A blocking edge is recorded twice: natively through **link-blocks** and as a
+`Blocked by: #<n>` line in the blocked ticket's body, which **list-blockers** reads — so the
+frontier computes on a tracker with no native dependency links. Frontier = open + unblocked +
+unassigned; the claim is the assignee, taken through **claim** before any work. Resolution comment:
+
+```
+🤖 /sdlc:chart resolved D-<n>
+Decision: <one sentence>
+Because: <one sentence>
+Answered by: @<login>
+Evidence: [EVIDENCE: session reply] | [SOURCE: <url>] | [ASSUMPTION]
+Artefact: <path or none>
+```
+
+A decision is revised, never silently rewritten: reopen the ticket, comment `Superseded by D-<m>`,
+and append ` — superseded by D-<m>` to its line in **Decisions so far**.
 
 ## Pipeline labels
 

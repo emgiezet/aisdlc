@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 import sdlcOmpExtension, {
@@ -77,18 +77,35 @@ test('benign bash command is allowed', async () => {
   assert.equal(result, undefined, 'benign bash should return undefined (allow)');
 });
 
-test('write tool with t.Skip content is allowed (no write binding in hooks.json)', async () => {
-  // hooks.json has PreToolUse only for Bash, so write/edit must pass through.
-  // A test-weakening write like 't.Skip(...)' must not be intercepted.
+test('write and edit pass without a planning marker and are gated by one', async (t) => {
+  // Runs the real guard pre-write in a throwaway repo, before and after /sdlc:chart's marker.
+  const repo = mkdtempSync(join(tmpdir(), 'sdlc-omp-write-'));
+  const cwd = process.cwd();
+  t.after(() => { process.chdir(cwd); rmSync(repo, { recursive: true, force: true }); });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, stdio: 'pipe' });
+  process.chdir(repo);
+
   const pi = makeMockPi();
   sdlcOmpExtension(pi);
+  const call = (toolName, input) => pi.call('tool_call', { toolName, input }, { hasUI: true });
+  const edit = (...paths) => ({ input: paths.map((p) => `[${p}#AB12]\nPUT >1:\n+x`).join('\n') });
 
-  const result = await pi.call(
-    'tool_call',
-    { toolName: 'write', input: { path: 'foo_test.go', content: 't.Skip("weakening")' } },
-  );
+  assert.equal(await call('write', { path: 'src/app.py', content: 'x' }), undefined,
+    'no marker: a write must pass');
 
-  assert.equal(result, undefined, 'write tool must not be intercepted (no write binding)');
+  mkdirSync(join(repo, '.aisdlc'));
+  writeFileSync(join(repo, '.aisdlc', 'planning-mode'),
+    'map: specs/briefs/map-x.md\nsince: 2026-01-01T00:00:00Z\nallow: specs/ .aisdlc/\n');
+
+  const blocked = await call('write', { path: 'src/app.py', content: 'x' });
+  assert.equal(blocked?.block, true, 'marker: a write outside allow: must block');
+  assert.match(blocked?.reason ?? '', /planning mode/);
+  assert.equal(await call('write', { path: 'specs/briefs/map-x.md', content: 'x' }), undefined,
+    'marker: the map file must pass');
+  assert.equal(await call('write', { path: 'local://plan.md', content: 'x' }), undefined,
+    'marker: an internal URL is not a repository path');
+  assert.equal((await call('edit', edit('specs/briefs/map-x.md', 'src/app.py')))?.block, true,
+    'marker: an edit whose second file is outside allow: must block');
 });
 
 test('missing hook script allows (fail-open) and decision is null', async () => {
@@ -108,7 +125,7 @@ test('missing hook script allows (fail-open) and decision is null', async () => 
 });
 
 test('unknown tool (read) spawns nothing and returns undefined', async () => {
-  // The adapter only registers on tool_call for bash; all other tool names
+  // The adapter acts on tool_call only for bash, write and edit; all other tool names
   // must return immediately without calling any subprocess.
   const pi = makeMockPi();
   sdlcOmpExtension(pi);
