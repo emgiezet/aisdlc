@@ -157,7 +157,7 @@ REACT_LARAVEL_CONTRACTS
         /^[[:space:]]+ap_id:[[:space:]]/ {
             if (id != "") {
                 ap = $2; gsub(/["\047]/, "", ap)
-                if (ap !~ /^AP-[A-Z]+-[A-Z]+-[0-9]+$/) failed = 1
+                if (ap !~ /^AP-([A-Z]+-)+[0-9]+$/) failed = 1
                 print id, ap; id = ""
             }
         }
