@@ -99,4 +99,27 @@ slopguard.ruby.mass-assignment-without-permit AP-RB-SEC-005
 slopguard.ruby.sql-string-interpolation AP-RB-SEC-006
 slopguard.ruby.insecure-random AP-RB-SEC-007
 RUBY_CONTRACTS
+    # GH-65-d UC-9/UC-10: preserve earlier slices and enforce JVM/Go/Node.
+    while read -r _og_id _og_fixture; do
+        if [ "$_og_fixture_scan_ok" = 1 ] && jq -e --arg id "$_og_id" --arg fixture "$_og_fixture" '
+            any(.results[]; .check_id == $id and
+                (.path | endswith("/" + $fixture)))
+            ' "$_og_fixture_json" >/dev/null; then
+            it_ok "GH-65-d UC-9: ${_og_id} detects its bad fixture"
+        else
+            it_bad "GH-65-d UC-9: ${_og_id} detects its bad fixture" 'missing own-rule result or failed scan'
+        fi
+        if [ "$_og_fixture_scan_ok" = 1 ] && jq -e --arg id "$_og_id" '
+            all(.results[]; .check_id != $id or (.path | contains("/good/") | not))
+            ' "$_og_fixture_json" >/dev/null; then
+            it_ok "GH-65-d UC-10: ${_og_id} is silent across all good fixtures"
+        else
+            it_bad "GH-65-d UC-10: ${_og_id} is silent across all good fixtures" 'good-fixture finding or failed scan'
+        fi
+    done <<'RUNTIME_CONTRACTS'
+slopguard.jvm.jackson-default-typing java/bad/AP-JVM-SEC-005.java
+slopguard.jvm.xml-external-entity java/bad/AP-JVM-SEC-007.java
+slopguard.go.http-client-without-timeout go/bad/AP-GO-PERF-001.go
+slopguard.node.prototype-pollution-merge node/bad/AP-NODE-SEC-001.js
+RUNTIME_CONTRACTS
 fi

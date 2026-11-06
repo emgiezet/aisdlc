@@ -18,3 +18,14 @@ app.post('/update', (req, res) => {
   const config = { allowed1, allowed2 };
   res.json(config);
 });
+
+// ok: slopguard.node.prototype-pollution-merge
+// Object.create(null) produces a null-prototype object; even if req.body contains
+// __proto__, constructor, or prototype keys they cannot pollute Object.prototype.
+app.post('/admin/config', (req, res) => {
+  const config = Object.create(null);
+  for (const key of Object.keys(req.body)) {
+    config[key] = req.body[key];
+  }
+  res.json(config);
+});
