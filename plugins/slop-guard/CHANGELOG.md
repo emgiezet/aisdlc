@@ -4,7 +4,7 @@ All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
 - **GH-65 Ruby fixture repairs:** `tests/fixtures/ruby/` replaces marker stubs with real unsafe APIs and safe parameterized, escaped or constrained alternatives.
-  **Why.** Fixture presence alone did not demonstrate that the existing rules detect their intended bad operations.
+  **Why.** Fixture presence alone did not demonstrate that the existing rules detect their intended bad operations. `tests/integration/opengrep.sh` now enforces Ruby UC-7/UC-8: each repaired ID must detect its bad fixture and remain silent across all good fixtures, alongside the C# and Rust contracts.
 - **GH-65 Rust fixture repairs:** `rules/opengrep/rust.yaml` recognizes documented unsafe blocks and raw-pointer dereferences; `tests/fixtures/rust/` exercises unsafe operations, transmute, UTF-8 validation and process arguments with safe counterparts and a string-content adversarial case. `tests/integration/opengrep.sh` enforces Rust UC-5/UC-6 alongside the C# contracts.
   **Why.** Stub fixtures and broad unsafe-block matches concealed missed detections and false positives. SAFETY annotations immediately above a block or inside it document the same invariant.
 - **GH-65 C# fixture repairs:** `rules/opengrep/csharp.yaml` distinguishes literal process names and disabled XML resolvers; `tests/fixtures/csharp/` exercises unsafe APIs and safe counterparts, including direct assignments and resolver re-enablement.
