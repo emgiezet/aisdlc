@@ -7,9 +7,9 @@ rules:
   - id: slopguard.rs.unsafe-block
     languages: [rust]
     message: >-
-      Unsafe block found without a SAFETY: comment inside the block explaining
-      the invariants that uphold correctness. Every unsafe block must carry an
-      inline // SAFETY: annotation so it can be audited and maintained.
+      Unsafe block found without a SAFETY: comment immediately above or inside
+      the block explaining the invariants that uphold correctness. Document
+      unsafe operations so they can be audited and maintained.
     severity: WARNING
     metadata:
       ap_id: AP-RS-SEC-001
@@ -17,6 +17,11 @@ rules:
     patterns:
       - pattern: unsafe { ... }
       - pattern-not-regex: '(?m)^\s*//\s*SAFETY:'
+      # Match the entire balanced block so an annotation cannot suppress a
+      # subsequent undocumented sibling block.
+      - pattern-not-inside:
+          pattern-regex: '(?m)^[ \t]*//[ \t]*SAFETY:[^\n]*(?:\n[ \t]*//[^\n]*)*\n[^\n{};]*\bunsafe[ \t]*(?<block>\{(?:[^{}]|(?&block))*\})'
+
   - id: slopguard.rs.unwrap-in-library
     languages: [rust]
     message: >-
