@@ -1,6 +1,6 @@
 ---
 description: Set this repository up for the AI SDLC pipeline — survey the stacks, directories, CI commands and conventions, then generate a CLAUDE.md task router, task-scoped playbooks, path-scoped rules, and the .claude/sdlc.md project profile. Run once per repository, before the first spec. Use also to refresh the setup after the repo's shape changes.
-allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent
+allowed-tools: Bash, Read, Write, Edit, Grep, Glob, Agent, SlashCommand
 ---
 
 # /sdlc:init
@@ -25,13 +25,9 @@ contain the flags `--yes` and `--discovery`.
   (three lines: problem and who has it, observable expected outcome, no blocking open question).
   On an existing profile, replace only that block. Nothing else changes.
 
-Either way you still have to read what came out. An unreviewed router quietly misroutes every task
-that follows.
-
 **This command needs an interactive session.** Writing under `.claude/` requires approval that
-Claude Code will not grant to an unattended run — deliberately, because agent configuration is
-exactly what you do not want rewritten silently. `--yes` skips *this command's* review gate, not
-that approval. In a fully headless run, expect the files outside `.claude/` to land and the
+Claude Code will not grant to an unattended run — deliberately. `--yes` skips *this command's*
+review gate, not that approval. Headless, expect the files outside `.claude/` to land and the
 playbooks and rules to be refused; Phase 4 will tell you so rather than claiming success.
 
 **Load the `task-router` skill** — it holds the three-tier model, the line budgets this command
@@ -61,9 +57,10 @@ out-of-bounds entries.
 config. Extract the **exact** commands with their flags. Check each tool is actually installed and
 say which are missing. If a single target runs everything, note it.
 
-**Test conventions.** File naming, location (beside the source or a separate tree), framework per
-stack, whether integration tests need a service running, whether there is an end-to-end runner.
-Count the existing tests — the number goes in the profile as a baseline.
+**Test conventions and tiers.** File naming, location, framework per stack; what integration tests
+need running and which e2e runner exists. Group the test commands into tiers by what they touch —
+unit (no socket, database or browser), integration (real schema, containers), e2e (a deployed
+environment) — which CI job runs each, what gates a production deploy, and the existing test count.
 
 **Task types.** This is the judgement call that matters most. Read the recent history
 (`git log --oneline -100` and the directories those commits touched) and ask: what kinds of change
@@ -139,8 +136,9 @@ Router near the top, and leave the rest alone.
   Delete template steps that do not apply here rather than leaving a hedge.
 - `.claude/rules/<stack>.md` — `paths:` frontmatter, this stack's conventions as observed in the
   code, and a copy-pasteable verification block at the end. ≤ 70 lines each.
-- `.claude/sdlc.md` — from `templates/sdlc.md`, every field answered, `none` where that is the
-  truth. **Tracker descriptor** and **Browser descriptor** are paths or `none`, never a kind name.
+- `.claude/sdlc.md` — from `templates/sdlc.md`, every field answered including the test-tier and
+  CI-stage table, `none` where that is the truth. **Tracker descriptor** and **Browser descriptor**
+  are paths or `none`, never a kind name.
 - `.claude/trackers/<kind>.md` — copied byte-for-byte from `templates/trackers/<kind>.md`; the
   same for `.claude/browsers/<provider>.md` when a provider was chosen. Then run the descriptor's
   **auth-check**; a failure goes in the report, not under the rug.
@@ -149,20 +147,18 @@ Router near the top, and leave the rest alone.
   launching the app and driving one feature.
 - `.aisdlc/config.json` — runner defaults: `{"model", "budget", "base", "workers", "label",
   "specs_dir", "billing", "readiness_min": null, "max_open_prs": null, "max_run_usd": null}`,
-  plus `"harness_version"` set to this plugin's version (from
-  `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`), which `/sdlc:update` compares to find
-  stale generated files. Pick `base` from the actual default branch. Set `"billing":
-  "subscription"` under a Claude Pro/Max plan (no per-token cost: the queue omits the spend cap
-  and records `cost_usd: null`, not a misleading zero); omit it or use `"api"` otherwise.
-  Leave `"runtime"` out — `auto` runs on omp if installed, else claude; set `"claude"` or
-  `"omp"` only to pin one (a CI stage, say).
-  `"archive_transcripts": "off"` keeps transcripts out of the archive. The three `null` keys mean
-  disabled/unlimited; set a threshold to opt in. Never overwrite a value the operator set.
+  plus `"harness_version"` from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`, which
+  `/sdlc:update` compares to find stale generated files. Pick `base` from the default branch.
+  `"billing": "subscription"` under a Claude Pro/Max plan (no per-token cost: the queue omits
+  the spend cap and records `cost_usd: null`, not a misleading zero); else omit it or `"api"`.
+  Leave `"runtime"` out — `auto` runs omp if installed, else claude; pin `"claude"` or `"omp"`
+  only for, say, a CI stage. `"archive_transcripts": "off"` keeps transcripts out of the archive.
+  The `null` keys mean disabled/unlimited until given a threshold. Never overwrite an operator's value.
 - `specs/.gitkeep` and `specs/briefs/.gitkeep` — so both directories exist before the first artefact.
-- `.gitignore` — append `.aisdlc/` if absent (the runner's state and, under `local`, the tracker's
-  files live there and are never committed).
-- Labels (`github` only): **ensure-labels** with the profile's PR label, the four pipeline labels
-  and the claim label. Six labels, created once, never renamed.
+- `.gitignore` — append `.aisdlc/` if absent (runner state and the `local` tracker; never committed).
+- Labels (`github` only): **ensure-labels** with the profile's PR label, the four pipeline labels,
+  the claim label and the six decision-map labels in the `pipeline-contracts` skill (`map`,
+  `decision`, `decision:<type>`). Twelve labels, created once, never renamed.
 
 Two rules that keep the result honest: every instruction you write must be one a weak model can
 follow without inference — an exact command, not an intention — and nothing goes in two tiers,
@@ -209,12 +205,18 @@ The first spec you drive by hand teaches you more about this setup than the firs
 
 ---
 
+## Phase 5: Offer Slop Guard [GATE]
+
+Only after `COMPLETE`, invoke `/sdlc:slopguard-setup` via `SlashCommand` (unavailable → read
+`${CLAUDE_PLUGIN_ROOT}/commands/slopguard-setup.md` and follow it verbatim), passing the Phase 1
+survey under `— PREVIOUS STEP (/sdlc:init) said —`. It installs nothing without a yes. `--yes` or
+headless → do not invoke it; add `/sdlc:slopguard-setup` to `## Next` instead.
+
+---
+
 ## Not to be confused with
 
 - **`/sdlc:spec`** — writes one spec. This command sets up the repo so specs can be executed.
-- **`/sdlc:update`** — re-syncs an *existing* setup with a newer plugin: descriptor operations,
-  profile fields, config keys. It never proposes a router. Run it after every plugin upgrade; run
-  this command again only when the repo's shape changed enough that the router itself is wrong.
-- **Editing `CLAUDE.md` by hand** — always fine, and expected. This command produces a starting
-  point calibrated to the repo; keeping it correct as the repo changes is ordinary maintenance. The
-  `task-router` skill covers how.
+- **`/sdlc:update`** — re-syncs an *existing* setup with a newer plugin (descriptors, profile fields,
+  config keys); never proposes a router. Rerun this command only when the router itself is wrong.
+- **Editing `CLAUDE.md` by hand** — expected: this command only produces the starting point (`task-router` skill).

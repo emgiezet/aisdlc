@@ -5,19 +5,16 @@ description: >
   tests, density floors per changed symbol, and a hard ban on skipping or weakening tests to
   get green. Use when deciding how many tests a change needs, wiring acceptance criteria to
   test names, generating tests for agent-written code, or when a suite is green but trust in
-  it is low.
+  it is low. Use also when choosing between a unit, integration or end-to-end test, or deciding
+  which suites run on every commit and which gate a production release.
 ---
 
 # Dense Testing
 
-When agents write the code, tests stop being a quality ritual and become the only mechanism
-that catches a hallucination. The grid has to be dense enough that a plausible-but-wrong
-implementation cannot slip between the holes.
+Tests catch hallucinated implementations; the grid must cover observable behaviour densely.
 
-The counter-intuitive part: **at scale, test count matters more than the elegance of any
-single test.** A thousand blunt tests that each pin one observable behaviour catch more
-agent defects than fifty beautifully-factored ones, because agent errors are scattered and
-specific rather than systematic. Optimise for coverage of behaviours, not for DRY test code.
+**Test count matters:** many focused tests pinning observable behaviours catch scattered agent
+defects. Optimise for coverage of behaviours, not for DRY test code.
 
 Stack conventions and commands live elsewhere: this project's `.claude/rules/` files, its
 `.claude/sdlc.md` verification table, and any stack pattern skills it happens to have. This skill
@@ -47,25 +44,48 @@ grep -rho 'UC-[0-9]\+' <test-dir> | sort -u    # UCs with at least one test
 `/sdlc:qa` and the `auto-qa` agent build the UC×test matrix from exactly this. A UC with no
 matching test is a gap, whatever the line coverage says.
 
+## Tiers: many unit, few integration, fewer e2e
+
+A test's tier is set by what it touches at runtime, not by how much code it covers:
+
+| Tier | Touches | Never touches |
+|------|---------|---------------|
+| `unit` | one process, in-memory fakes, a fake clock | sockets, a real database, a browser |
+| `integration` | one machine: real schema, migrations, filesystem, containers the suite starts | third-party networks, a browser |
+| `e2e` | a deployed test environment through the user's surface | — |
+
+Write every test at the **lowest tier that can observe its result**, and prove each behaviour at
+exactly one tier: a rule re-asserted through the browser is paid for on every CI run and fails
+for reasons unrelated to the rule. In one change, new `unit` tests outnumber new `integration`
+plus new `e2e` tests combined, or the QA report says why.
+
+`test: e2e` rows cover only flows in `Critical journeys:` in `.claude/sdlc.md` (if `none`, at
+most one per spec). One scenario per flow carries the UC id and drives the real UI against a
+seeded database, asserting visible text and roles; attach a screenshot of the result to QA. Pin
+bugs found by e2e with a unit test; retain the journey check.
+
+Tier definitions, the CI stage each tier runs at, and the production release gate:
+[`test-tiers.md`](references/test-tiers.md).
+
 ## Density floors
 
 Minimums, not targets. Applied to the diff, not the whole repo:
 
-| Changed thing | Minimum tests |
-|---------------|---------------|
-| Acceptance criterion (`UC-<n>`) | 1 integration test carrying its id |
-| Public function / method / exported symbol | 1 unit test for the happy path |
-| Error return or thrown exception | 1 case per distinct error |
-| Validation rule | 1 rejection case per rule, asserting no side effect |
-| HTTP endpoint | happy path + validation rejection + authorization denial + not-found |
-| Conditional branch | 1 case per side |
-| UI component with logic | 1 case per render state: populated, empty, loading, error, denied |
-| Multi-screen flow in the spec | 1 Playwright scenario |
-| Migration | up→down→up on a scratch DB, plus 1 case per new constraint |
-| Bug fix | 1 test that fails before the fix and passes after |
+| Changed thing | Minimum tests | Tier |
+|---------------|---------------|------|
+| Acceptance criterion (`UC-<n>`) | 1 test carrying its id | the tier its spec row names |
+| Public function / method / exported symbol | 1 test for the happy path | `unit` |
+| Error return or thrown exception | 1 case per distinct error | `unit` |
+| Validation rule | 1 rejection case per rule, asserting no side effect | `unit` |
+| HTTP endpoint | happy path + validation rejection + authorization denial + not-found | `unit`, with fakes behind the handler |
+| Conditional branch | 1 case per side | `unit` |
+| UI component with logic | 1 case per render state: populated, empty, loading, error, denied | `unit` |
+| Persistence effect (query shape, transaction boundary, constraint) | 1 case per effect, against the real engine | `integration` |
+| Migration | up→down→up on a scratch DB, plus 1 case per new constraint | `integration` |
+| Multi-screen flow in the spec | 1 scenario per flow | `e2e` |
+| Bug fix | 1 test that fails before the fix and passes after | lowest tier that can see the bug |
 
-Table-driven or parameterised tests satisfy several rows at once and are the cheapest way to hit
-the branch floor — one case per branch, which is also how a weak model reliably generates them.
+Table-driven or parameterised tests cheaply cover multiple branches, one case per branch.
 
 ## Assert on observable behaviour
 
@@ -74,8 +94,10 @@ emitted event, log line. Not: that a mock was called, that an internal method ra
 private field holds a value. A test coupled to the implementation passes for a
 reimplementation that is wrong, which is the exact failure this grid exists to catch.
 
-Mock only what you cannot run: third-party APIs, clocks, randomness, payment providers. Never mock
-your own database or your own service layer in an integration test.
+Mock only what you cannot run: third-party APIs, clocks, randomness, payment providers — plus,
+at the `unit` tier, any collaborator that would otherwise drag a socket or a database into the
+test. Never mock your own database or service layer in an `integration` test: proving that real
+effect is the only reason that tier exists.
 
 ## Non-negotiable
 
@@ -103,15 +125,6 @@ Skipped, focused or weakened tests are never retirable.
 A flaky test is a defect in the test or the fixture. Fix the race, the shared state, or the
 clock dependency. Never add a retry wrapper to hide it.
 
-## End-to-end tests for spec flows
-
-For multi-screen rows (`test: e2e`), one scenario per flow with whichever runner the project
-records in `.claude/sdlc.md`, named with the use-case id, driving the real UI against a seeded
-database. Assert on user-visible text and roles. Capture a screenshot at the point the result
-becomes visible and attach it to the QA report — the cheapest evidence a human can check in
-seconds. Keep the e2e count low and the integration count high: e2e is where suite runtime goes
-to die.
-
 ## Reporting
 
 After a run, report in the spec's terms, not the tool's:
@@ -119,6 +132,7 @@ After a run, report in the spec's terms, not the tool's:
 ```
 UC coverage: 7/8 (UC-6 has no test)
 Tests: 412 → 448 (+36)
+Tiers (new tests): unit 31 / integration 4 / e2e 1
 Suites: <each one you ran> ✓
 Skipped: 0        # any non-zero value is a finding, not a footnote
 ```

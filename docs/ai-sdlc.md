@@ -26,7 +26,9 @@ Three consequences shape everything below:
 | Step | Who | Artefact |
 |------|-----|----------|
 | `/sdlc:brainstorm`, `/sdlc:discover`, `/sdlc:backlog` (optional) | human with an agent | `specs/briefs/*.md`, issues |
+| `/sdlc:chart <destination>` (optional, an effort larger than one session) | human with an agent, one decision per session | `specs/briefs/map-<slug>.md` + one tracker issue per open decision; `guard pre-write` blocks writes outside the specs and briefs dirs while the map is open |
 | `/sdlc:init` (once per repo) | agent proposes, human approves | `CLAUDE.md`, `.claude/playbooks/`, `.claude/rules/`, `.claude/sdlc.md`, `.claude/trackers/`, `.claude/browsers/` |
+| `/sdlc:slopguard-setup` (offered at the end of `init`) | agent proposes, human approves each install | `slop-guard` plugin enabled (project scope: `.claude/settings.json`), the stacks' pinned linters installed via `slopguard doctor --install`, optional `.slopguard.json` and adopted baseline linter configs |
 | `/sdlc:update` (after each plugin upgrade) | agent proposes, human approves | descriptor operations, `.claude/sdlc.md` fields and `.aisdlc/config.json` keys brought up to the installed version; drift in the router, playbooks and rules reported, never rewritten |
 | `/sdlc:spec <TICKET>` | agent drafts, human corrects | `specs/<TICKET>/spec.md`, `status: draft` |
 | `/sdlc:mockup <TICKET>` | agent builds, business reacts | `specs/<TICKET>/mockup/index.html` |
@@ -485,8 +487,21 @@ workflow step.
 ## Credentials for the queue runner
 
 `aisdlc run` shells out to `claude -p` — or `omp -p --mode json` for tasks whose runtime is
-`omp` (the `auto` default when omp is installed), which loads this plugin through `--plugin-dir` (and with it the guard extension)
+`omp` (the `auto` default when omp is installed), which loads this plugin through `--plugin-dir`
 — and sets no credentials of its own: whatever authenticates that CLI authenticates the queue.
+
+The queue loads Slop Guard for guarded model phases. Without an override,
+Claude phases preserve an enabled marketplace installation and its plugin data;
+otherwise they load the bundled sibling inline. Omp phases explicitly load the
+bundled sibling until Slop Guard's separate marketplace migration is complete.
+To use the [independent Slop Guard repository](https://github.com/emgiezet/slopguard)
+now, clone it and set `SLOPGUARD_PLUGIN_DIR` to its root (the directory containing
+`bin/slopguard` and `.claude-plugin/plugin.json`) before `aisdlc run`. This
+override selects the independent plugin for either runtime. The runner checks
+that path before invoking a model; a wrong override fails the task instead
+of running unguarded. The PyPI `slopguard` command alone does not register
+agent hooks.
+
 omp forwards an unknown `/command` to the model as plain text and strips HTML comments from a
 command before the model sees it, so the runner checks the command file exists and reads the
 expanded prompt back from the event stream; an unexpanded one fails the phase. An API key is one option of four:

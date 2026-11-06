@@ -39,9 +39,9 @@ Out:
 
 | id | actor | action | expected observable result | test |
 |----|-------|--------|----------------------------|------|
-| UC-1 | support | `GET /v1/accounts/acc-1001` | 200 with `id`, `name`, `currency`, `balance` = 1250050, `state` = `"active"` | integration |
-| UC-2 | support | `GET /v1/accounts/acc-1002` | 200 with `balance` exactly `0` and `state` = `"active"` | integration |
-| UC-3 | support | `GET /v1/accounts/acc-9999` | 404 with code `account_not_found`, unchanged from today | integration |
+| UC-1 | support | `GET /v1/accounts/acc-1001` | 200 with `id`, `name`, `currency`, `balance` = 1250050, `state` = `"active"` | unit |
+| UC-2 | support | `GET /v1/accounts/acc-1002` | 200 with `balance` exactly `0` and `state` = `"active"` | unit |
+| UC-3 | support | `GET /v1/accounts/acc-9999` | 404 with code `account_not_found`, unchanged from today | unit |
 
 ## Non-functional
 

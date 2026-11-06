@@ -7,14 +7,15 @@
  * hooks.json bindings and their omp equivalents:
  *   SessionStart  → session_start  : run hooks/session-start; post context via sendMessage
  *   PreToolUse(Bash) → tool_call (bash) : guard pre-bash; exit 2 = block
+ *   PreToolUse(Write|Edit|…) → tool_call (write, edit) : guard pre-write per target
+ *                                     path; exit 2 = block (planning mode only)
  *   Stop          → turn_end        : guard stop; exit 2 = advisory via sendMessage
  *                                     (omp turn_end cannot block; enforcement is advisory,
  *                                      sent once per unchanged set of findings)
  *
- * hooks.json has NO PreToolUse binding for Write or Edit, so those events are
- * NOT intercepted here.  The guard's test-weakening rules only fire on bash
- * commands (force push, --no-verify, dangerous rm) and at turn end (deleted/
- * skipped tests).
+ * The guard's test-weakening rules fire on bash commands (force push, --no-verify,
+ * dangerous rm) and at turn end (deleted/skipped tests); pre-write only enforces the
+ * planning-mode marker a decision map holds.
  *
  * Decision contract (Claude mode, set by CLAUDE_PLUGIN_ROOT):
  *   exit 0          → allow
@@ -104,6 +105,28 @@ export function buildStopPayload(stopHookActive = false) {
 }
 
 /**
+ * Repository paths a write or edit tool call targets. `edit` input is a hashline patch
+ * whose `[path#TAG]` header lines each name a file; internal URLs (`local://…`) are not
+ * repository paths and are skipped.
+ */
+export function writeTargets(toolName, input) {
+  let paths = [];
+  if (toolName === 'write') {
+    paths = [String(input?.path ?? '')];
+  } else if (toolName === 'edit') {
+    paths = [...String(input?.input ?? '').matchAll(/^\[(.+?)#[0-9A-Fa-f]{4}\]$/gm)].map((m) => m[1]);
+  }
+  return paths.filter((p) => p && !/^[a-z][a-z0-9+.-]*:\/\//i.test(p));
+}
+
+/**
+ * Build the JSON input for guard pre-write (Claude snake_case format).
+ */
+export function buildWritePayload(filePath) {
+  return JSON.stringify({ tool_input: { file_path: filePath } });
+}
+
+/**
  * Build the subprocess environment for a hook call.
  * Always sets CLAUDE_PLUGIN_ROOT so guard uses Claude decision mode (exit 2).
  * Sets AISDLC_HEADLESS=1 when there is no UI, matching the bash policy flag.
@@ -149,20 +172,32 @@ export default function sdlcOmpExtension(pi) {
     }
   });
 
-  // ── tool_call: guard pre-bash for bash commands ────────────────────────────
-  // hooks.json binds PreToolUse only for Bash; write/edit are NOT guarded here.
+  // ── tool_call: guard pre-bash for bash, guard pre-write for write/edit ─────
   pi.on('tool_call', async (event, ctx) => {
-    if (event.toolName !== 'bash') return;
+    if (event.toolName === 'bash') {
+      const command = String(event.input?.command ?? '');
+      try {
+        const { rc, stdout, stderr } = await runHook(
+          guardScript, ['pre-bash'], buildBashPayload(command), env(ctx),
+        );
+        const decision = translateGuardDecision(rc, stdout, stderr);
+        if (decision) return decision;
+      } catch (err) {
+        pi.logger?.warn?.('sdlc: guard pre-bash failed (fail-open):', String(err?.message));
+      }
+      return;
+    }
 
-    const command = String(event.input?.command ?? '');
-    try {
-      const { rc, stdout, stderr } = await runHook(
-        guardScript, ['pre-bash'], buildBashPayload(command), env(ctx),
-      );
-      const decision = translateGuardDecision(rc, stdout, stderr);
-      if (decision) return decision;
-    } catch (err) {
-      pi.logger?.warn?.('sdlc: guard pre-bash failed (fail-open):', String(err?.message));
+    for (const filePath of writeTargets(event.toolName, event.input)) {
+      try {
+        const { rc, stdout, stderr } = await runHook(
+          guardScript, ['pre-write'], buildWritePayload(filePath), env(ctx),
+        );
+        const decision = translateGuardDecision(rc, stdout, stderr);
+        if (decision) return decision;
+      } catch (err) {
+        pi.logger?.warn?.('sdlc: guard pre-write failed (fail-open):', String(err?.message));
+      }
     }
   });
 

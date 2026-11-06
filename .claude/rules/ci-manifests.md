@@ -28,7 +28,8 @@ paths:
   `.omp-plugin/`, `.grok-plugin/`, `.agents/plugins/` and each plugin's `plugin.json`,
   `.claude-plugin/plugin.json`, `package.json`. The sdlc `skills` arrays in the Claude and omp
   marketplaces are identical and alphabetical.
-- `version` fields change only through `make bump-*`, run by the release workflow.
+- `version` fields change only through `make bump-*` on a release PR; the
+  release workflow tags a validated merge and never pushes commits to `main`.
 
 ## Verification
 

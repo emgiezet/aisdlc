@@ -42,9 +42,14 @@ Fallbacks when no CI config exists — use these verbatim:
 - **TypeScript/React:** `npm run lint` → `npm run type-check` → `npm run test` → `npm run build`
 - **Python:** `ruff check .` → `mypy .` → `pytest`
 
-Add, when the change touches them: `go test -tags=integration ./...` (repository code),
-Playwright e2e (multi-screen spec flows), `terraform fmt -check && terraform validate && terraform plan`
-(infrastructure — plan only, never apply).
+Add, when the change touches them: the integration-tagged suite (`go test -tags=integration ./...`
+and its equivalents) for repository code, the e2e runner for multi-screen spec flows,
+`terraform fmt -check && terraform validate && terraform plan` for infrastructure (plan only,
+never apply).
+
+Which of these a given run must execute — and which CI stage owns the rest — is the stage table
+in [`test-tiers.md`](test-tiers.md): the `unit` row always, `integration` when the diff touches
+what that tier covers or the spec has an `integration` UC, `e2e` only for a spec with an `e2e` UC.
 
 If a tool named in CI is not installed locally, say so explicitly and note the command as
 unverified. Never silently substitute a different tool or drop the row.

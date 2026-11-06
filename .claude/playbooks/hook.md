@@ -9,7 +9,7 @@ decision is new rather than a tweak.
 
 | Surface | Code | Policy text | Tests |
 |---|---|---|---|
-| sdlc guard (force push, `--no-verify`, `rm`, test deletion/skip at Stop) | `plugins/sdlc/hooks/guard` | `dense-testing` non-negotiables | `plugins/sdlc/tests/guard_stop_test.sh`, `grok_hook_test.sh` |
+| sdlc guard (force push, `--no-verify`, `rm`, planning-mode writes, test deletion/skip at Stop) | `plugins/sdlc/hooks/guard` | `dense-testing` non-negotiables; `discovery` decision maps | `plugins/sdlc/tests/guard_stop_test.sh`, `guard_write_test.sh`, `grok_hook_test.sh` |
 | slop-guard pre-bash / pre-write / pre-read / stop / post-write | `plugins/slop-guard/hooks/<event>` | `rules/policies/<event>.yaml`, `always-on.yaml` | `tests/{bash,write,read,stop}_test.sh` |
 | decision helpers | `plugins/slop-guard/lib/hook.sh` (`hook_deny`, `hook_ask`, `hook_allow`, `hook_context`) | — | `tests/hook_test.sh` |
 | banners | `plugins/*/hooks/session-start` | — | `tests/session_test.sh` |

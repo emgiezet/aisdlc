@@ -59,6 +59,14 @@ see Prerequisites.
 `sed -i -E 's/^(labels: \[.*)\b{label}\b,? ?(.*\])/\1\2/; s/, \]/]/; s/\[ /[/' $I`
 ### assign-issue
 `sed -i -E 's/^assignees: \[(.*)\]/assignees: [\1, {user}]/; s/\[, /[/' $I`
+### link-blocks
+`I=.aisdlc/tracker/issues/{blocked}.md; grep -qx 'Blocked by: #{blocker}' $I || sed -i '0,/^## Comments$/s//Blocked by: #{blocker}\n\n## Comments/' $I` — the marker lands at the end of the body.
+### list-blockers
+`grep -oE '^Blocked by: #[0-9]+' $I | grep -oE '[0-9]+' | while read -r b; do grep -q '^state: open' ".aisdlc/tracker/issues/$b.md" 2>/dev/null && echo "$b"; done` — empty = takeable.
+### add-sub-issue
+`I=.aisdlc/tracker/issues/{child}.md; grep -qx 'Map: #{parent}' $I || sed -i '0,/^## Comments$/s//Map: #{parent}\n\n## Comments/' $I`
+### list-frontier
+`for f in .aisdlc/tracker/issues/*.md; do grep -q '^state: open' "$f" && grep -qE '^labels: .*\b{label}\b' "$f" && grep -q '^assignees: \[\]' "$f" || continue; t=$(grep -m1 '^labels:' "$f" | grep -oE 'decision:[a-z]+' | head -1); printf '%s\t%s\t%s\n' "$(basename "$f" .md)" "${t:-decision:task}" "$(grep -m1 '^title:' "$f" | cut -d' ' -f2-)"; done` — same TSV as github; the caller drops rows with **list-blockers**.
 ### get-pr
 `n={n}; rec=$(jq --argjson n $n -c 'select(.number==$n)' $P); bp=$(echo "$rec"|jq -r '.body_path // empty'); br=$(echo "$rec"|jq -r '.branch // empty'); base=$(echo "$rec"|jq -r '.baseRefName // empty'); body=$([ -n "$bp" ] && cat "$bp" 2>/dev/null); cf=.aisdlc/tracker/prs/$n.comments.md; comments=$(cat "$cf" 2>/dev/null); mb=$(git merge-base "$base" "$br") || exit 1; mt=$(git merge-tree "$mb" "$base" "$br") || exit 1; if printf '%s' "$mt" | grep -qF '<<<<<<<'; then mt=CONFLICTING; else mt=MERGEABLE; fi; echo "$rec" | jq -c --arg body "$body" --arg comments "$comments" --arg mt "$mt" '(.branch) as $br | . + {body:$body,comments:$comments,mergeable:$mt,headRefName:$br}'`
 ### list-prs

@@ -39,6 +39,10 @@ equivalent, comment formatting}
 ### label-issue      {n} {label}
 ### unlabel-issue    {n} {label}
 ### assign-issue     {n} {user}
+### link-blocks      {blocker} {blocked}   records that {blocker} must close before {blocked}
+### list-blockers    {n} → numbers         open issues that must close before {n}
+### add-sub-issue    {parent} {child}      attaches {child} under {parent}
+### list-frontier    {label} → number, title, type   open, unblocked, unassigned issues carrying {label}
 ### get-pr           {n} → number, title, body, state, labels, assignees, author, headRefName, baseRefName, mergeable, reviews, comments, mergeCommit, url
 ### list-prs         {state} {label} → number, title, labels, url, headRefName, isDraft, createdAt, author
 ### search-prs       {query} {state} → number, title, url
