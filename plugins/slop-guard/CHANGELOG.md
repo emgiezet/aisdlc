@@ -3,6 +3,19 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **Upgrade compatible ESLint plugin majors** (2026-11-06)
+  - `tools/node/{package.json,package-lock.json}`: eslint-plugin-react-hooks 7.1.1,
+    eslint-plugin-security 4.2.1 and eslint-plugin-n 18.5.0; lock regenerated with
+    scripts disabled and strict peer dependency resolution. Node now requires
+    `^20.19.0 || ^22.13.0 || >=24`, matching eslint-plugin-n 18 (CI uses Node 22).
+  - **Why only three majors?** eslint-plugin-react 7.37.5 supports ESLint only
+    through `^9.7`; typescript-eslint 8.72.1 supports TypeScript `>=4.8.4 <6.1.0`.
+    ESLint 10 and TypeScript 7 therefore stay out. eslint-plugin-regexp 3.3.2 needs
+    ESLint `>=9.38.0`, incompatible with pinned 9.35.0; latest 3.3.3 is also too new.
+    Psalm 7.0.0–7.0.4 were published Nov 2–6, inside the seven-day hold, so Psalm
+    remains 6.16.1. Psalm 7's PHP requirement includes `~8.3.16`, compatible with CI.
+    No baseline config migration is required for the three adopted plugins.
+
 - **Double-cast detection, AP-AGENT-011, deslop duplicate check — and the Opengrep pass actually runs** (2026-10-20, #63)
   - `rules/opengrep/react.yaml`: `slopguard.ts.double-cast` matches `$X as unknown as $T` and `<$T>(<unknown>$X)` → AP-TS-MAINT-001, severity `error` (a single `as` stays `warn` via ESLint). The catalogue entry's `detect:` and `bad:`/`good:` show the validate → widen → assert-back detour. Fixtures `tests/fixtures/ts/{bad,good}/AP-TS-MAINT-001.ts`: 3 hits / 0 hits against opengrep 1.30.0.
   - `rules/catalog.yaml`, `rules/policies/always-on.yaml`, `hooks/session-start`: AP-AGENT-011 "Clearing a finding without establishing the guarantee it protects" — `warn`, skill-only, no `detect`. Swapping a broad type for a derived one while the input stays unvalidated, deleting a `typeof` guard while the data is still dispatched unparsed, moving a cast or commenting "already validated" all clear the warning and keep the defect; a finding is resolved when the value is parsed or narrowed at its source and the failure path has a test. The digest is ten lines; the pointer reads `AP-AGENT-001..009, 011` (010 is the Stop-gate docs check, §7.6, not a catalogue entry). `skills/agent-discipline` regenerated.
