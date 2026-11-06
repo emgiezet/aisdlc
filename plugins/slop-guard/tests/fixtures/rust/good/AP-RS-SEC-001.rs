@@ -11,3 +11,10 @@ pub fn initialize(flags: u32) -> i32 {
         platform_init(flags)
     }
 }
+
+pub fn initialize_documented_above(flags: u32) -> i32 {
+    // SAFETY: platform_init accepts every flags bit-field and is thread-safe.
+    unsafe {
+        platform_init(flags)
+    }
+}
