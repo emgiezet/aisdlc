@@ -124,10 +124,9 @@ it_skip_unless_tool() {
             _IT_RAW="${_IT_WORK}/raw-${tool}.out"
             {
                 printf '#!/usr/bin/env bash\n'
-                printf 'out="$("%s" "$@" 2>&1)"; rc=$?\n' "$path"
-                printf 'printf "%%s" "$out" | tee -a "%s" >/dev/null\n' "$_IT_RAW"
-                printf 'printf "%%s" "$out"\n'
-                printf 'exit "$rc"\n'
+                # Preserve the tool's stream contract: parsers consume only stdout.
+                printf '"%s" "$@" 2> >(tee -a "%s" >&2) | tee -a "%s"\n' "$path" "$_IT_RAW" "$_IT_RAW"
+                printf 'exit "${PIPESTATUS[0]}"\n'
             } > "${_IT_CUR_PROJ}/vendor/bin/${bin}"
             chmod +x "${_IT_CUR_PROJ}/vendor/bin/${bin}"
         else
