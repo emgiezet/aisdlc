@@ -7,11 +7,10 @@
 # What this suite does NOT cover:
 #   - Whether rules actually match the bad fixtures (requires the opengrep binary).
 #   - Whether rules pass the good fixtures without false positives.
-# Those checks — bad fixture ≥1 hit, good fixture 0 hits, per rule — are
-# covered by the real-binary integration script:
-#   tests/integration/opengrep.sh
-# which discovers rule/AP-id pairs dynamically and runs opengrep when the
-# binary is available (skipped offline; SLOPGUARD_IT_REQUIRE=1 makes it fatal).
+# Those are covered by tests/integration/opengrep.sh through make tool-integration:
+# the pinned OpenGrep binary scans a copy of every fixture, checks each configured
+# rule's own bad fixture, and rejects hits anywhere under good/. Offline runs
+# explicitly skip without the tool; SLOPGUARD_IT_REQUIRE=1 makes skips fatal in CI.
 #
 # What this suite DOES cover (offline, no network, no opengrep binary):
 #   1. Every rule file under rules/opengrep/ is valid YAML with the required
