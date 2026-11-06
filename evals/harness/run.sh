@@ -236,6 +236,8 @@ for model in $MODELS; do
         base="$(git -C "$sandbox" rev-parse HEAD)"
 
         started="$(date +%s)"
+        # Every scenario runs `implement qa` on a real model and scores the branch.
+        # covers: command:implement, command:qa
         "$AISDLC" add "$ticket" --repo "$sandbox" --model "$model" --budget "$BUDGET" \
             --phase "$(printf '%s' "$phases" | tr ' ' ',')" --no-pr --plugin-dir >/dev/null \
             || { printf '    could not queue — see above\n'; continue; }

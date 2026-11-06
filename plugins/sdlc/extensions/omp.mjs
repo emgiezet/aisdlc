@@ -8,14 +8,14 @@
  *   SessionStart  → session_start  : run hooks/session-start; post context via sendMessage
  *   PreToolUse(Bash) → tool_call (bash) : guard pre-bash; exit 2 = block
  *   PreToolUse(Write|Edit|…) → tool_call (write, edit) : guard pre-write per target
- *                                     path; exit 2 = block (planning mode only)
+ *                                     path and its written text; exit 2 = block
  *   Stop          → turn_end        : guard stop; exit 2 = advisory via sendMessage
  *                                     (omp turn_end cannot block; enforcement is advisory,
  *                                      sent once per unchanged set of findings)
  *
  * The guard's test-weakening rules fire on bash commands (force push, --no-verify,
- * dangerous rm) and at turn end (deleted/skipped tests); pre-write only enforces the
- * planning-mode marker a decision map holds.
+ * dangerous rm) and at turn end (deleted/skipped tests); pre-write enforces the spec
+ * approval fence and the planning-mode marker a decision map holds.
  *
  * Decision contract (Claude mode, set by CLAUDE_PLUGIN_ROOT):
  *   exit 0          → allow
@@ -105,25 +105,31 @@ export function buildStopPayload(stopHookActive = false) {
 }
 
 /**
- * Repository paths a write or edit tool call targets. `edit` input is a hashline patch
- * whose `[path#TAG]` header lines each name a file; internal URLs (`local://…`) are not
- * repository paths and are skipped.
+ * Repository files a write or edit tool call targets, each with the text it writes.
+ * `edit` input is a hashline patch whose `[path#TAG]` header lines each name a file; the
+ * `+` body rows under a header are that file's written text. Internal URLs (`local://…`)
+ * are not repository paths and are skipped.
  */
 export function writeTargets(toolName, input) {
-  let paths = [];
+  let targets = [];
   if (toolName === 'write') {
-    paths = [String(input?.path ?? '')];
+    targets = [{ path: String(input?.path ?? ''), text: String(input?.content ?? '') }];
   } else if (toolName === 'edit') {
-    paths = [...String(input?.input ?? '').matchAll(/^\[(.+?)#[0-9A-Fa-f]{4}\]$/gm)].map((m) => m[1]);
+    for (const line of String(input?.input ?? '').split('\n')) {
+      const header = line.match(/^\[(.+?)#[0-9A-Fa-f]{4}\]$/);
+      if (header) targets.push({ path: header[1], text: [] });
+      else if (targets.length && line.startsWith('+')) targets.at(-1).text.push(line.slice(1));
+    }
+    targets = targets.map((t) => ({ path: t.path, text: t.text.join('\n') }));
   }
-  return paths.filter((p) => p && !/^[a-z][a-z0-9+.-]*:\/\//i.test(p));
+  return targets.filter((t) => t.path && !/^[a-z][a-z0-9+.-]*:\/\//i.test(t.path));
 }
 
 /**
- * Build the JSON input for guard pre-write (Claude snake_case format).
+ * Build the JSON input for guard pre-write (Claude snake_case format, Write shape).
  */
-export function buildWritePayload(filePath) {
-  return JSON.stringify({ tool_input: { file_path: filePath } });
+export function buildWritePayload(filePath, text = '') {
+  return JSON.stringify({ tool_input: { file_path: filePath, content: text } });
 }
 
 /**
@@ -188,10 +194,10 @@ export default function sdlcOmpExtension(pi) {
       return;
     }
 
-    for (const filePath of writeTargets(event.toolName, event.input)) {
+    for (const { path: filePath, text } of writeTargets(event.toolName, event.input)) {
       try {
         const { rc, stdout, stderr } = await runHook(
-          guardScript, ['pre-write'], buildWritePayload(filePath), env(ctx),
+          guardScript, ['pre-write'], buildWritePayload(filePath, text), env(ctx),
         );
         const decision = translateGuardDecision(rc, stdout, stderr);
         if (decision) return decision;

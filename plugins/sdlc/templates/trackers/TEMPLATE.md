@@ -49,6 +49,8 @@ equivalent, comment formatting}
 ### create-pr        {title} {body-file} {base} {draft} [{verdict}] → number, url
 ### update-pr        {n} {title} {body-file}
 ### comment-pr       {n} {body-file}
+### get-pr-ledger    {n} → {id, body} of the aisdlc ledger comment written by current-user, or empty
+### put-pr-ledger    {n} {body-file} → comment-id; updates that comment when it exists, else creates it
 ### label-pr         {n} {label}
 ### unlabel-pr       {n} {label}
 ### assign-pr        {n} {user}

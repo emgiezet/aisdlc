@@ -37,9 +37,19 @@ any pre-computed findings passed in the prompt (Phase 3 signals from `/sdlc:revi
 If `.aisdlc/slop-guard/report.json` exists (or the configured path), import its blockers as
 `blocker` findings — do not re-implement the check.
 
-Format each finding:
+**Evidence gate — before you emit a finding.** Apply `## Evidence` in
+`skills/code-review/SKILL.md`: it cites an added or modified line of this diff, names the
+concrete triggering condition, traces the path to the wrong outcome, and states a result a person
+or a test can observe. Fails any of the four → do not emit it. A condition the base shares is
+`[minor] Pre-existing: …`, never a blocker. When the prompt carries `Scope: incremental`, cite
+only the lines listed under `Lines:`; a security finding may cite any line of the PR diff.
+
+Format each finding (the last three lines for `blocker` and `major` only):
 ```
 [<severity>] <description> — `<file:line>`
+  Repro: …
+  Loss:  …
+  Blame: …
 ```
 
 Rank: blockers first, then majors, minors, nits.
@@ -57,7 +67,8 @@ Verdict: CHANGES_REQUESTED
 ```
 
 Apply the verdict rule from `skills/code-review/SKILL.md` exactly. Never emit both tokens.
-Never paraphrase them.
+Never paraphrase them. The caller derives the verdict from the findings ledger; yours is the
+cross-check it is compared with, not the decision — emit it anyway.
 
 ## Adversarial mode
 

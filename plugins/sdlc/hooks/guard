@@ -3,8 +3,10 @@
 #
 # Usage (from hooks.json, via run-hook.cmd):
 #   guard pre-bash   — PreToolUse on Bash: deny force pushes, --no-verify, dangerous rm
-#   guard pre-write  — PreToolUse on Write/Edit/MultiEdit/NotebookEdit: while a decision map
-#                      holds .aisdlc/planning-mode, deny writes outside its allow: prefixes.
+#   guard pre-write  — PreToolUse on Write/Edit/MultiEdit/NotebookEdit: deny a write that sets
+#                      `status: approved` in a spec without the /sdlc:triage `approved-by:` line;
+#                      while a decision map holds .aisdlc/planning-mode, deny writes outside its
+#                      allow: prefixes.
 #   guard stop       — Stop: deny finishing a session that deleted or skipped tests
 #                      (advisory warning on Grok — Stop hooks are passive there).
 #                      Deletions listed with a reason in .claude/retired-tests are allowed.
@@ -101,13 +103,48 @@ Fix what the hook reports instead of skipping it."
 }
 
 # --------------------------------------------------------------------------- #
-# pre-write — planning mode: a session charting a decision map plans and does not build.
-# The marker is written by /sdlc:chart; the rule lives here, outside text the agent edits.
+# pre-write — two fences on what an agent may write.
+#   1. A spec's approval: `status: approved` is the human's signature (spec_approval_fence).
+#   2. Planning mode: a session charting a decision map plans and does not build.
+#      The marker is written by /sdlc:chart; the rule lives here, outside text the agent edits.
 # --------------------------------------------------------------------------- #
 PLANNING_MARKER='.aisdlc/planning-mode'
 
+# written_rel_path TOP PATH — print PATH relative to TOP, with '..' and symlinks resolved so
+# 'specs/../src/x' cannot pass as 'specs/'. Prints nothing when PATH is outside TOP.
+written_rel_path() {
+    local top="$1" path="$2" abs
+    case "$path" in /*) abs="$path" ;; *) abs="${PWD}/${path}" ;; esac
+    abs="$(realpath -m -- "$abs" 2>/dev/null || printf '%s' "$abs")"
+    case "$abs" in "$top"/*) printf '%s' "${abs#"$top"/}" ;; esac
+}
+
+# spec_approval_fence TOP REL INPUT — deny a write that grants a spec's approval. The one
+# exception is the /sdlc:triage shape, whose `approved-by: issue #<n>` line the runner
+# re-checks against the issue's `bug` label (check_spec) before it spends a token.
+spec_approval_fence() {
+    local top="$1" rel="$2" input="$3" specs_dir text
+    specs_dir="$(jq -r '.specs_dir // "specs"' "$top/.aisdlc/config.json" 2>/dev/null)"
+    [ -n "$specs_dir" ] || specs_dir="specs"
+    specs_dir="${specs_dir%/}"
+    # shellcheck disable=SC2254 # unquoted on purpose: the '*' is the ticket directory glob
+    case "$rel" in ${specs_dir}/*/spec.md) ;; *) return 0 ;; esac
+    # Write carries content, Edit new_string, MultiEdit edits[].new_string; NotebookEdit none.
+    text="$(printf '%s' "$input" | jq -r '[.tool_input.content, .tool_input.new_string,
+        (.tool_input.edits // [])[].new_string] | map(select(type == "string")) | join("\n")' 2>/dev/null)"
+    printf '%s\n' "$text" | grep -Eq "^status:[[:space:]]*[\"']?approved" || return 0
+    printf '%s\n' "$text" | grep -Eq '^approved-by:[[:space:]]*[^[:space:]]' && return 0
+    deny "guard: a spec's approval is the human's signature, not the agent's.
+Blocked write: ${rel} sets \`status: approved\`.
+A person flips that line and commits it. The one exception is /sdlc:triage on an issue already
+labelled \`bug\`: it writes \`status: approved\` together with
+\`approved-by: issue #<n> (label bug, @<author>)\`, and the runner re-checks that label before it
+spends a token.
+Leave the spec at \`status: draft\` and report what is ready."
+}
+
 pre_write() {
-    local input path top marker abs rel map allow p
+    local input path top marker rel map allow p
     input="$INPUT"
     # Normalize Grok camelCase: toolInput → tool_input (only field consumed here)
     if [ -n "$IS_GROK" ]; then
@@ -117,6 +154,12 @@ pre_write() {
     [ -n "$path" ] || exit 0
 
     top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+    rel="$(written_rel_path "$top" "$path")"
+    [ -n "$rel" ] || exit 0
+
+    # Applies whether or not a decision map is open.
+    spec_approval_fence "$top" "$rel" "$input"
+
     marker="${top}/${PLANNING_MARKER}"
     [ -f "$marker" ] || exit 0
 
@@ -126,14 +169,6 @@ pre_write() {
             "$PLANNING_MARKER" "$PLANNING_MARKER" >&2
         exit 0
     fi
-
-    case "$path" in /*) abs="$path" ;; *) abs="${PWD}/${path}" ;; esac
-    # Resolve '..' and symlinks so 'specs/../src/x' cannot pass as 'specs/'.
-    abs="$(realpath -m -- "$abs" 2>/dev/null || printf '%s' "$abs")"
-    case "$abs" in
-        "$top"/*) rel="${abs#"$top"/}" ;;
-        *) exit 0 ;;
-    esac
 
     map="$(sed -n 's/^map:[[:space:]]*//p' "$marker" | head -1)"
     allow="$(sed -n 's/^allow:[[:space:]]*//p' "$marker" | head -1)"

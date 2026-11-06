@@ -57,6 +57,13 @@ the work queueable, and it moves all the risk to one reviewable artefact. Which 
 refuses a spec that is not `approved`, refuses one with unresolved open questions, and checks both
 again inside the worktree before spending a token.
 
+The approval is a person's signature, so no agent may write it. `guard pre-write` denies a write
+or edit that sets `status: approved` in a `<specs>/<TICKET>/spec.md`, and the runner's `verify`
+gate fails a branch that changed `status:` or `approved-by:` in a spec the base already carried —
+the second fence for hosts where the hook is advisory. The one exception is `/sdlc:triage` on an
+issue already labelled `bug`: it writes `approved-by: issue #<n> (label bug, @<author>)` with the
+approval, and the runner re-checks that label before the run.
+
 The section that earns its keep most is `Out:`. It is the only thing standing between "add a
 balance endpoint" and an agent helpfully restructuring the money handling on its way past.
 A file listed verbatim (exact path, no glob characters, no trailing `/`) in `In:` is exempt from `Out:` matching even if `Out:` cross-references it; repo-wide prohibited paths always win regardless.
@@ -152,6 +159,22 @@ the PR body, so a reviewer knows in one second whether this branch deserves the 
 `GAPS` must mean gaps. The moment `PASS` sometimes means "nearly", reviewers go back to reading
 every diff and the pipeline's value collapses.
 
+### Review findings are a ledger, not prose
+
+A review that a model restates from scratch on every push cannot be trusted to remember what it
+said, so `/sdlc:review` keeps its findings in one PR comment that `bin/aisdlc-ledger` writes and
+reads back. Each finding has a stable `F<n>` id and an anchor: the sha256 of the line it cites.
+On the next push the anchor follows the line if it moved and resolves the finding if the line is
+gone; a re-review reads only the lines changed since the last reviewed commit, and a finding it
+does not re-report resolves only when the author changed that finding's file. A finding must cite
+a line the PR added or modified — one that does not is dropped by the helper, not by the model's
+judgement — and a blocker or major carries `Repro:`, `Loss:` and `Blame:` lines; a condition the
+base already has is a `[minor] Pre-existing:` follow-up, never a blocker. A person answers a
+finding in the PR body with `Waived: F<n> — <why> — @<who>` or `Rejected: F<n> — <why> — @<who>`.
+The verdict is computed from what stays `open`: any open blocker or major is `CHANGES_REQUESTED`.
+The rules: `code-review` → `## Evidence`; the ledger format: `pipeline-contracts` →
+`## Findings ledger`.
+
 ### Cheap models are the target
 
 If the pipeline only works on the most expensive model, the harness is carrying none of the weight.
@@ -200,7 +223,7 @@ A task is done when **all** of these hold — this is what `/sdlc:qa`, `aisdlc s
   accepted by a human. Any `## Structure` `[blocker]` findings (`hotspot over 25:`) must be
   resolved; `[major]` findings (`erosion:`, `new hotspot:`) require a waiver or a split.
 - The PR is a draft, labelled, with the riskiest changes called out by `file:line`.
-- `/sdlc:review` returned `APPROVED`: no blocker, no unwaived major.
+- `/sdlc:review` returned `APPROVED`: no `open` blocker or major in the PR's findings ledger.
 
 Anything less is `GAPS` or `BLOCKED`. Both are successful outcomes of an unattended run — the
 failure mode to fear is a confident PR that quietly does the wrong thing.

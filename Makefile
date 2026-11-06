@@ -1,5 +1,5 @@
-.PHONY: help validate validate-slopguard selftest sandbox harness-eval eval-dry templates \
-        bump-patch bump-minor bump-major bump-slopguard tool-integration
+.PHONY: help validate validate-slopguard selftest coverage coverage-check sandbox harness-eval eval-dry \
+        templates bump-patch bump-minor bump-major bump-slopguard tool-integration
 
 PLUGIN_JSON := plugins/sdlc/.claude-plugin/plugin.json
 SLOPGUARD_PLUGIN_JSON := plugins/slop-guard/.claude-plugin/plugin.json
@@ -13,9 +13,9 @@ SANDBOX_DIR := $(or $(TMPDIR),/tmp)/aisdlc-sandbox
 # Pass --strict to validate-configs in CI (GitHub Actions sets CI=true automatically).
 CONFIG_STRICT := $(if $(CI),--strict,)
 SCRIPTS := plugins/sdlc/hooks/run-hook.cmd plugins/sdlc/hooks/session-start \
-           plugins/sdlc/hooks/guard plugins/sdlc/bin/aisdlc \
+           plugins/sdlc/hooks/guard plugins/sdlc/bin/aisdlc plugins/sdlc/bin/aisdlc-ledger \
            evals/harness/run.sh evals/harness/selftest.sh evals/harness/stub-claude \
-           evals/harness/stub-gh
+           evals/harness/stub-gh evals/harness/coverage.sh
 COMMANDS := init update slopguard-setup spec decompose mockup implement qa ship \
             review fix-pr review-prs autopilot continue merge merge-buddy followup close-fixed changelog \
             issue triage root-cause fix-issue \
@@ -182,8 +182,10 @@ validate: validate-slopguard ## Validate manifests, required files, and shell sc
 	done
 	@command -v shellcheck > /dev/null 2>&1 && \
 		(shellcheck -S warning plugins/sdlc/hooks/guard plugins/sdlc/hooks/session-start \
-		            plugins/sdlc/bin/aisdlc evals/harness/run.sh evals/harness/selftest.sh \
-		            evals/harness/stub-claude evals/harness/stub-gh && echo "  ✓ shellcheck clean") || \
+		            plugins/sdlc/bin/aisdlc plugins/sdlc/bin/aisdlc-ledger \
+		            evals/harness/run.sh evals/harness/selftest.sh \
+		            evals/harness/stub-claude evals/harness/stub-gh evals/harness/coverage.sh \
+		            && echo "  ✓ shellcheck clean") || \
 		echo "  – shellcheck not installed, skipped"
 	@if test -x plugins/sdlc/tests/run-tests; then \
 		echo "Running sdlc hook tests..."; \
@@ -306,6 +308,12 @@ tool-integration: ## Run parser integration tests against real tool binaries (CI
 
 selftest: ## Verify the queue runner against a stub claude (no API calls, no cost)
 	@evals/harness/selftest.sh
+
+coverage: ## Which harness units a selftest/CI case claims (# covers:), per class
+	@evals/harness/coverage.sh
+
+coverage-check: ## Fail if a unit covered on origin/main has lost its covers: claim
+	@evals/harness/coverage.sh --check --base origin/main
 
 sandbox: ## Instantiate the eval sandbox with its approved specs → $(SANDBOX_DIR)
 	@rm -rf "$(SANDBOX_DIR)"
