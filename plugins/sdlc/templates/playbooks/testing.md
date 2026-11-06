@@ -9,14 +9,19 @@ this playbook enforces.
 1. **Find the gap before writing anything.** Which acceptance criteria (`UC-<n>` in
    `specs/<TICKET>/spec.md`) have no test carrying their id? Which public functions in the recent
    diff have no test? That list is the work.
-2. **Integration tests before unit tests.** One integration test per `UC-<n>`, named with its id,
-   exercising the real path end to end. These are what catch a hallucinated implementation; unit
-   tests only catch a wrong branch.
-3. **Then fill the branch grid.** Every error return, validation rule, and conditional in the
-   changed code gets its own case. Parameterised where the language supports it.
-4. **Assert on observable behaviour** — response body, stored row, rendered text, emitted event.
+2. **One test per `UC-<n>`, at the tier the spec's `test` column names**, carrying its id.
+   `unit` is the default: in-process, mocked collaborators, no socket and no database.
+   `integration` only where a persisted row, migration or transaction boundary is the result
+   being proven; `e2e` only for a critical journey. Tier definitions and the CI stage each one
+   runs at: `dense-testing`'s `references/test-tiers.md`.
+3. **Then fill the branch grid at the unit tier.** Every error return, validation rule and
+   conditional in the changed code gets its own case, parameterised where the language supports
+   it. This is where most of the test count comes from.
+4. **Prove each behaviour once.** A rule pinned by a unit test is not re-asserted by an
+   integration or e2e test — duplicated assertions are paid for on every CI run.
+5. **Assert on observable behaviour** — response body, stored row, rendered text, emitted event.
    Never assert that a mock was called when the real effect is checkable.
-5. **Run the full suite, not just the new file.** A new test that passes while breaking two
+6. **Run each selected suite, not just the new file.** A new test that passes while breaking two
    existing ones is a net loss.
 
 ## Non-negotiable
@@ -37,6 +42,8 @@ in the spec's terms:
 
 - `UC-<n>` ids with at least one passing test, out of the total in the spec.
 - Test count before and after, and the skip count — which must be zero.
+- New tests per tier: `unit` / `integration` / `e2e` — new unit tests outnumber the other two
+  combined, or say why they do not.
 
 ## Done when
 

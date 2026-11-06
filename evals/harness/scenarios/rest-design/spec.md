@@ -36,11 +36,11 @@ Out:
 
 | id | actor | action | expected observable result | test |
 |----|-------|--------|----------------------------|------|
-| UC-1 | client | `GET /v1/accounts` | 200; `data` holds both accounts ordered by `id` ascending, each item with exactly the keys `id`, `name`, `currency`; `next_cursor` is `null` | integration |
-| UC-2 | client | `GET /v1/accounts?limit=1` | 200; `data` holds only `acc-1001`; `next_cursor` is the string `"acc-1001"` | integration |
-| UC-3 | client | `GET /v1/accounts?limit=1&cursor=acc-1001` | 200; `data` holds only `acc-1002`; `next_cursor` is `null` | integration |
-| UC-4 | client | `GET /v1/accounts?limit=101` | 400 with the shared error envelope and code `invalid_limit`; no second error shape in the body | integration |
-| UC-5 | client | `GET /v1/accounts/acc-1001` | unchanged: 200 with exactly `id`, `name`, `currency` | integration |
+| UC-1 | client | `GET /v1/accounts` | 200; `data` holds both accounts ordered by `id` ascending, each item with exactly the keys `id`, `name`, `currency`; `next_cursor` is `null` | unit |
+| UC-2 | client | `GET /v1/accounts?limit=1` | 200; `data` holds only `acc-1001`; `next_cursor` is the string `"acc-1001"` | unit |
+| UC-3 | client | `GET /v1/accounts?limit=1&cursor=acc-1001` | 200; `data` holds only `acc-1002`; `next_cursor` is `null` | unit |
+| UC-4 | client | `GET /v1/accounts?limit=101` | 400 with the shared error envelope and code `invalid_limit`; no second error shape in the body | unit |
+| UC-5 | client | `GET /v1/accounts/acc-1001` | unchanged: 200 with exactly `id`, `name`, `currency` | unit |
 
 ## Non-functional
 

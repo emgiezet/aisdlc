@@ -34,9 +34,11 @@ Change budget: <n> added lines, <n> files, <n> modules
 
 | id | actor | action | expected observable result | test |
 |----|-------|--------|----------------------------|------|
-| UC-1 | <who> | <what they do> | <what a test can read: status, row, text, event> | integration |
-| UC-2 | <who> | <invalid variant> | <rejection, error shape, no side effect> | integration |
+| UC-1 | <who> | <what they do> | <what a test can read: status, row, text, event> | unit |
+| UC-2 | <who> | <invalid variant> | <rejection, error shape, no side effect> | unit |
 | UC-3 | <who> | <permission boundary> | <denial, nothing written> | integration |
+
+`test` = the lowest tier that can observe the result: `unit` | `integration` | `e2e`.
 
 ## Non-functional
 

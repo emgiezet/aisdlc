@@ -1291,6 +1291,87 @@ grep -q '^omp headless:1 ' "$TRACE" && ok "the phase runs with AISDLC_HEADLESS=1
 grep -q 'max-budget-usd' "$TRACE" && bad "omp runtime" "a spend cap omp cannot enforce was passed" \
     || ok "no spend cap is claimed"
 
+printf '\na symlinked runner resolves its plugin roots before loading the guard\n'
+AISDLC_LINK="$WORK/aisdlc-link"
+ln -s "$AISDLC" "$AISDLC_LINK"
+R="$WORK/claude-symlink-guard"
+fresh_repo "$R"
+"$AISDLC_LINK" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+"$AISDLC_LINK" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "symlinked runner completes guarded phase" \
+    || bad "symlinked runner" "status is $(task_field "$R" .status): $(task_field "$R" .error)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -qF -- "--plugin-dir $REPO_ROOT/plugins/slop-guard" "$D/implement.log" \
+    && ok "symlinked runner loads the real guard root" \
+    || bad "symlinked runner" "guard path is not the checkout's plugin root"
+
+printf '\nan installed Claude guard keeps its configured plugin data\n'
+R="$WORK/claude-installed-guard"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB_GUARD_INSTALLED=true "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "phase uses installed guard" \
+    || bad "installed Claude guard" "status is $(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -q 'stub-claude args:' "$D/implement.log" \
+    && ! grep -qF -- "--plugin-dir $REPO_ROOT/plugins/slop-guard" "$D/implement.log" \
+    && ok "installed guard is not shadowed by an inline copy" \
+    || bad "installed Claude guard" "bundled copy replaced installed guard"
+
+printf '\nindependent guard path overrides the bundled sibling\n'
+GUARD_DIR="$WORK/standalone-guard"
+mkdir -p "$GUARD_DIR/bin" "$GUARD_DIR/.claude-plugin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$GUARD_DIR/bin/slopguard"
+chmod +x "$GUARD_DIR/bin/slopguard"
+printf '{"name":"slop-guard"}\n' > "$GUARD_DIR/.claude-plugin/plugin.json"
+R="$WORK/omp-external-guard"
+TRACE="$WORK/omp-external-guard.trace"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp --no-pr >/dev/null 2>&1
+SLOPGUARD_PLUGIN_DIR="$GUARD_DIR" AISDLC_STUB_TRACE="$TRACE" \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "external guard preserves queued phase" \
+    || bad "external guard" "status is $(task_field "$R" .status)"
+grep -qF -- "--plugin-dir $GUARD_DIR" "$TRACE" && ok "omp loads the independent guard" \
+    || bad "external guard" "plugin-dir does not point at the independent guard"
+grep -qF -- '--plugin-dir '"$REPO_ROOT"'/plugins/slop-guard' "$TRACE" \
+    && bad "external guard" "bundled guard loaded as a second copy" \
+    || ok "bundled guard not loaded with external override"
+
+R="$WORK/claude-external-guard"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+SLOPGUARD_PLUGIN_DIR="$GUARD_DIR" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && ok "Claude phase uses independent guard" \
+    || bad "Claude external guard" "status is $(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+grep -qF -- "--plugin-dir $GUARD_DIR" "$D/implement.log" && ok "Claude loads the independent guard" \
+    || bad "Claude external guard" "plugin-dir does not point at the independent guard"
+grep -qF -- "--plugin-dir $REPO_ROOT/plugins/slop-guard" "$D/implement.log" \
+    && bad "Claude external guard" "bundled guard loaded as a second copy" \
+    || ok "Claude does not load the bundled guard with an override"
+
+R="$WORK/claude-missing-guard"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+SLOPGUARD_PLUGIN_DIR="$WORK/absent-guard" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "missing Claude guard fails the task" \
+    || bad "missing Claude guard" "status is $(task_field "$R" .status)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+! grep -q 'stub-claude args:' "$D/implement.log" && ok "Claude model does not run without the guard" \
+    || bad "missing Claude guard" "Claude started without a valid guard"
+
+R="$WORK/omp-missing-guard"
+TRACE="$WORK/omp-missing-guard.trace"
+fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp --no-pr >/dev/null 2>&1
+SLOPGUARD_PLUGIN_DIR="$WORK/absent-guard" AISDLC_STUB_TRACE="$TRACE" \
+    "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "failed" ] && ok "missing override fails the task" \
+    || bad "missing guard" "status is $(task_field "$R" .status)"
+[ ! -s "$TRACE" ] && ok "no model phase runs with missing override" \
+    || bad "missing guard" "omp started without a valid guard"
+
 printf '\nomp forwards an unknown command to the model; the runner must not accept that\n'
 R="$WORK/omp-noop"
 fresh_repo "$R"

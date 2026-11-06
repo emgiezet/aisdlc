@@ -34,9 +34,9 @@ Out:
 
 | id | actor | action | expected observable result | test |
 |----|-------|--------|----------------------------|------|
-| UC-1 | customer | `GET /v1/accounts/acc-1001/balance` | 200 with body `{"id":"acc-1001","balance":1250050,"currency":"EUR"}` — balance as an integer in minor units | integration |
-| UC-2 | customer | `GET /v1/accounts/acc-9999/balance` | 404 with the shared error envelope and code `account_not_found`; no other field in the body | integration |
-| UC-3 | customer | `GET /v1/accounts/acc-1002/balance` | 200 with `balance` exactly `0` — a zero balance is a valid answer, not a missing field | integration |
+| UC-1 | customer | `GET /v1/accounts/acc-1001/balance` | 200 with body `{"id":"acc-1001","balance":1250050,"currency":"EUR"}` — balance as an integer in minor units | unit |
+| UC-2 | customer | `GET /v1/accounts/acc-9999/balance` | 404 with the shared error envelope and code `account_not_found`; no other field in the body | unit |
+| UC-3 | customer | `GET /v1/accounts/acc-1002/balance` | 200 with `balance` exactly `0` — a zero balance is a valid answer, not a missing field | unit |
 
 ## Non-functional
 

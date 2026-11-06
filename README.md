@@ -54,6 +54,26 @@ See `install.sh` (or run it) for the exact per-host steps.
 ln -s ~/.claude/plugins/marketplaces/aisdlc/plugins/sdlc/bin/aisdlc ~/.local/bin/aisdlc
 ```
 
+To use the independent [Slop Guard repository](https://github.com/emgiezet/slopguard)
+in queued sessions:
+
+```bash
+git clone https://github.com/emgiezet/slopguard.git ~/.local/share/slopguard
+SLOPGUARD_PLUGIN_DIR="$HOME/.local/share/slopguard" aisdlc run
+```
+
+The directory must contain `bin/slopguard` and `.claude-plugin/plugin.json`.
+Without an override, Claude phases keep an enabled marketplace Slop Guard
+installation (and its plugin data); otherwise the runner loads the bundled
+sibling inline. Omp phases load the selected directory explicitly. An invalid
+override stops the phase before the model starts. A PyPI CLI installation
+alone does not enable agent hooks.
+
+For an immediate `slopguard` shell command, run
+`uv tool install aisdlc-guard`. From the target project's root, run
+`CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true slopguard deps-check` to query registries;
+without that flag, dependency checks make no network requests.
+
 Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI (for the queue runner). `gh` only for the
 `github` tracker; without one `/sdlc:init` selects the file-backed `local` provider.
 
@@ -230,11 +250,13 @@ They ask questions, act once, and hand control back.
 |---|---|
 | `/sdlc:init [--discovery]` | The one-per-repo setup described above. |
 | `/sdlc:update [--check] [--yes]` | After a harness update: adds descriptor operations, profile fields and runner config keys that are new, reports drift in the router, playbooks and rules, stamps `harness_version`. Never rewrites an answer you gave. |
+| `/sdlc:slopguard-setup [--check]` | Offered at the end of `/sdlc:init`: installs the `slop-guard` plugin on this host, lets it detect the repo's stacks, installs the pinned linters and scanners those stacks need (`slopguard doctor --install`), and walks through enforcement mode, `.slopguard.json` stack overrides and which baseline linter configs to adopt. Installs nothing without a yes. |
 | `/sdlc:spec <T>` | A ticket, URL, file or description → `specs/<T>/spec.md` with a use-case table; adds the negative cases the ticket forgot; leaves `status: draft`. |
 | `/sdlc:decompose <T>` | Splits an oversized ticket, spec or brief into ordered, independently shippable slices that each fit one PR — estimates the change surface, picks the seam (walking skeleton, vertical, seam-first, expand/contract, mechanical), writes one draft spec per slice with its own change budget. `/sdlc:spec` calls it when its own estimate is over budget. |
 | `/sdlc:mockup <T>` | A clickable single-file mockup of the spec's UI use cases, including empty, loading, error and denied states. |
 | `/sdlc:arch-review <EPIC\|path>` | Grades a planned architecture against its numbers: elicits the traffic profile, availability tier and RPO/RTO one question at a time, checks topology and dependency chain against what the tier forces, verdict `SOUND`/`GAPS`. |
 | `/sdlc:brainstorm` · `/sdlc:discover` · `/sdlc:synthetic-users` · `/sdlc:backlog` | Discovery before a spec exists: one question at a time, evidence-tagged product briefs, synthetic panels that never count as evidence, epics and stories filed through `/sdlc:issue`. |
+| `/sdlc:chart <destination\|slug>` | An effort too large for one session becomes a decision map: an agreed destination, one tracker ticket per open decision (grilling, prototype, research, task), and the fog ahead. Resolves one ticket per session; a `guard` hook blocks building while the map is open. Hands a cleared map to `/sdlc:spec`. |
 | `/sdlc:ux-shape` · `/sdlc:ux-setup` · `/sdlc:ux-review <pr#>` | A UX direction before the mockup; the repo's design contract as a path-scoped rule; a PR's UI reviewed against it in a real browser. |
 | `/sdlc:issue "<brief>" \| <n> [--normalize] [--all]` | File a deduped, structured issue, or bring existing ones up to the template. |
 | `/sdlc:merge <pr#>` · `/sdlc:merge-buddy` | The human's merge — refused unless `merge-ready`, green, conflict-free, no blocking `GAPS`; a read-only report of what can merge now. |
@@ -592,16 +614,20 @@ make tool-integration              # real-binary parser tests; needs pinned tool
 found that `claude` consumes stdin, which silently ate the queue's phase list — the kind of defect
 no amount of reading catches.
 
-Releases are not hand-made. When `Validate` goes green on `main`,
-[`.github/workflows/release.yml`](.github/workflows/release.yml) reads the commits since the last
-tag — `feat!`/`BREAKING CHANGE` → major, `feat` → minor, anything else → patch — runs the matching
-`make bump-*`, bumps `slop-guard` by the same step only when `plugins/slop-guard/` changed, then
-commits `chore(release): vX.Y.Z`, tags it and publishes the GitHub release with generated notes.
-Superseded validation runs skip the release when their commit is no longer the tip of `main`.
-The bump commit and its tag are pushed atomically: if `main` advances after that check, neither
-ref is published, leaving the newer validation run to release.
-Run it by hand with a forced level from the Actions tab (`workflow_dispatch`, `level:`); the manual
-path is still `make bump-patch|bump-minor|bump-major` and `make bump-slopguard`.
+`main` requires a pull request, including for version changes. On a release
+branch, run `make bump-patch`, `make bump-minor` or `make bump-major`; if the
+bundled `plugins/slop-guard/` changed, run `make bump-slopguard` too. Open a PR
+with the exact title `chore(release): vX.Y.Z`, verify its checks, then squash
+merge it. After `Validate` succeeds on `main`,
+[`.github/workflows/release.yml`](.github/workflows/release.yml) checks the
+commit subject and all plugin manifest versions, tags that validated commit,
+and publishes the GitHub release with generated notes. A superseded validation
+run cannot tag an old commit. Rerunning a failed release keeps an existing
+tag pointing at the same commit and only creates the missing GitHub release.
+
+The independently published `aisdlc-guard` Python package is versioned and
+released in its [own repository](https://github.com/emgiezet/slopguard);
+changing only the `sdlc` runner does not bump the bundled `slop-guard` plugin.
 
 The operating manual is [`docs/ai-sdlc.md`](docs/ai-sdlc.md); the specs this harness was built from
 are under [`specs/`](specs/), written in its own format.
