@@ -55,3 +55,33 @@ curl -sS https://api.github.com/repos/<owner>/<repo>/releases/tags/<tag> \
 
 If the newest release is younger than 7 days, pin the one before it and record
 this in the PR description.
+
+## ESLint plugin major compatibility (2026-11-06)
+
+ESLint and @eslint/js 9.39.5 (published July 10) satisfy every pinned plugin's
+ESLint peer range. ESLint 10 remains excluded by eslint-plugin-react 7.37.5.
+
+regexp 3 blocked: transitive jsdoc-type-pratt-parser requires node
+`^22.22.2 || >=24.15.0`. eslint-plugin-regexp 3.3.2 accepts ESLint `>=9.38.0`,
+but depends on jsdoc-type-pratt-parser `^9.0.0`; every eligible parser release
+9.0.0–9.4.0 has that stricter Node engine. Parser 9.5.0 also has it and was
+published Nov 3, inside the seven-day hold. No eligible parser 9.x satisfies
+this bundle's `^20.19.0 || ^22.13.0 || >=24` floor or local Node 24.0.2.
+Keep regexp 2.10.0 rather than override outside its range, ignore EBADENGINE,
+or raise the supported Node floor to force a major upgrade.
+
+TypeScript 7 is excluded by this bundle's typescript-eslint 8.43.0 peer range
+`>=4.8.4 <6.0.0`; even 8.72.1 only widens that upper bound to `<6.1.0`.
+Psalm 7 remains outside the seven-day hold: stable 7.0.0–7.0.4 were published
+November 2–6. Its PHP requirement is not the blocker (`~8.3.16` permits CI).
+
+The publication hold applies to transitive pins as well as direct dependencies.
+Regenerate the npm lock from scratch with lifecycle scripts disabled, strict
+peer resolution, and `--before=2026-10-30T09:56:41Z` (seven days before review).
+This avoids the November Babel/browser-data releases selected by an unrestricted
+resolution. Keep the exact direct dependency versions in package.json.
+
+Hooks 7 brings Babel, Hermes and Zod dependencies even though the baseline only
+enables rules-of-hooks and exhaustive-deps. This larger supply-chain surface is
+accepted for the supported upstream release; none of its new recommended-preset
+rules are implicitly enabled by the explicit baseline.
