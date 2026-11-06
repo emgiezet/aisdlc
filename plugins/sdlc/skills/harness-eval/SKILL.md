@@ -30,8 +30,16 @@ Each run: fresh sandbox copy of `evals/fixtures/sandbox` in the temp dir → the
 approved spec → `aisdlc add` + `run --once` → assertions scored against the produced branch.
 `--keep` leaves the sandbox in place so you can read what the agent actually did.
 
-Acceptance bar for a harness change: **Sonnet passes every scenario, Haiku passes all but one.**
-Below that, the harness is not ready — not the model.
+Every cell is appended to `evals/harness/results.jsonl` (committed, append-only) with the
+`harness` digest of the instruction tree and the `inputs` digest of the scenario. The `DELTA`
+column compares each cell with the last result for the same scenario, model and inputs on a
+*different* harness: `FAIL→PASS improved`, `PASS→FAIL REGRESSED`, `same harness` for a rerun,
+`new` when the scenario changed. A run with a missing or duplicated cell reports nothing.
+
+Acceptance bar for a harness change, counted over **graded** cells (the scorer reached a branch):
+**Sonnet passes every scenario, Haiku passes all but one.** An ungradeable cell (`ERROR`, `—`
+assertions: no task, no branch, pipeline not `done`) is never one of the allowed misses — fix
+it and rerun. Below that bar, the harness is not ready — not the model.
 
 ## Diagnosing a failure
 

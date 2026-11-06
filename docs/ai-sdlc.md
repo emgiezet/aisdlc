@@ -159,7 +159,16 @@ If the pipeline only works on the most expensive model, the harness is carrying 
 is in a file you own: a router row that reads ambiguously, a rule that implies instead of stating,
 a UC with nothing observable to assert. Fixing those makes the expensive model better too.
 
-Acceptance bar for a harness change: Sonnet passes every scenario, Haiku passes all but one.
+Acceptance bar for a harness change: Sonnet passes every scenario, Haiku passes all but one,
+counted over graded cells. A cell that never reached the scorer (no task, no branch, pipeline not
+`done`) is reported as ungradeable and still fails the run, but never counts as an allowed miss.
+
+Every cell is appended to `evals/harness/results.jsonl`, tagged with a digest of the instruction
+tree (`plugins/sdlc/{commands,skills,agents,prompts,templates}` plus the sandbox fixture's
+`CLAUDE.md` and `.claude/`) and of the scenario's own files. The run table's `DELTA` column
+compares each cell with the last result for the same scenario and inputs on a different harness,
+so an instruction edit shows up as `FAIL→PASS improved` or `PASS→FAIL REGRESSED`. Commit the
+ledger lines with the instruction change they measure.
 
 **Measured baseline** — `go-endpoint` (3 use cases, Go, contract change) on Haiku:
 
