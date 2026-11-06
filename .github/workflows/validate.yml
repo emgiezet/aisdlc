@@ -48,6 +48,7 @@ jobs:
             plugins/sdlc/hooks/session-start \
             plugins/sdlc/bin/aisdlc \
             evals/harness/run.sh \
+            evals/harness/run_test.sh \
             evals/harness/selftest.sh \
             evals/harness/stub-claude \
             evals/harness/stub-gh

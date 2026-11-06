@@ -72,7 +72,7 @@ it must be readable in 30 seconds:
 
 ```markdown
 # QA report — <TICKET>
-**Verdict: PASS** | **Verdict: GAPS (<n> findings, <n> blocking)**
+Verdict: PASS | Verdict: GAPS (<n> findings, <n> blocking)
 
 ## UC coverage
 | UC | requirement | test | screenshot | verified |
@@ -96,6 +96,8 @@ Tiers (new tests): unit 31 / integration 4 / e2e 1
 <anything you could not check, and why — never leave this implied>
 ```
 
-Rules for the report: state the verdict in the first line; `GAPS` if any finding is blocking
-or any UC is unverified. Quote file and line for every finding. Never propose a patch — the
-caller decides who fixes what. Never edit source or test files: your only write is the report.
+Rules for the report: the second line is the verdict, exactly `Verdict: PASS` or
+`Verdict: GAPS (…)` at the start of the line — no bold, never a bare `PASS` or `GAPS`. `GAPS`
+if any finding is blocking or any UC is unverified. Quote file and line for every finding.
+Never propose a patch — the caller decides who fixes what. Never edit source or test files:
+your only write is the report.

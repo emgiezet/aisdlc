@@ -159,7 +159,16 @@ If the pipeline only works on the most expensive model, the harness is carrying 
 is in a file you own: a router row that reads ambiguously, a rule that implies instead of stating,
 a UC with nothing observable to assert. Fixing those makes the expensive model better too.
 
-Acceptance bar for a harness change: Sonnet passes every scenario, Haiku passes all but one.
+Acceptance bar for a harness change: Sonnet passes every scenario, Haiku passes all but one,
+counted over graded cells. A cell that never reached the scorer (no task, no branch, pipeline not
+`done`) is reported as ungradeable and still fails the run, but never counts as an allowed miss.
+
+Every cell is appended to `evals/harness/results.jsonl`, tagged with a digest of the instruction
+tree (`plugins/sdlc/{commands,skills,agents,prompts,templates}` plus the sandbox fixture's
+`CLAUDE.md` and `.claude/`) and of the scenario's own files. The run table's `DELTA` column
+compares each cell with the last result for the same scenario and inputs on a different harness,
+so an instruction edit shows up as `FAIL→PASS improved` or `PASS→FAIL REGRESSED`. Commit the
+ledger lines with the instruction change they measure.
 
 **Measured baseline** — `go-endpoint` (3 use cases, Go, contract change) on Haiku:
 
@@ -285,6 +294,10 @@ still a hard failure regardless of billing mode. That guard is what prevents a s
 being reported as a successful PR; billing mode has no bearing on whether Claude ran.
 A companion guard runs after `implement`: if the phase exits cleanly but the branch diff is empty
 (excluding `specs/<TICKET>/` and agent-config paths), the runner fails immediately with `phase 'implement' failed — it changed no file; see implement.json for why` and does not run later phases.
+A third guard runs after **every** phase: HEAD must still be on the task branch
+(`ai/<TICKET>-<id>`). An agent that ran `git checkout -b` or detached HEAD committed work that
+verify, ship and review never read, so the task fails with `phase '<phase>' moved the worktree
+off the task branch <branch> onto <where> — …` and keeps the worktree exactly as the agent left it.
 
 ### model_roles
 
@@ -441,6 +454,7 @@ causes across the entire workflow.
 | `BLOCKED` on the same ambiguity repeatedly | The spec template is missing a section your domain needs | Extend the template, not the individual spec |
 | Task status `refused` with `depends-on not met: <TOKEN>` | Dependent slice queued or run before its prerequisite merged | Wait for the prerequisite to merge; its `verify-report.md` must show `PASS` in the base tree |
 | PR record missing after ship or clean | Worktree local tracker `.aisdlc/tracker` not linked to repo canonical | Automatic repo tracker symlinking ensures worktree records land at repo root |
+| Task `failed`: `moved the worktree off the task branch` | The agent created or switched to its own branch inside the runner's worktree | Its commits sit on the branch named in the error, in the kept worktree; `aisdlc retry <id>` reruns on the task branch |
 
 **Limitation — dependencies outside the pipeline:** if a prerequisite was implemented without
 going through this pipeline it has no `verify-report.md`. Remove the `depends-on:` field from
