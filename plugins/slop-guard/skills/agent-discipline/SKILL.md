@@ -1,7 +1,6 @@
 ---
 name: agent-discipline
-description: Always-on agent behavior rules: linter suppression policy, required test gates, test deletion, remote scripts and look-alike packages, credential handling, scope discipline.
-user-invocable: false
+description: "Always-on agent behavior rules: linter suppression policy, required test gates, test deletion, remote scripts and look-alike packages, credential handling, scope discipline."
 ---
 
 # Agent discipline — always-on rules — do not write these

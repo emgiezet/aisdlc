@@ -1,8 +1,6 @@
 ---
 name: node-antipatterns
-description: Forbidden Node.js backend patterns — prototype pollution, shell injection, path traversal, ReDoS, sync I/O in handlers. Applies when editing JS/TS Node files.
-paths: ["**/*.cjs","**/*.js","**/*.mjs","**/*.ts"]
-user-invocable: false
+description: "Forbidden Node.js backend patterns — prototype pollution, shell injection, path traversal, ReDoS, sync I/O in handlers. Applies when editing JS/TS Node files."
 ---
 
 # Node.js anti-patterns — do not write these

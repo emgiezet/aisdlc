@@ -11,23 +11,15 @@
 
 Two sources establish the contract: the `secure-review` hand-written skill and `gen-skills` generated output.
 
-**Required by the test** (`tests/catalog_test.sh:257-270`):
-```
-"name: "*)        $in_fm && has_name=true
-"description: "*) $in_fm && has_desc=true
-"user-invocable: "*) $in_fm && has_uinv=true
-```
-Every `SKILL.md` in every `skills/*/` directory **must** have `name`, `description`, and `user-invocable` or the test at `catalog_test.sh:268-271` fails.
+**Required by the eval** (`evals/skill-frontmatter.py`, run by `tests/catalog_test.sh` §9): frontmatter is valid YAML and uses only the agentskills.io fields `name`, `description`, `license`, `allowed-tools`, `metadata`, `compatibility`. omp drops a portable plugin's skill on any other key and reports `Unknown skill`, so Claude Code-only keys (`paths`, `user-invocable`, `agent`, `context`, `disallowedTools`) are not used.
 
-**All fields in use — verbatim from the two reference skills:**
+**Fields in use — verbatim from the two reference skills:**
 
 `skills/python-antipatterns/SKILL.md` (generated):
 ```yaml
 ---
 name: python-antipatterns
-description: Forbidden Python patterns — SQL injection, shell injection, unsafe deserialization, missing timeouts, blocking async calls. Applies when editing Python files.
-paths: ["**/*.py"]
-user-invocable: false
+description: "Forbidden Python patterns — SQL injection, shell injection, unsafe deserialization, missing timeouts, blocking async calls. Applies when editing Python files."
 ---
 ```
 
@@ -36,26 +28,18 @@ user-invocable: false
 ---
 name: secure-review
 description: "Security review subagent: reads session findings and the AP-* catalogue, produces a structured security assessment. Cannot write or edit files — a reviewer that can edit is not a reviewer. Invoke with /secure-review."
-agent: security-reviewer
-context: fork
-user-invocable: true
-disallowedTools: [Write, Edit, MultiEdit]
 ---
 ```
 
 **Field semantics:**
-- `name` — must match the skill directory name.
-- `description` — shown in the skill list; written as a plain or double-quoted string.
-- `paths` — optional JSON array of glob patterns; when present, the runtime auto-loads the skill when an edited file matches. Absent → skill loads on all files (or only on invocation if `user-invocable: true`).
-- `user-invocable` — `false` = auto-context only; `true` = also exposed as the slash command `/slop-guard:<name>`. **This is the only mechanism that creates a slash command in slop-guard** (no `commands/` directory exists).
-- `agent` — optional; names the agent file in `agents/<name>.md` to spawn as a subagent on invocation.
-- `context: fork` — optional; the subagent runs in an isolated context (fork of current session).
-- `disallowedTools` — optional JSON array; restricts tools available to the invoked skill/agent.
+- `name` — lowercase, ≤ 64 characters, must match the skill directory name.
+- `description` — ≤ 1024 characters; the only signal for when the skill loads, so name the files or task it applies to. Double-quoted: `gen-skills` JSON-quotes it so a `: ` inside stays valid YAML.
+- A subagent is reached from the skill body ("delegate to the `security-reviewer` subagent"), not from frontmatter; tool restrictions live in the agent's own frontmatter (`agents/<name>.md`).
 
 ### Body structure
 
 From both skills, the standard body pattern is:
-1. H1: `# <Human title> — do not write these` (generated) or `# <Human title> — /<command-name>` (hand-written, user-invocable).
+1. H1: `# <Human title> — do not write these` (generated) or `# <Human title> — /<command-name>` (hand-written, invoked as a slash command).
 2. One-sentence context paragraph.
 3. `## Blockers` / `## Errors` / `## Warnings` sections (only sections that have entries).
 4. Footer: `` Details for any ID: `reference/<ID>.md` `` (generated) or detailed prose (hand-written).
@@ -118,11 +102,11 @@ gen-skills **never** calls `rm`, `find -delete`, or any glob over the skills dir
 
 ### slop-guard has no `commands/` directory
 
-There is no `plugins/slop-guard/commands/` path. The `/slop-guard:secure-review` slash command is exposed **exclusively** via the skill frontmatter field `user-invocable: true` in `skills/secure-review/SKILL.md:6`. The Claude Code runtime infers the command name `/<plugin-name>:<skill-name>` from the skill directory name when `user-invocable: true`.
+There is no `plugins/slop-guard/commands/` path. The `/slop-guard:secure-review` slash command comes from the skill itself: Claude Code exposes every plugin skill as `/<plugin-name>:<skill-name>` unless `user-invocable: false`, a key slop-guard no longer uses.
 
 Hooks (`hooks/hooks.json`) wire only `SessionStart`, `PreToolUse`, `PostToolUse`, and `Stop` events — no command registration. Neither `plugin.json` (`plugin.json:1-37`) nor `.claude-plugin/plugin.json` (`.claude-plugin/plugin.json:1-54`) registers any commands.
 
-**Conclusion: to add a new slash command in slop-guard, add a new skill directory with `user-invocable: true` in its frontmatter. No other file needs to change.**
+**Conclusion: to add a new slash command in slop-guard, add a new skill directory. No other file needs to change.**
 
 ### How the sdlc plugin does it
 
@@ -172,7 +156,7 @@ disallowedTools: [Write, Edit, MultiEdit]
 - `disallowedTools` — JSON array of tool names the subagent cannot use. Enforced by the runtime.
 - `model` — **not present**; the agent inherits the session model.
 
-The agent is linked from the skill via `agent: security-reviewer` in the skill frontmatter (`skills/secure-review/SKILL.md:4`). The test at `catalog_test.sh:333-378` verifies the agent file exists and contains evidence that Write/Edit are forbidden.
+The skill body tells the model to delegate to `security-reviewer` (`skills/secure-review/SKILL.md`); the read-only restriction is the agent's `disallowedTools`. `catalog_test.sh` §14 verifies the agent file exists and states that Write/Edit are forbidden.
 
 For a refactor-focused subagent: the agent file should omit `disallowedTools` (or restrict to `Read, Bash, Grep, Glob` and allow `Write, Edit`) and the description should state it may modify files, distinguishing it from the read-only reviewer pattern.
 
@@ -231,22 +215,20 @@ Searching `plugins/sdlc/commands/` for commands that rewrite or refactor code:
 
 No command in either plugin rewrites code for style, complexity reduction, or code-smell remediation. The `changelog.md` mentions the `refactor` conventional-commit type as a classification token only (`changelog.md:55`), not as an action.
 
-**Conclusion:** There is no existing command or skill to extend. A new skill (e.g. `skills/refactor-guide/`) with `user-invocable: true` is the correct addition — it becomes `/slop-guard:refactor-guide`. If the command needs to accept a file-or-directory path, describe the argument in the skill body as: `$ARGUMENTS is a file path or directory to refactor. ...`  The runtime passes the user-typed string verbatim as `$ARGUMENTS`.
+**Conclusion:** There is no existing command or skill to extend. A new skill (e.g. `skills/refactor-guide/`) is the correct addition — it becomes `/slop-guard:refactor-guide`. If the command needs to accept a file-or-directory path, describe the argument in the skill body as: `$ARGUMENTS is a file path or directory to refactor. ...`  The runtime passes the user-typed string verbatim as `$ARGUMENTS`.
 
 ---
 
 ## Quick-Reference: Adding the New Skill + Command
 
-1. **Create** `plugins/slop-guard/skills/<new-name>/SKILL.md` with these frontmatter fields:
+1. **Create** `plugins/slop-guard/skills/<new-name>/SKILL.md` with only portable frontmatter fields:
    ```yaml
    ---
    name: <new-name>
    description: "<shown in palette; state the argument shape here>"
-   user-invocable: true
-   disallowedTools: []     # or omit if no tool restrictions needed
    ---
    ```
-2. **Keep under budget:** ≤ 150 lines, ≤ ~12 000 characters (3 000 tokens × 4 chars). `catalog_test.sh:237-246` will fail CI otherwise.
+2. **Keep under budget:** ≤ 150 lines, ≤ ~12 000 characters (3 000 tokens × 4 chars). `catalog_test.sh` §8 will fail CI otherwise.
 3. **Document `$ARGUMENTS`** at the top of the body: `$ARGUMENTS is a file or directory path.`
-4. **Optional agent:** if the command should spawn a subagent, add `agents/<new-name>.md` and reference it from the skill with `agent: <new-name>` and `context: fork`.
-5. **No other file needs to change.** The slash command `/slop-guard:<new-name>` is exposed automatically by `user-invocable: true`.
+4. **Optional agent:** if the command should spawn a subagent, add `agents/<new-name>.md` (tool restrictions go in its frontmatter) and tell the model in the skill body to delegate to it.
+5. **No other file needs to change.** The slash command `/slop-guard:<new-name>` is exposed automatically.

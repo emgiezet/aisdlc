@@ -1,8 +1,6 @@
 ---
 name: iac-antipatterns
-description: Forbidden IaC/container/CI patterns — public cloud resources, unencrypted storage, privileged containers, unpinned images, insecure CI workflows.
-paths: ["**/*.dockerfile","**/*.tf","**/*.tfvars","**/*.yaml","**/*.yml","**/Dockerfile",".github/workflows/**/*.yaml",".github/workflows/**/*.yml",".gitlab-ci.yml","charts/**","templates/**/*.yaml"]
-user-invocable: false
+description: "Forbidden IaC/container/CI patterns — public cloud resources, unencrypted storage, privileged containers, unpinned images, insecure CI workflows."
 ---
 
 # IaC / containers / CI anti-patterns — do not write these

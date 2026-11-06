@@ -79,7 +79,7 @@ jobs:
           CLAUDE_PLUGIN_OPTION_TOOL_SOURCE: plugin-only
         run: |
           php --version
-          python3 -m pip install uv==0.11.11
+          python3 -m pip install uv==0.11.11 PyYAML==6.0.3
           plugins/slop-guard/bin/slopguard doctor --install --all
 
       # Owns the required-file lists and the instruction budgets.

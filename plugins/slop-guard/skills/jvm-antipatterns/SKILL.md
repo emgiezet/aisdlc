@@ -1,8 +1,6 @@
 ---
 name: jvm-antipatterns
-description: Forbidden JVM (Java/Kotlin) patterns — JDBC injection, insecure deserialization, weak random, trust-all TLS, Jackson misconfiguration.
-paths: ["**/*.java","**/*.kt","**/*.kts"]
-user-invocable: false
+description: "Forbidden JVM (Java/Kotlin) patterns — JDBC injection, insecure deserialization, weak random, trust-all TLS, Jackson misconfiguration."
 ---
 
 # JVM (Java / Kotlin) anti-patterns — do not write these

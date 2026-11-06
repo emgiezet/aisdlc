@@ -1,14 +1,13 @@
 ---
 name: deslop
 description: "Refactors a file or directory to remove AI slop — duplication, dead code, speculative abstraction, bloated functions — without changing observable behaviour. Takes a path argument. Invoke with /slop-guard:deslop <path>."
-agent: deslop
-context: fork
-user-invocable: true
 ---
 
 # Deslop — /slop-guard:deslop <path>
 
-Invokes the `deslop` subagent to remove AI-generated code bloat from the given path.
+Delegate to the `deslop` subagent with your subagent tool, passing `$ARGUMENTS`; it removes
+AI-generated code bloat from the given path in its own context. Without a subagent tool, follow
+this contract in the current context.
 
 ## $ARGUMENTS contract
 

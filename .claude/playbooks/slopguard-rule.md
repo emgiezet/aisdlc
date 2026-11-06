@@ -23,8 +23,8 @@ All paths below are under `plugins/slop-guard/`. The spec is `docs/slop-guard-sp
 5. **A baseline config** goes in `configs/baseline/`; it is an example, not imposed. Findings
    outside `category: security` are dropped by the security overlay unless the user adopts it.
 6. **Regenerate, never hand-edit** `skills/*-antipatterns/`: run `scripts/gen-skills`. A new
-   language tag that is a concern rather than a stack gets an explicit `skill_paths` case in
-   `gen-skills`, not a fake entry in `rules/stacks.json`.
+   language tag gets a `lang_to_skill` case and a `skill_desc` that names the files it applies
+   to — skill frontmatter carries only portable keys, so the description is what loads it.
 7. **Changelog.** One entry under `## Unreleased` in `CHANGELOG.md`: what changed, file by file,
    and a **Why** paragraph for any choice a reader would question.
 
