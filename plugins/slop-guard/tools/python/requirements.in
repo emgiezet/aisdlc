@@ -1,2 +1,2 @@
-ruff==0.16.6
-checkov==3.3.16
+ruff==0.17.3
+checkov==3.4.0
