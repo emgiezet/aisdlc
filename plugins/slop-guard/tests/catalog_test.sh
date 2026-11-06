@@ -15,7 +15,6 @@ ok()  { printf '  ok    %s\n' "$1"; PASS=$(( PASS + 1 )); }
 bad() { printf '  FAIL  %s: %s\n' "$1" "$2"; FAIL=$(( FAIL + 1 )); }
 
 CATALOG="${PLUGIN_ROOT}/rules/catalog.yaml"
-STACKS="${PLUGIN_ROOT}/rules/stacks.json"
 TOOLS_LOCK="${PLUGIN_ROOT}/tools/tools.lock.json"
 MAPPING_DIR="${PLUGIN_ROOT}/rules/mapping"
 OPENGREP_DIR="${PLUGIN_ROOT}/rules/opengrep"
