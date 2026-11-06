@@ -3,8 +3,8 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
-- **GH-65 Rust fixture repairs:** `rules/opengrep/rust.yaml` and `tests/fixtures/rust/` exercise unsafe blocks, hashing, paths, SQL and TLS with valid safe counterparts and a string-content adversarial case.
-  **Why.** Stub fixtures and broad unsafe-block matches concealed missed detections and false positives.
+- **GH-65 Rust fixture repairs:** `rules/opengrep/rust.yaml` recognizes documented unsafe blocks and raw-pointer dereferences; `tests/fixtures/rust/` exercises unsafe operations, transmute, UTF-8 validation and process arguments with safe counterparts and a string-content adversarial case. `tests/integration/opengrep.sh` enforces Rust UC-5/UC-6 alongside the C# contracts.
+  **Why.** Stub fixtures and broad unsafe-block matches concealed missed detections and false positives. SAFETY annotations immediately above a block or inside it document the same invariant.
 - **GH-65 C# fixture repairs:** `rules/opengrep/csharp.yaml` distinguishes literal process names and disabled XML resolvers; `tests/fixtures/csharp/` exercises unsafe APIs and safe counterparts, including direct assignments and resolver re-enablement.
   **Why.** Placeholder fixtures could not prove detection, and broad patterns flagged safe code. `tests/integration/opengrep.sh` now scans copied fixtures with the full pinned ruleset, enforcing C# per-rule bad hits and silence across all good fixtures; failed or malformed scans fail the gate. The XXE syntactic rule recognizes same-scope `var`/`XmlDocument` declarations followed by `LoadXml`, not field assignments, target-typed `new`, or `Load(stream)`.
 - **Double-cast detection, AP-AGENT-011, deslop duplicate check — and the Opengrep pass actually runs** (2026-10-20, #63)
