@@ -62,7 +62,12 @@ rules:
       - pattern: |
           new ProcessStartInfo($"...")
       - pattern: |
-          new ProcessStartInfo { FileName = $VAR, ... }
+          new ProcessStartInfo { FileName = $"...", ... }
+      - pattern: |
+          new ProcessStartInfo { FileName = $FNAME + $VAR, ... }
+      - patterns:
+          - pattern: new ProcessStartInfo { FileName = $VAR, ... }
+          - pattern-not: new ProcessStartInfo { FileName = "...", ... }
 
   - id: slopguard.cs.path-traversal
     languages: [csharp]
@@ -134,11 +139,11 @@ rules:
       category: security
       cwe: CWE-611
     pattern-either:
-      - patterns:
-          - pattern: new XmlDocument()
-          - pattern-not: |
-              $DOC.XmlResolver = null;
+      - pattern-regex: >-
+          (?s)\b(?:var|XmlDocument)\s+([A-Za-z_]\w*)\s*=\s*new\s+XmlDocument\s*\(\s*\)\s*;(?:(?!\b\1\.XmlResolver\s*=\s*null\s*;|[{}]).)*?\b\1\.LoadXml\s*\(
       - pattern: XmlReader.Create($INPUT)
+      - pattern-regex: >-
+          (?s)\b([A-Za-z_]\w*)\.XmlResolver\s*=\s*new\s+XmlUrlResolver\s*\(\s*\)\s*;(?:(?!\b\1\.XmlResolver\s*=\s*null\s*;|[{}]).)*?\b\1\.LoadXml\s*\(
 
   - id: slopguard.cs.ldap-injection
     languages: [csharp]
