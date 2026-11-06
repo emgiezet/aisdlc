@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+# aisdlc-ledger — the deterministic half of /sdlc:review.
+#
+# Owns what a model must not compute in prose: which lines a PR changed, a finding's identity
+# across pushes, its anchor to a line, a human's disposition, and the verdict. The ledger lives in
+# one PR comment (`render` writes it, `read` reads it back); /sdlc:review is the only caller.
+#
+# Usage — every subcommand prints to stdout and leaves its input files untouched:
+#   init          --pr <n>
+#   changed-lines --repo <dir> --base <ref> [--since <ref>]
+#   anchor        --repo <dir> --ledger <file>
+#   add           --ledger <file> --repo <dir> --head <sha> [--changed <file>] [--since <ref>]  < JSON lines
+#   disposition   --ledger <file> --body <file>
+#   seal          --ledger <file> --head <sha>
+#   verdict       --ledger <file>
+#   render        --ledger <file>
+#   read          --comment <file>
+#
+# A finding is anchored to a line by the sha256 of that line's bytes, trailing CR dropped, so a
+# CRLF checkout anchors the same as an LF one. A finding with no `path:line` (a command-computed
+# signal) has no anchor: it is recomputed on every pass and matched by severity and title.
+#
+# Exit: 0 success; 1 `read` found no usable ledger; 2 bad usage or input.
+set -uo pipefail
+
+LEDGER_VERSION=1
+MARKER_RE='^<!-- aisdlc-ledger v1 digest=([0-9a-f]{64}) -->$'
+
+die() { printf 'aisdlc-ledger: %s\n' "$*" >&2; exit 2; }
+now() { date -u +%FT%TZ; }
+
+# Options shared by every subcommand; each subcommand checks the ones it needs.
+OPT_PR="" OPT_REPO="" OPT_BASE="" OPT_SINCE="" OPT_LEDGER="" OPT_HEAD="" OPT_CHANGED=""
+OPT_BODY="" OPT_COMMENT=""
+parse_opts() {
+    while [ $# -gt 0 ]; do
+        [ $# -ge 2 ] || die "$1 needs a value"
+        case "$1" in
+            --pr)      OPT_PR="$2" ;;
+            --repo)    OPT_REPO="$2" ;;
+            --base)    OPT_BASE="$2" ;;
+            --since)   OPT_SINCE="$2" ;;
+            --ledger)  OPT_LEDGER="$2" ;;
+            --head)    OPT_HEAD="$2" ;;
+            --changed) OPT_CHANGED="$2" ;;
+            --body)    OPT_BODY="$2" ;;
+            --comment) OPT_COMMENT="$2" ;;
+            *) die "unknown option: $1" ;;
+        esac
+        shift 2
+    done
+}
+need() { local v; for v in "$@"; do [ -n "${!v}" ] || die "missing --$(printf '%s' "${v#OPT_}" | tr 'A-Z' 'a-z')"; done; }
+
+# load_ledger — print the ledger file, or die when it is not a version-1 ledger.
+load_ledger() {
+    [ -f "$OPT_LEDGER" ] || die "no ledger file: $OPT_LEDGER"
+    jq -e --argjson v "$LEDGER_VERSION" 'select(.version == $v and (.findings | type) == "array")' \
+        "$OPT_LEDGER" 2>/dev/null || die "not a version-$LEDGER_VERSION ledger: $OPT_LEDGER"
+}
+
+# line_hash FILE N — sha256 of line N of FILE, trailing CR dropped. Fails when there is no line N.
+line_hash() {
+    local f="$1" n="$2"
+    [ -f "$f" ] || return 1
+    [ "$(LC_ALL=C awk 'END { print NR }' "$f")" -ge "$n" ] || return 1
+    LC_ALL=C awk -v n="$n" 'NR == n { sub(/\r$/, ""); printf "%s", $0; exit }' "$f" \
+        | sha256sum | cut -c1-64
+}
+
+# relocate FILE SHA LINE — the line of FILE nearest LINE whose hash is SHA; nothing when none.
+# Every line is written to its own file by one awk and hashed by one sha256sum, so a scan costs
+# two processes however long the file is.
+relocate() {
+    local f="$1" sha="$2" line="$3" d
+    d="$(mktemp -d)"
+    LC_ALL=C awk -v d="$d" '{ sub(/\r$/, ""); p = d "/" NR; printf "%s", $0 > p; close(p) }' "$f"
+    ( cd "$d" && find . -type f -print0 | xargs -0 -r sha256sum ) \
+        | awk -v sha="$sha" -v want="$line" '
+            $1 == sha {
+                n = substr($2, 3) + 0; dist = n - want; if (dist < 0) dist = -dist
+                if (best == "" || dist < bestd || (dist == bestd && n < best)) { best = n; bestd = dist }
+            }
+            END { if (best != "") print best }'
+    rm -rf "$d"
+}
+
+# diff_lines REPO RANGE... — `path:line` for every added or modified line of the diff. File
+# headers are read only between `diff --git` and the first hunk, so an added line whose text
+# starts with `++ ` is never mistaken for one.
+diff_lines() {
+    local repo="$1"; shift
+    git -C "$repo" -c core.quotePath=false diff -U0 --no-color --no-ext-diff "$@" 2>/dev/null \
+        | LC_ALL=C awk '
+            /^diff --git / { hdr = 1; path = ""; next }
+            hdr && /^\+\+\+ / { path = substr($0, 5); if (path == "/dev/null") path = ""; else sub(/^b\//, "", path); next }
+            /^@@ / {
+                hdr = 0
+                if (path == "") next
+                split($3, a, ","); start = substr(a[1], 2) + 0; count = (2 in a) ? a[2] + 0 : 1
+                for (i = 0; i < count; i++) print path ":" (start + i)
+            }'
+}
+
+# --------------------------------------------------------------------------- #
+
+cmd_init() {
+    parse_opts "$@"; need OPT_PR
+    [[ "$OPT_PR" =~ ^[0-9]+$ ]] || die "--pr must be a number: $OPT_PR"
+    jq -n --argjson pr "$OPT_PR" --argjson v "$LEDGER_VERSION" \
+        '{version: $v, pr: $pr, next_id: 1, findings: [], review: null}'
+}
+
+cmd_changed_lines() {
+    parse_opts "$@"; need OPT_REPO OPT_BASE
+    git -C "$OPT_REPO" rev-parse --verify --quiet "${OPT_BASE}^{commit}" >/dev/null \
+        || die "unknown --base ref: $OPT_BASE"
+    if [ -z "$OPT_SINCE" ]; then
+        diff_lines "$OPT_REPO" "${OPT_BASE}...HEAD" | LC_ALL=C sort -t: -k1,1 -k2,2n -u
+        return
+    fi
+    git -C "$OPT_REPO" rev-parse --verify --quiet "${OPT_SINCE}^{commit}" >/dev/null \
+        || die "unknown --since ref: $OPT_SINCE"
+    # Both diffs number lines on the HEAD side, so the intersection is a plain set operation.
+    LC_ALL=C comm -12 \
+        <(diff_lines "$OPT_REPO" "${OPT_BASE}...HEAD" | LC_ALL=C sort -u) \
+        <(diff_lines "$OPT_REPO" "$OPT_SINCE" HEAD | LC_ALL=C sort -u) \
+        | LC_ALL=C sort -t: -k1,1 -k2,2n
+}
+
+cmd_anchor() {
+    parse_opts "$@"; need OPT_REPO OPT_LEDGER
+    local ledger updates="" i a path line sha f n
+    ledger="$(load_ledger)" || exit 2
+    while IFS=$'\t' read -r i a path line sha; do
+        f="$OPT_REPO/$path" n=""
+        if [ -f "$f" ]; then
+            if [ "$(line_hash "$f" "$line" || true)" = "$sha" ]; then n="$line"
+            else n="$(relocate "$f" "$sha" "$line")"; fi
+        fi
+        updates="${updates}${i} ${a} ${n:-lost}"$'\n'
+    done < <(printf '%s' "$ledger" | jq -r '.findings | to_entries[] | select(.value.status == "open")
+        | .key as $i | .value.anchors | to_entries[] | [$i, .key, .value.path, .value.line, .value.sha256] | @tsv')
+    # Lost anchors keep their last position; a finding none of whose anchors survives is resolved.
+    # An anchorless finding is a recomputed signal: resolved here, reopened by `add` if re-emitted.
+    printf '%s' "$ledger" | jq --arg u "$updates" '
+        reduce ($u | split("\n")[] | select(. != "") | split(" ")) as $x (.;
+            if $x[2] == "lost" then .findings[$x[0] | tonumber].anchors[$x[1] | tonumber].lost = true
+            else .findings[$x[0] | tonumber].anchors[$x[1] | tonumber].line = ($x[2] | tonumber) end)
+        | .findings |= map(
+            (if .status == "open" and ([.anchors[] | select(.lost != true)] | length) == 0
+             then .status = "resolved" else . end)
+            | .anchors |= map(del(.lost)))'
+}
+
+cmd_add() {
+    parse_opts "$@"; need OPT_LEDGER OPT_REPO OPT_HEAD
+    [ -z "$OPT_CHANGED" ] || [ -r "$OPT_CHANGED" ] || die "no --changed file: $OPT_CHANGED"
+    [ -z "$OPT_SINCE" ] || git -C "$OPT_REPO" rev-parse --verify --quiet "${OPT_SINCE}^{commit}" >/dev/null \
+        || die "unknown --since ref: $OPT_SINCE"
+    local ledger raw item path line sha n=0 dropped=0 at touched
+    ledger="$(load_ledger)" || exit 2
+    at="$(now)"
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        n=$((n + 1))
+        [ -n "${raw//[[:space:]]/}" ] || continue
+        item="$(printf '%s' "$raw" | jq -ce 'select(type == "object"
+            and ((.severity // "") | IN("blocker", "major", "minor", "nit"))
+            and ((.title // "") | type == "string" and length > 0))' 2>/dev/null)" \
+            || die "stdin line $n is not {severity,title,path,line}: $raw"
+        path="$(printf '%s' "$item" | jq -r '.path // "" | ltrimstr("./")')"
+        line="$(printf '%s' "$item" | jq -r '.line // "" | tostring')"
+        sha=""
+        if [ -n "$path" ] && [ -n "$line" ]; then
+            [[ "$line" =~ ^[1-9][0-9]*$ ]] || die "stdin line $n: line must be a positive integer: $line"
+            # The changed-line evidence rule: a finding citing a line this PR did not change is dropped.
+            if [ -n "$OPT_CHANGED" ] && ! grep -qxF "$path:$line" "$OPT_CHANGED"; then
+                dropped=$((dropped + 1)); continue
+            fi
+            sha="$(line_hash "$OPT_REPO/$path" "$line")" || { dropped=$((dropped + 1)); continue; }
+        elif [ -n "$OPT_CHANGED" ]; then
+            # No line cited, so it cannot cite a changed one.
+            dropped=$((dropped + 1)); continue
+        else
+            path="" line=""
+        fi
+        ledger="$(printf '%s' "$ledger" | jq --argjson it "$item" --arg path "$path" --arg line "$line" \
+            --arg sha "$sha" --arg head "$OPT_HEAD" --arg at "$at" '
+            ($line | if . == "" then null else tonumber end) as $ln
+            | {head: $head, at: $at} as $seen
+            | (.findings | first(range(length) as $k | .[$k]
+                | select(.severity == $it.severity
+                    and (if $sha == "" then (.anchors == [] and .title == $it.title)
+                         else any(.anchors[]; .path == $path and .sha256 == $sha) end))
+                | $k) // null) as $m
+            | if $m != null then
+                .findings[$m] |= (.status = "open" | .last_seen = $seen | del(.decision) | ._seen = true
+                    | .anchors |= map(if .path == $path and .sha256 == $sha then .line = $ln else . end))
+              else
+                .findings += [{id: ("F" + (.next_id | tostring)), severity: $it.severity, title: $it.title,
+                    anchors: (if $sha == "" then [] else [{path: $path, line: $ln, sha256: $sha}] end),
+                    status: "open", first_seen: $seen, last_seen: $seen, _seen: true}]
+                | .next_id += 1
+              end')" || die "could not update the ledger"
+    done
+    # Incremental pass (--since <last reviewed head>): an open finding this batch did not
+    # re-report resolves only when a file it is anchored in changed since then — the reviewer saw
+    # that file and the author acted on it. An omission alone never closes a finding.
+    if [ -n "$OPT_SINCE" ]; then
+        touched="$(git -C "$OPT_REPO" -c core.quotePath=false diff --name-only "$OPT_SINCE" HEAD)"
+        ledger="$(printf '%s' "$ledger" | jq --arg t "$touched" --arg head "$OPT_HEAD" --arg at "$at" '
+            ($t | split("\n") | map(select(. != ""))) as $files
+            | .findings |= map(if .status == "open" and (._seen != true) and any(.anchors[]; .path | IN($files[]))
+                then .status = "resolved" | .last_seen = {head: $head, at: $at} else . end)')" \
+            || die "could not update the ledger"
+    fi
+    printf '%s' "$ledger" | jq '.findings |= map(del(._seen))'
+    printf 'dropped: %s\n' "$dropped" >&2
+}
+
+cmd_disposition() {
+    parse_opts "$@"; need OPT_LEDGER OPT_BODY
+    [ -f "$OPT_BODY" ] || die "no --body file: $OPT_BODY"
+    local ledger
+    ledger="$(load_ledger)" || exit 2
+    # `Waived: F<id> — <reason> — @<who>` → accepted; `Rejected: …` → rejected. No @<who>, no effect.
+    # The last line naming an id wins. A resolved finding stays resolved.
+    printf '%s' "$ledger" | jq --rawfile body "$OPT_BODY" --arg at "$(now)" '
+        [$body | split("\n")[] | sub("\r$"; "")
+            | capture("^\\s*(?:[-*>]\\s+)?(?<kind>Waived|Rejected):\\s*(?<id>F[0-9]+)\\s+(?:—|--?)\\s+(?<reason>.+?)\\s+(?:—|--?)\\s+(?<who>@[A-Za-z0-9][A-Za-z0-9_-]*)\\s*$")?
+        ] as $ds
+        | reduce $ds[] as $d (.; .findings |= map(
+            if .id == $d.id and .status != "resolved" then
+                .status = (if $d.kind == "Waived" then "accepted" else "rejected" end)
+                | .decision = {by: $d.who, at: $at, reason: $d.reason}
+            else . end))'
+}
+
+cmd_verdict() {
+    parse_opts "$@"; need OPT_LEDGER
+    load_ledger | jq -r 'if any(.findings[]; .status == "open" and (.severity | IN("blocker", "major")))
+        then "CHANGES_REQUESTED" else "APPROVED" end'
+}
+
+cmd_seal() {
+    parse_opts "$@"; need OPT_LEDGER OPT_HEAD
+    local verdict
+    verdict="$(cmd_verdict --ledger "$OPT_LEDGER")" || exit 2
+    load_ledger | jq --arg head "$OPT_HEAD" --arg at "$(now)" --arg v "$verdict" \
+        '.review = {head: $head, at: $at, verdict: $v}'
+}
+
+cmd_render() {
+    parse_opts "$@"; need OPT_LEDGER
+    local ledger digest
+    ledger="$(load_ledger)" || exit 2
+    digest="$(printf '%s' "$ledger" | jq -cS . | sha256sum | cut -c1-64)"
+    printf '<!-- aisdlc-ledger v%s digest=%s -->\n' "$LEDGER_VERSION" "$digest"
+    printf '%s' "$ledger" | jq -r '
+        def cell: tostring | gsub("[\r\n]+"; " ") | gsub("\\|"; "\\|");
+        "## Review findings — PR #\(.pr)\n",
+        "| id | severity | status | where | finding |",
+        "|----|----------|--------|-------|---------|",
+        (.findings | sort_by(.id | ltrimstr("F") | tonumber)[]
+            | "| \(.id) | \(.severity) | \(.status) | \(if .anchors == [] then "—"
+                else "`\(.anchors[0].path):\(.anchors[0].line)`" end) | \(.title | cell) |")'
+    printf '\n<details><summary>ledger</summary>\n\n```json\n'
+    printf '%s' "$ledger" | jq -S .
+    printf '```\n\n</details>\n'
+}
+
+cmd_read() {
+    parse_opts "$@"; need OPT_COMMENT
+    [ -f "$OPT_COMMENT" ] || exit 1
+    local marker want json got
+    marker="$(grep -m1 -E "$MARKER_RE" "$OPT_COMMENT")" || exit 1
+    want="$(printf '%s' "$marker" | sed -E "s/$MARKER_RE/\\1/")"
+    json="$(awk '/^<details><summary>ledger<\/summary>$/ { d = 1; next }
+        d && /^```json$/ { j = 1; next } j && /^```$/ { exit } j { print }' "$OPT_COMMENT")"
+    got="$(printf '%s' "$json" | jq -cS . 2>/dev/null | sha256sum | cut -c1-64)"
+    # A digest mismatch means someone else wrote or edited it: no ledger, and a full review.
+    [ -n "$json" ] && [ "$got" = "$want" ] || exit 1
+    printf '%s' "$json" | jq -e -S --argjson v "$LEDGER_VERSION" 'select(.version == $v)' 2>/dev/null || exit 1
+}
+
+usage() { sed -n '2,23s/^# \{0,1\}//p' "$0"; }
+
+cmd="${1:-}"
+[ $# -eq 0 ] || shift
+case "$cmd" in
+    init)          cmd_init "$@" ;;
+    changed-lines) cmd_changed_lines "$@" ;;
+    anchor)        cmd_anchor "$@" ;;
+    add)           cmd_add "$@" ;;
+    disposition)   cmd_disposition "$@" ;;
+    seal)          cmd_seal "$@" ;;
+    verdict)       cmd_verdict "$@" ;;
+    render)        cmd_render "$@" ;;
+    read)          cmd_read "$@" ;;
+    help|-h|--help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

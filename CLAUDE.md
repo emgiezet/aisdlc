@@ -69,5 +69,6 @@ one gets picked, which is worse than picking none.
 - `CI= make validate` — everything CI's validate job checks (empty `CI` skips `--strict` configs)
 - `plugins/slop-guard/tests/run-tests` · `plugins/sdlc/tests/run-tests` — the bash suites
 - `make selftest` — queue runner against a stub `claude`, no API calls
+- `make coverage` — which harness units a test claims (`# covers:`); `make coverage-check` is the CI ratchet
 - `make eval-dry` — skill trigger sets; `make help` — the rest
 - shellcheck is not installed here: `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -S warning <files>`

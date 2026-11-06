@@ -31,6 +31,10 @@ a file nobody sources never runs. The omp `.mjs` suites already run inside `run-
 5. **Isolate.** Scratch state under `mktemp -d`, `CLAUDE_PLUGIN_DATA`/`CLAUDE_PROJECT_DIR`
    pointed at it; no network (`file://` assets only); no dependency on test order.
 6. **Run the whole suite**, not the new file — the runners source everything anyway.
+7. **Claim what the case drives.** A case in `selftest.sh`, `run.sh` or a `validate.yml` step that
+   exercises a command, skill, hook mode, `aisdlc`/`aisdlc-ledger` subcommand or descriptor
+   operation carries `# covers: <class>:<id>` beside it; `make coverage` lists the classes and ids.
+   CI fails a PR that drops a claim the base had. Never claim a unit the case does not reach.
 
 ## Non-negotiable
 

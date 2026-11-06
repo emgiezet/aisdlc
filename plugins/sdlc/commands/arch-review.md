@@ -15,9 +15,9 @@ resolves to `<specs>/<EPIC>/arch.md`, and every path below uses that same `<spec
 
 **Load the `architecture-review` skill** — it holds the tier table, the dependency arithmetic, the
 traffic rules, the targets block format, and the findings table this command applies. Load
-`code-review` for the severity definitions and the waiver format. When the document names a
-public API surface, also load `rest-api-design` or `graphql-api-design` for the evolution and
-error-shape rules that topology has to survive.
+`code-review` for the severity definitions (its `F<id>` waiver form is the PR ledger's, not this
+document's). When the document names a public API surface, also load `rest-api-design` or
+`graphql-api-design` for the evolution and error-shape rules that topology has to survive.
 
 ---
 

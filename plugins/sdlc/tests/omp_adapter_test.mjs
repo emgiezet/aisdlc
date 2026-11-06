@@ -108,6 +108,26 @@ test('write and edit pass without a planning marker and are gated by one', async
     'marker: an edit whose second file is outside allow: must block');
 });
 
+test('write and edit that approve a spec are blocked; a draft passes', async (t) => {
+  const repo = mkdtempSync(join(tmpdir(), 'sdlc-omp-approve-'));
+  const cwd = process.cwd();
+  t.after(() => { process.chdir(cwd); rmSync(repo, { recursive: true, force: true }); });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo, stdio: 'pipe' });
+  process.chdir(repo);
+
+  const pi = makeMockPi();
+  sdlcOmpExtension(pi);
+  const call = (toolName, input) => pi.call('tool_call', { toolName, input }, { hasUI: true });
+
+  const written = await call('write', { path: 'specs/X-1/spec.md', content: '---\nstatus: approved\n---\n' });
+  assert.equal(written?.block, true, 'a write approving a spec must block');
+  assert.match(written?.reason ?? '', /approval is the human's signature/);
+  const edited = await call('edit', { input: '[specs/X-1/spec.md#AB12]\nPUT 3.=3:\n+status: approved' });
+  assert.equal(edited?.block, true, 'an edit row approving a spec must block');
+  assert.equal(await call('write', { path: 'specs/X-1/spec.md', content: '---\nstatus: draft\n---\n' }),
+    undefined, 'a draft spec must pass');
+});
+
 test('missing hook script allows (fail-open) and decision is null', async () => {
   // runHook with a non-existent executable returns rc = -1 (ENOENT).
   // translateGuardDecision must allow (fail-open) on rc !== 2.

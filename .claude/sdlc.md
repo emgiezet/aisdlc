@@ -11,7 +11,8 @@ value, because the pipeline has nowhere to put its output otherwise.
 ## Artefacts
 
 - **Specs live in:** `specs/` — existing tickets are `SDLC-<nnn>`, decomposed slices `SDLC-<nnn>-<a…>`.
-- **Spec approval:** a human sets `status: approved` in the frontmatter. Nothing else may.
+- **Spec approval:** a human sets `status: approved` in the frontmatter. Nothing else may — the
+  `guard` pre-write hook and `aisdlc` verify enforce it; `/sdlc:triage`'s `approved-by:` is the exception.
 - **Branch naming:** `ai/<TICKET>-<slug>` for agent runs
 - **Pull request label:** `ai-sdlc`
 - **Default base ref:** `origin/main`

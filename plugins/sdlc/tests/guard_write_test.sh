@@ -95,6 +95,71 @@ _gw_write "$_d" specs/../src/app.py
     && ok  "guard pre-write UC-7: 'specs/../src' does not pass as an allow: prefix" \
     || bad "guard pre-write UC-7" "rc=${_gw_rc} err=${_gw_err}"
 
+# _gw_payload DIR JSON [grok] — run guard pre-write in DIR with a full tool_input object.
+_gw_payload() {
+    local dir="$1" ti="$2" grok="${3:-}"
+    _gw_out="$( (
+        cd "$dir" || exit 1
+        if [ -n "$grok" ]; then
+            jq -n --argjson t "$ti" '{toolInput: $t}' | env -u CLAUDE_PLUGIN_ROOT \
+                GROK_PLUGIN_ROOT=/unused bash "$_SDLC_GW_GUARD" pre-write
+        else
+            jq -n --argjson t "$ti" '{tool_input: $t}' | env -u GROK_PLUGIN_ROOT \
+                CLAUDE_PLUGIN_ROOT=/unused bash "$_SDLC_GW_GUARD" pre-write
+        fi
+    ) 2>"${_SDLC_GW_WORK}/err" )" && _gw_rc=0 || _gw_rc=$?
+    _gw_err="$(cat "${_SDLC_GW_WORK}/err")"
+}
+
+_d="$(_gw_repo approve-edit)"
+_gw_payload "$_d" '{"file_path":"specs/X-1/spec.md","old_string":"status: draft","new_string":"status: approved"}'
+[ "$_gw_rc" -eq 2 ] && printf '%s' "$_gw_err" | grep -qF "approval is the human's signature" \
+    && ok  "guard pre-write UC-8: an Edit flipping a spec to approved is denied" \
+    || bad "guard pre-write UC-8" "rc=${_gw_rc} err=${_gw_err}"
+
+_d="$(_gw_repo approve-multiedit)"
+_gw_payload "$_d" '{"file_path":"specs/X-1/spec.md","edits":[{"old_string":"a","new_string":"b"},{"old_string":"status: draft","new_string":"status: \"approved\""}]}'
+[ "$_gw_rc" -eq 2 ] \
+    && ok  "guard pre-write UC-9: a quoted approval in a later MultiEdit edit is denied" \
+    || bad "guard pre-write UC-9" "rc=${_gw_rc} err=${_gw_err}"
+
+_d="$(_gw_repo approve-draft)"
+_gw_payload "$_d" '{"file_path":"specs/X-1/spec.md","content":"---\nticket: X-1\nstatus: draft\n---\n"}'
+[ "$_gw_rc" -eq 0 ] \
+    && ok  "guard pre-write UC-10: writing a draft spec passes" \
+    || bad "guard pre-write UC-10" "rc=${_gw_rc} err=${_gw_err}"
+
+_d="$(_gw_repo approve-notspec)"
+_gw_payload "$_d" '{"file_path":"specs/X-1/qa-report.md","content":"status: approved\n"}'
+[ "$_gw_rc" -eq 0 ] \
+    && ok  "guard pre-write UC-11: the same line outside a spec.md passes" \
+    || bad "guard pre-write UC-11" "rc=${_gw_rc} err=${_gw_err}"
+
+_d="$(_gw_repo approve-specsdir)"
+mkdir -p "$_d/.aisdlc" && printf '{"specs_dir":"docs/specs"}\n' > "$_d/.aisdlc/config.json"
+_gw_payload "$_d" '{"file_path":"docs/specs/X-1/spec.md","content":"status: approved\n"}'
+[ "$_gw_rc" -eq 2 ] \
+    && ok  "guard pre-write UC-12: a configured specs_dir is fenced too" \
+    || bad "guard pre-write UC-12" "rc=${_gw_rc} err=${_gw_err}"
+
+_d="$(_gw_repo approve-dotdot)"
+_gw_payload "$_d" '{"file_path":"src/../specs/X-1/spec.md","content":"status: approved\n"}'
+[ "$_gw_rc" -eq 2 ] \
+    && ok  "guard pre-write UC-13: 'src/../specs/X/spec.md' is resolved before the fence" \
+    || bad "guard pre-write UC-13" "rc=${_gw_rc} err=${_gw_err}"
+
+_d="$(_gw_repo approve-grok)"
+_gw_payload "$_d" '{"file_path":"specs/X-1/spec.md","content":"status: approved\n"}' grok
+[ "$_gw_rc" -eq 0 ] && printf '%s' "$_gw_out" | jq -e '.decision=="deny"' >/dev/null 2>&1 \
+    && ok  "guard pre-write UC-14: Grok — the approval deny is a decision on stdout" \
+    || bad "guard pre-write UC-14" "rc=${_gw_rc} out=${_gw_out} err=${_gw_err}"
+
+_d="$(_gw_repo approve-planning on)"
+_gw_payload "$_d" '{"file_path":"specs/X-1/spec.md","content":"status: approved\n"}'
+[ "$_gw_rc" -eq 2 ] && printf '%s' "$_gw_err" | grep -qF "approval is the human's signature" \
+    && ok  "guard pre-write UC-15: a planning map's allow: specs/ does not let an approval through" \
+    || bad "guard pre-write UC-15" "rc=${_gw_rc} err=${_gw_err}"
+
 rm -rf "$_SDLC_GW_WORK"
 unset _d _gw_rc _gw_out _gw_err
 

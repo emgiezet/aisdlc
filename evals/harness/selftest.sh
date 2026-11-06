@@ -83,6 +83,7 @@ export PATH="$STUB_DIR:$PATH"
 printf 'aisdlc runner selftest (stub claude and stub omp, no API calls)\n\n'
 
 # --------------------------------------------------------------------------- #
+# covers: subcommand:add, subcommand:run
 printf 'every requested phase runs, in order (GH-52 UC-2)\n'
 R="$WORK/phases"
 fresh_repo "$R"
@@ -137,6 +138,7 @@ WT="$(task_field "$R" .worktree)"
 [ -n "$WT" ] && [ -d "$WT" ] && ok "worktree kept for inspection" || bad "worktree" "removed on failure"
 [ -f "$WT/specs/SBX-1/BLOCKED.md" ] && ok "BLOCKED.md present" || bad "BLOCKED.md" "missing"
 case "$(task_field "$R" .error)" in *BLOCKED*) ok "error mentions BLOCKED.md" ;; *) bad "error" "$(task_field "$R" .error)" ;; esac
+# covers: subcommand:retry
 "$AISDLC" retry "$(task_field "$R" .id)" --repo "$R" >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "queued" ] && ok "retry re-queues and clears the worktree" \
     || bad "retry" "status is $(task_field "$R" .status)"
@@ -497,6 +499,7 @@ ISSUE
 printf -- '- **Tracker descriptor:** `.claude/trackers/local.md`\n' > "$R/.claude/sdlc.md"
 "$AISDLC" add --issue 42 --repo "$R" >/dev/null 2>&1
 ID="$(ls -1 "$R/.aisdlc/tasks" | head -1)"
+# covers: subcommand:cancel
 "$AISDLC" cancel "$ID" --repo "$R" >/dev/null 2>&1
 grep -qE '^labels:.*in-progress' "$R/.aisdlc/tracker/issues/42.md" \
     && bad "cancel release" "in-progress still on the issue after cancel" \
@@ -524,6 +527,7 @@ local_issue 7 open bug ""                        # the one
 local_issue 8 open bug ""                        # already has a branch
 local_issue 9 open feature ""                    # not approved: no bug label
 git -C "$R" branch ai/GH-8-20260101 >/dev/null 2>&1
+# covers: subcommand:pull
 out="$("$AISDLC" pull --repo "$R" --dry-run 2>&1)"
 [ "$out" = "would pull #7 (candidates: 7)" ] \
     && ok "pull --dry-run selects #7 and only #7" \
@@ -550,6 +554,7 @@ task_count="$(find "$R/.aisdlc/tasks" -name 'task.json' | wc -l | tr -d ' ')"
 
 # --------------------------------------------------------------------------- #
 printf '\nloop --once drains the queue even when pull finds nothing\n'
+# covers: subcommand:loop
 "$AISDLC" loop --repo "$R" --once --no-pr >/dev/null 2>&1
 [ "$(task_field "$R" .status)" = "done" ] \
     && ok "loop --once ran the queued GH-7 task to done" \
@@ -740,6 +745,7 @@ AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 _WT5="$(task_field "$R" .worktree)"; _ID5="$(ls "$R"/.aisdlc/tasks/ | head -1)"
 printf '%s\n' {1..3001} > "$_WT5/AGENTS.md"
 git -C "$_WT5" add AGENTS.md && git -C "$_WT5" commit -q -m "bookkeeping"
+# covers: subcommand:scope-check
 "$AISDLC" scope-check "$_ID5" --repo "$R" >/dev/null 2>&1; _SIZE_RC=$?
 [ "$_SIZE_RC" -eq 1 ] && [ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
     && ok "GH-51 UC-1: bookkeeping-only branch blocked by size ceiling" \
@@ -1260,6 +1266,35 @@ verify_case selfretire selfretire ''
 [ ! -f "$D/ship.log" ] && ok "ship never ran" || bad "verify" "shipped a self-retired deletion"
 
 # --------------------------------------------------------------------------- #
+printf '\na spec approval is the human'"'"'s: the guard denies it, verify catches it\n'
+R="$WORK/approval-guard"
+fresh_repo "$R"
+# covers: hook:pre-write
+_appr_write() {  # <content> — guard pre-write on specs/SBX-1/spec.md in $R; prints the exit code
+    jq -n --arg c "$1" '{tool_input: {file_path: "specs/SBX-1/spec.md", content: $c}}' \
+        | (cd "$R" && env -u GROK_PLUGIN_ROOT bash "$REPO_ROOT/plugins/sdlc/hooks/guard" pre-write >/dev/null 2>&1)
+    printf '%s' "$?"
+}
+[ "$(_appr_write $'---\nticket: SBX-1\nstatus: approved\n---\n')" = "2" ] \
+    && ok "guard pre-write denies a spec write that sets status: approved" \
+    || bad "approval guard" "a self-approval was allowed"
+[ "$(_appr_write $'---\nticket: SBX-1\nstatus: approved\napproved-by: issue #7 (label bug, @a)\n---\n')" = "0" ] \
+    && ok "the /sdlc:triage shape with approved-by: passes" \
+    || bad "approval guard" "the triage approval was denied"
+
+verify_case selfapprove selfapprove ''
+[ "$(task_field "$R" .verify_verdict)" = "FAIL" ] && ok "a branch that edits the spec's approval fails verify" \
+    || bad "verify" "verdict is $(task_field "$R" .verify_verdict) after the branch signed its own approval"
+case "$(task_field "$R" .verify_failures)" in *"approval frontmatter"*) ok "the failure names the approval frontmatter" ;;
+    *) bad "verify" "failures: $(task_field "$R" .verify_failures)" ;; esac
+[ ! -f "$D/ship.log" ] && ok "ship never ran" || bad "verify" "shipped a self-approved spec"
+
+verify_case approval-kept ok ''
+grep -qF '| spec approval | PASS |' "$D/verify-report.md" \
+    && ok "an untouched approval is a PASS row in the verify report" \
+    || bad "verify" "no spec approval PASS row: $(grep 'spec approval' "$D/verify-report.md")"
+
+# --------------------------------------------------------------------------- #
 printf '\nthe omp runtime runs the same pipeline\n'
 R="$WORK/omp"
 TRACE="$WORK/omp-invocations.txt"
@@ -1604,6 +1639,7 @@ printf '## Issue tracker\n- **Tracker descriptor:** `.claude/trackers/local.md`\
 "$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
 AISDLC_STUB=localpr "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 # UC-2 behavioral assertion: aisdlc inbox lists the shipped PR — capture once to avoid SIGPIPE race
+# covers: subcommand:inbox
 _INBOX60="$("$AISDLC" inbox --repo "$R" 2>&1)"
 grep -q 'local#1' <<< "$_INBOX60" \
     && ok "GH-60 UC-2: aisdlc inbox lists PR local#1" \
@@ -1613,6 +1649,7 @@ jq -e '.number == 1 and .url == "local#1" and .title == "SBX-1"' "$R/.aisdlc/tra
     && ok "GH-60 UC-3: prs.jsonl record contents correct before clean" \
     || bad "GH-60 UC-3 before" "$(cat "$R/.aisdlc/tracker/prs.jsonl" 2>/dev/null)"
 _WT_23="$(jq -r '.worktree' "$(ls -1 "$R"/.aisdlc/tasks/*/task.json | head -1)")"
+# covers: subcommand:clean
 "$AISDLC" clean --all --repo "$R" >/dev/null 2>&1
 [ ! -d "$_WT_23" ] \
     && ok "GH-60 UC-3: worktree removed after clean" \
@@ -1990,6 +2027,7 @@ AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' \
     && ok "UC-4: readiness_score:85" || bad "UC-4 score" "$(task_field "$R" .readiness_score)"
 [ ! -f "$R/specs/SBX-1/readiness.md" ] \
     && ok "UC-4: no readiness.md on pass" || bad "UC-4 rmd" "written"
+# covers: subcommand:status
 _sts="$("$AISDLC" status --repo "$R" 2>/dev/null)"
 printf '%s' "$_sts" | grep -q 'READY' && ok "UC-5: READY column in header" || bad "UC-5 hdr" "$_sts"
 printf '%s' "$_sts" | grep -q '85' && ok "UC-5: score 85 in status" || bad "UC-5 score" "$_sts"
@@ -2446,6 +2484,7 @@ fresh_repo "$R_LS1"; fresh_repo "$R_LS2"
 XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS1" --once >/dev/null 2>&1
 "$AISDLC" add SBX-1 --repo "$R_LS2" --no-pr >/dev/null 2>&1
 XDG_DATA_HOME="$ARC_XDG" AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" run --repo "$R_LS2" --once >/dev/null 2>&1
+# covers: subcommand:archive
 _ls_out="$(AISDLC_ARCHIVE="$ARC_LS" "$AISDLC" archive ls 2>/dev/null)"
 _ls_rows="$(printf '%s\n' "$_ls_out" | grep -c .)"
 [ "${_ls_rows:-0}" -eq 2 ] \
@@ -2965,6 +3004,7 @@ out="$(AISDLC_STUB_READINESS='{"score":85,"gaps":[]}' "$AISDLC" add SBX-1 --repo
     || bad "GH-40 nonint" "rc=$rc out=$out"
 unset R out rc
 
+# covers: operation:get-pr, operation:get-pr-diff
 # GH-39 UC-9: local get-pr/get-pr-diff compare against the stored base, fail closed.
 # The operations are read from the shipped template — this exercises the contract
 # /sdlc:review executes, not a hand-copied variant of it.
@@ -3024,6 +3064,132 @@ printf '%s' "$_conc_out" | grep -q 'already active' \
     && ok "GH-38: second concurrent run refused, first run's caps preserved" \
     || bad "GH-38 concurrent" "rc=$_conc_rc out=$_conc_out"
 unset R _conc_bin _conc_pid _conc_out _conc_rc
+
+# --------------------------------------------------------------------------- #
+printf '\naisdlc-ledger owns finding identity, anchors, scope and the verdict\n'
+LEDGER="$REPO_ROOT/plugins/sdlc/bin/aisdlc-ledger"
+R="$WORK/ledger"; rm -rf "$R"; mkdir -p "$R"
+git -C "$R" init -q -b master
+printf 'one\n' > "$R/a.txt"
+git -C "$R" add a.txt && git -C "$R" -c user.name=t -c user.email=t@t commit -qm base
+printf 'one\ntwo\n' > "$R/a.txt"
+git -C "$R" -c user.name=t -c user.email=t@t commit -qam second
+_lh="$(git -C "$R" rev-parse HEAD)" _lw="$WORK/ledger-files"; mkdir -p "$_lw"
+# covers: ledger:init, ledger:add
+"$LEDGER" init --pr 7 > "$_lw/l0.json"
+printf '{"severity":"blocker","title":"nil deref","path":"a.txt","line":2}\n' \
+    | "$LEDGER" add --ledger "$_lw/l0.json" --repo "$R" --head "$_lh" > "$_lw/l1.json" 2>/dev/null
+[ "$(jq -r '.findings[0].id + " " + .findings[0].status + " " + (.next_id|tostring)' "$_lw/l1.json")" = "F1 open 2" ] \
+    && ok "add gives a new finding F1, open, and moves next_id" \
+    || bad "ledger add" "$(cat "$_lw/l1.json")"
+# covers: ledger:verdict
+[ "$("$LEDGER" verdict --ledger "$_lw/l1.json")" = "CHANGES_REQUESTED" ] \
+    && ok "an open blocker makes the derived verdict CHANGES_REQUESTED" \
+    || bad "ledger verdict" "$("$LEDGER" verdict --ledger "$_lw/l1.json")"
+printf '{"severity":"blocker","title":"nil deref, reworded","path":"a.txt","line":2}\n' \
+    | "$LEDGER" add --ledger "$_lw/l1.json" --repo "$R" --head "$_lh" > "$_lw/l1b.json" 2>/dev/null
+[ "$(jq -r '([.findings[].id] | join(",")) + " " + (.next_id|tostring)' "$_lw/l1b.json")" = "F1 2" ] \
+    && ok "the same severity on the same line bytes keeps its id" \
+    || bad "ledger identity" "$(jq -c '[.findings[].id, .next_id]' "$_lw/l1b.json")"
+
+# covers: ledger:render, ledger:read
+"$LEDGER" render --ledger "$_lw/l1.json" > "$_lw/c.md"
+[ "$("$LEDGER" read --comment "$_lw/c.md" | jq -cS .)" = "$(jq -cS . "$_lw/l1.json")" ] \
+    && ok "render → read round-trips to the same ledger" \
+    || bad "ledger read" "round trip differs"
+sed 's/"nil deref"/"nil defer"/' "$_lw/c.md" > "$_lw/c-edited.md"
+"$LEDGER" read --comment "$_lw/c-edited.md" >/dev/null 2>&1; _lrc=$?
+[ "$_lrc" -eq 1 ] && ok "one byte changed in the ledger block makes read exit 1" \
+    || bad "ledger digest" "read exited $_lrc on an edited ledger"
+
+# covers: ledger:anchor
+sed -i '1i inserted' "$R/a.txt"
+[ "$("$LEDGER" anchor --repo "$R" --ledger "$_lw/l1.json" | jq -r '.findings[0] | "\(.anchors[0].line) \(.status)"')" = "3 open" ] \
+    && ok "a line inserted above moves the anchor from 2 to 3 and keeps it open" \
+    || bad "ledger anchor" "$("$LEDGER" anchor --repo "$R" --ledger "$_lw/l1.json" | jq -c '.findings[0]')"
+printf 'inserted\none\n' > "$R/a.txt"
+[ "$("$LEDGER" anchor --repo "$R" --ledger "$_lw/l1.json" | jq -r '.findings[0].status')" = "resolved" ] \
+    && ok "deleting the anchored line resolves the finding" \
+    || bad "ledger anchor" "a finding whose line is gone stayed open"
+printf 'one\r\ntwo\r\n' > "$R/a.txt"
+[ "$("$LEDGER" anchor --repo "$R" --ledger "$_lw/l1.json" | jq -r '.findings[0].status')" = "open" ] \
+    && ok "a CRLF checkout anchors the same as an LF one" \
+    || bad "ledger anchor" "CRLF line did not match its LF hash"
+git -C "$R" checkout -q -- a.txt
+
+# covers: ledger:disposition
+printf 'Body.\n\nWaived: F1 — the caller never passes nil — @me\n' > "$_lw/body.md"
+"$LEDGER" disposition --ledger "$_lw/l1.json" --body "$_lw/body.md" > "$_lw/l2.json"
+[ "$("$LEDGER" verdict --ledger "$_lw/l2.json")" = "APPROVED" ] \
+    && [ "$(jq -r '.findings[0] | "\(.status) \(.decision.by)"' "$_lw/l2.json")" = "accepted @me" ] \
+    && ok "a Waived: F1 … — @me line accepts the finding and the verdict is APPROVED" \
+    || bad "ledger disposition" "$(jq -c '.findings[0]' "$_lw/l2.json")"
+printf 'Waived: F1 — no approver named\n' > "$_lw/body-anon.md"
+[ "$("$LEDGER" disposition --ledger "$_lw/l1.json" --body "$_lw/body-anon.md" | jq -r '.findings[0].status')" = "open" ] \
+    && ok "a waiver without @<who> changes nothing" \
+    || bad "ledger disposition" "an unsigned waiver was applied"
+
+# covers: ledger:changed-lines
+"$LEDGER" changed-lines --repo "$R" --base HEAD~1 > "$_lw/changed.txt"
+[ "$(cat "$_lw/changed.txt")" = "a.txt:2" ] && ok "changed-lines lists the one line the branch added" \
+    || bad "ledger changed-lines" "$(cat "$_lw/changed.txt")"
+printf '{"severity":"major","title":"not in the diff","path":"a.txt","line":1}\n' \
+    | "$LEDGER" add --ledger "$_lw/l0.json" --repo "$R" --head "$_lh" --changed "$_lw/changed.txt" \
+        > "$_lw/l3.json" 2> "$_lw/err.txt"
+[ "$(jq -r '"\(.findings | length) \(.next_id)"' "$_lw/l3.json")" = "0 1" ] \
+    && [ "$(cat "$_lw/err.txt")" = "dropped: 1" ] \
+    && ok "add --changed drops a finding citing a line the PR did not change" \
+    || bad "ledger evidence" "$(jq -c . "$_lw/l3.json") / $(cat "$_lw/err.txt")"
+
+printf 'one\ntwo\nthree\n' > "$R/a.txt"
+git -C "$R" -c user.name=t -c user.email=t@t commit -qam third
+[ "$("$LEDGER" changed-lines --repo "$R" --base HEAD~2 --since HEAD~1)" = "a.txt:3" ] \
+    && ok "changed-lines --since keeps only the lines changed after the last review" \
+    || bad "ledger since" "$("$LEDGER" changed-lines --repo "$R" --base HEAD~2 --since HEAD~1)"
+
+printf '{"severity":"major","title":"CI check lint failing"}\n' \
+    | "$LEDGER" add --ledger "$_lw/l0.json" --repo "$R" --head "$_lh" > "$_lw/s1.json" 2>/dev/null
+"$LEDGER" anchor --repo "$R" --ledger "$_lw/s1.json" > "$_lw/s2.json"
+printf '{"severity":"major","title":"CI check lint failing"}\n' \
+    | "$LEDGER" add --ledger "$_lw/s2.json" --repo "$R" --head "$_lh" > "$_lw/s3.json" 2>/dev/null
+[ "$(jq -r '.findings[0].status' "$_lw/s2.json") $(jq -r '"\(.findings[0].id) \(.findings[0].status) \(.findings | length)"' "$_lw/s3.json")" = "resolved F1 open 1" ] \
+    && ok "a signal with no line resolves at anchor time and keeps its id when re-emitted" \
+    || bad "ledger signal" "$(jq -c .findings "$_lw/s3.json")"
+
+# An incremental re-review: what it does not re-report resolves only where the author changed the file.
+printf 'x\nbad\n' > "$R/b.txt"
+git -C "$R" add b.txt && git -C "$R" -c user.name=t -c user.email=t@t commit -qm "add b"
+_lh2="$(git -C "$R" rev-parse HEAD)"
+printf '{"severity":"blocker","title":"three is wrong","path":"a.txt","line":3}\n{"severity":"major","title":"bad","path":"b.txt","line":2}\n' \
+    | "$LEDGER" add --ledger "$_lw/l0.json" --repo "$R" --head "$_lh2" > "$_lw/i1.json" 2>/dev/null
+printf 'guard\none\ntwo\nthree\n' > "$R/a.txt"
+git -C "$R" -c user.name=t -c user.email=t@t commit -qam "fix beside the cited line"
+: | "$LEDGER" add --ledger "$_lw/i1.json" --repo "$R" --head "$(git -C "$R" rev-parse HEAD)" --since "$_lh2" \
+    > "$_lw/i2.json" 2>/dev/null
+[ "$(jq -r '[.findings[].status] | join(" ")' "$_lw/i2.json")" = "resolved open" ] \
+    && ok "add --since resolves an unreported finding in a changed file, keeps one in an untouched file" \
+    || bad "ledger since" "$(jq -c '[.findings[] | {id, status}]' "$_lw/i2.json")"
+
+# covers: ledger:seal
+"$LEDGER" seal --ledger "$_lw/l1.json" --head "$_lh" > "$_lw/sealed.json"
+[ "$(jq -r '"\(.review.head) \(.review.verdict)"' "$_lw/sealed.json")" = "$_lh CHANGES_REQUESTED" ] \
+    && ok "seal records the reviewed head and the derived verdict" \
+    || bad "ledger seal" "$(jq -c .review "$_lw/sealed.json")"
+
+# covers: operation:get-pr-ledger, operation:put-pr-ledger
+# The local descriptor's ledger operations, run as written: put then get round-trips through read.
+_tmpl="$REPO_ROOT/plugins/sdlc/templates/trackers/local.md"
+_op_put="$(awk '/^### put-pr-ledger$/{getline; print; exit}' "$_tmpl")"
+_op_get="$(awk '/^### get-pr-ledger$/{getline; print; exit}' "$_tmpl")"
+_op_put="${_op_put#\`}"; _op_put="${_op_put%%\`*}"; _op_get="${_op_get#\`}"; _op_get="${_op_get%%\`*}"
+_op_put="${_op_put//\{n\}/7}"; _op_put="${_op_put//\{body-file\}/$_lw/c.md}"; _op_get="${_op_get//\{n\}/7}"
+(cd "$R" && bash -c "$_op_get") > "$_lw/none.json" 2>/dev/null
+(cd "$R" && bash -c "$_op_put" >/dev/null && bash -c "$_op_get") > "$_lw/got.json"
+jq -r .body "$_lw/got.json" > "$_lw/got.md"
+[ ! -s "$_lw/none.json" ] && [ "$("$LEDGER" read --comment "$_lw/got.md" | jq -cS .)" = "$(jq -cS . "$_lw/l1.json")" ] \
+    && ok "local put-pr-ledger then get-pr-ledger returns a ledger read accepts" \
+    || bad "local ledger ops" "none=$(cat "$_lw/none.json") got=$(head -c 200 "$_lw/got.json")"
+unset R LEDGER _lh _lh2 _lw _lrc _tmpl _op_put _op_get
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -19,6 +19,7 @@
 #   selfretire  deltest, and the branch adds its own .claude/retired-tests entry for it
 #   dirty     implement commits the test but leaves the code change uncommitted
 #   mdonly    implement commits only a .md file (for testing structure check with non-code changes)
+#   selfapprove implement writes its own approved-by: line into the spec — verify must see it
 #
 # AISDLC_STUB_READINESS: when set and the prompt is NOT a phase command (does not start with /),
 #   the stub returns the variable's value as the model result text verbatim (readiness JSON).
@@ -157,6 +158,10 @@ case "$prompt" in
                 selfretire)
                     git rm -q legacy/old_test.go
                     mkdir -p .claude && printf 'legacy/old_test.go  obsolete, says the agent\n' > .claude/retired-tests
+                    ;;
+                selfapprove)
+                    # The branch signs its own approval under the status line.
+                    sed -i 's/^status: .*/status: approved\napproved-by: the implement agent/' "specs/$ticket/spec.md"
                     ;;
             esac
             if [ "${AISDLC_STUB:-ok}" = "dirty" ]; then
