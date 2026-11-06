@@ -8,10 +8,13 @@ All notable changes to Slop Guard will be documented in this file.
     eslint-plugin-security 4.2.1 and eslint-plugin-n 18.5.0; lock regenerated with
     scripts disabled and strict peer dependency resolution. Node now requires
     `^20.19.0 || ^22.13.0 || >=24`, matching eslint-plugin-n 18 (CI uses Node 22).
+  - `tools/tools.lock.json` and the npm bundle: ESLint and @eslint/js 9.39.5,
+    the newest eligible 9.x release, accepted by every plugin's peer range.
   - **Why only three majors?** eslint-plugin-react 7.37.5 supports ESLint only
     through `^9.7`; typescript-eslint 8.72.1 supports TypeScript `>=4.8.4 <6.1.0`.
-    ESLint 10 and TypeScript 7 therefore stay out. eslint-plugin-regexp 3.3.2 needs
-    ESLint `>=9.38.0`, incompatible with pinned 9.35.0; latest 3.3.3 is also too new.
+    ESLint 10 and TypeScript 7 therefore stay out. regexp 3 is blocked by transitive
+    jsdoc-type-pratt-parser 9.x requiring Node `^22.22.2 || >=24.15.0`; that excludes
+    supported Node 20 and early Node 22/24, so regexp remains 2.10.0.
     Psalm 7.0.0–7.0.4 were published Nov 2–6, inside the seven-day hold, so Psalm
     remains 6.16.1. Psalm 7's PHP requirement includes `~8.3.16`, compatible with CI.
     No baseline config migration is required for the three adopted plugins.

@@ -29,7 +29,7 @@
       "bin": "checkov"
     },
     "eslint-stack": {
-      "version": "9.35.0",
+      "version": "9.39.5",
       "node_lock": "tools/node/package-lock.json",
       "bin": "eslint"
     },
