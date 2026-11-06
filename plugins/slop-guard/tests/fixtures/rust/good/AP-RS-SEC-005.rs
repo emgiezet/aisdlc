@@ -1,2 +1,4 @@
-// good example for AP-RS-SEC-005
-pub struct Stub;
+// ok: slopguard.rs.raw-pointer-deref
+pub fn read_ref(val: &u32) -> u32 {
+    *val
+}

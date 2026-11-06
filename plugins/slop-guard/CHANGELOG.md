@@ -3,6 +3,8 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **GH-65 Rust fixture repairs:** `rules/opengrep/rust.yaml` and `tests/fixtures/rust/` exercise unsafe blocks, hashing, paths, SQL and TLS with valid safe counterparts and a string-content adversarial case.
+  **Why.** Stub fixtures and broad unsafe-block matches concealed missed detections and false positives.
 - **GH-65 C# fixture repairs:** `rules/opengrep/csharp.yaml` distinguishes literal process names and disabled XML resolvers; `tests/fixtures/csharp/` exercises unsafe APIs and safe counterparts, including direct assignments and resolver re-enablement.
   **Why.** Placeholder fixtures could not prove detection, and broad patterns flagged safe code. Whole-ruleset enforcement lands after all language repairs, without quarantining existing failures.
 - **Double-cast detection, AP-AGENT-011, deslop duplicate check — and the Opengrep pass actually runs** (2026-10-20, #63)
