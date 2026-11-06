@@ -18,6 +18,11 @@ All notable changes to Slop Guard will be documented in this file.
     Psalm 7.0.0–7.0.4 were published Nov 2–6, inside the seven-day hold, so Psalm
     remains 6.16.1. Psalm 7's PHP requirement includes `~8.3.16`, compatible with CI.
     No baseline config migration is required for the three adopted plugins.
+  - Explicit baseline rule names are unchanged, but upstream coverage tightens:
+    hooks checks more `use`/effect-event misuse; security detects more child-process,
+    filesystem, template-require and RegExp calls; n updates deprecated API data.
+  - The regenerated npm lock applies the seven-day publication hold to transitive
+    dependencies too, with cutoff `2026-10-30T09:56:41Z`.
 
 - **Double-cast detection, AP-AGENT-011, deslop duplicate check — and the Opengrep pass actually runs** (2026-10-20, #63)
   - `rules/opengrep/react.yaml`: `slopguard.ts.double-cast` matches `$X as unknown as $T` and `<$T>(<unknown>$X)` → AP-TS-MAINT-001, severity `error` (a single `as` stays `warn` via ESLint). The catalogue entry's `detect:` and `bad:`/`good:` show the validate → widen → assert-back detour. Fixtures `tests/fixtures/ts/{bad,good}/AP-TS-MAINT-001.ts`: 3 hits / 0 hits against opengrep 1.30.0.

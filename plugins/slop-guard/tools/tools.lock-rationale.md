@@ -69,3 +69,19 @@ published Nov 3, inside the seven-day hold. No eligible parser 9.x satisfies
 this bundle's `^20.19.0 || ^22.13.0 || >=24` floor or local Node 24.0.2.
 Keep regexp 2.10.0 rather than override outside its range, ignore EBADENGINE,
 or raise the supported Node floor to force a major upgrade.
+
+TypeScript 7 is excluded by this bundle's typescript-eslint 8.43.0 peer range
+`>=4.8.4 <6.0.0`; even 8.72.1 only widens that upper bound to `<6.1.0`.
+Psalm 7 remains outside the seven-day hold: stable 7.0.0–7.0.4 were published
+November 2–6. Its PHP requirement is not the blocker (`~8.3.16` permits CI).
+
+The publication hold applies to transitive pins as well as direct dependencies.
+Regenerate the npm lock from scratch with lifecycle scripts disabled, strict
+peer resolution, and `--before=2026-10-30T09:56:41Z` (seven days before review).
+This avoids the November Babel/browser-data releases selected by an unrestricted
+resolution. Keep the exact direct dependency versions in package.json.
+
+Hooks 7 brings Babel, Hermes and Zod dependencies even though the baseline only
+enables rules-of-hooks and exhaustive-deps. This larger supply-chain surface is
+accepted for the supported upstream release; none of its new recommended-preset
+rules are implicitly enabled by the explicit baseline.
