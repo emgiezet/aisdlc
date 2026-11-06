@@ -178,7 +178,7 @@ case "$prompt" in
     /qa*)
         [ "${AISDLC_STUB:-ok}" = "detach-qa" ] && git checkout -q --detach
         mkdir -p "specs/$ticket"
-        printf '# QA report — %s\n**Verdict: PASS**\n\n## UC coverage\n| UC | test | verified |\n|----|------|----------|\n| UC-1 | TestStub_UC1 | automated |\n\nCovered: 1/1\n' \
+        printf '# QA report — %s\nVerdict: PASS\n\n## UC coverage\n| UC | test | verified |\n|----|------|----------|\n| UC-1 | TestStub_UC1 | automated |\n\nCovered: 1/1\n' \
             "$ticket" > "specs/$ticket/qa-report.md"
         commit "test(pkg): QA report ($ticket)"
         result false 6 "stub phase complete" 0.05
