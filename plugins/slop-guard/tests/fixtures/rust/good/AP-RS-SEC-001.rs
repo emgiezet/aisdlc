@@ -1,8 +1,20 @@
 // ok: slopguard.rs.unsafe-block
-unsafe fn write_value(ptr: *mut u32, val: u32) {
-    // SAFETY: caller guarantees ptr is non-null, properly aligned,
-    // and valid for writes for the lifetime of this call.
+extern "C" {
+    fn platform_init(flags: u32) -> i32;
+}
+
+pub fn initialize(flags: u32) -> i32 {
     unsafe {
-        *ptr = val;
+        // SAFETY: platform_init() is documented as thread-safe; flags is a
+        // plain bit-field with no pointer or lifetime implications, so no
+        // aliasing or validity invariants are at risk here.
+        platform_init(flags)
+    }
+}
+
+pub fn initialize_documented_above(flags: u32) -> i32 {
+    // SAFETY: platform_init accepts every flags bit-field and is thread-safe.
+    unsafe {
+        platform_init(flags)
     }
 }
