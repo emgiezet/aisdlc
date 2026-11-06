@@ -79,6 +79,10 @@ see Prerequisites.
 `jq -c --argjson n {n} --arg t '{title}' 'if .number==$n then .title=$t else . end' $P > $P.tmp && mv $P.tmp $P`
 ### comment-pr
 `mkdir -p .aisdlc/tracker/prs; { printf -- '\n---\n%s @%s\n' "$now" "{me}"; cat {body-file}; } >> .aisdlc/tracker/prs/{n}.comments.md`
+### get-pr-ledger
+`f=.aisdlc/tracker/prs/{n}.ledger.md; [ -f "$f" ] && jq -n --rawfile b "$f" '{id: "local", body: $b}'` — a file, not a comment: `{n}.comments.md` is append-only.
+### put-pr-ledger
+`mkdir -p .aisdlc/tracker/prs && cp {body-file} .aisdlc/tracker/prs/{n}.ledger.md && echo local`
 ### label-pr
 `jq -c --argjson n {n} 'if .number==$n then .labels=((.labels+["{label}"])|unique) else . end' $P > $P.tmp && mv $P.tmp $P`
 ### unlabel-pr

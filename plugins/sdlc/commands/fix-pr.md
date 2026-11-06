@@ -36,11 +36,13 @@ Skip entirely when `--ci-only` is passed.
 Invoke `/sdlc:review {n} --autofix` via the `SlashCommand` tool. If unavailable, read
 `${CLAUDE_PLUGIN_ROOT}/commands/review.md` and follow it verbatim.
 
-Pass output forward:
+The findings travel in the PR's findings ledger (`pipeline-contracts` → `## Findings ledger`), not
+in prose. Pass forward only the review's `Verdict:` line and its `Ledger:` line:
 
 ```
 — PREVIOUS STEP (/sdlc:review) said —
-<output>
+Ledger: <the review's Ledger: line>
+Verdict: <the review's verdict token>
 ```
 
 If the review returns `Verdict: APPROVED` and **get-pr-checks** `{n}` shows all green:

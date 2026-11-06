@@ -2062,6 +2062,23 @@ run_verify() {
         rows+=("| committed | PASS | the working tree is the commit being shipped |")
     fi
 
+    # The approval the run was gated on must be the approval still in the spec. Second fence
+    # behind guard pre-write, for hosts where that hook is advisory or absent. A spec the base
+    # never had (seed_spec, /sdlc:triage on an --issue task) was gated by check_spec instead.
+    local spec_rel="$specs_dir/$ticket/spec.md" fm_change=""
+    if git -C "$wt" cat-file -e "${base}:${spec_rel}" 2>/dev/null; then
+        fm_change="$(git -C "$wt" diff -U0 "${base}...HEAD" -- "$spec_rel" 2>/dev/null \
+            | grep -E '^[+-](status|approved-by):' | head -4 || true)"
+        if [ -n "$fm_change" ]; then
+            rows+=("| spec approval | **FAIL** | branch changed $(printf '%s' "$fm_change" | tr '\n' ' ' | cut -c1-120) |")
+            failures+=("the branch edited the spec's approval frontmatter")
+        else
+            rows+=("| spec approval | PASS | \`status:\`/\`approved-by:\` unchanged on this branch |")
+        fi
+    else
+        rows+=("| spec approval | n/a | spec absent at base; gated by check_spec before the run |")
+    fi
+
     # 1. The repository's verification commands.
     local cmds n=0 c rc
     cmds="$(jq -r '.verify // [] | .[]' "$(state_dir "$repo")/config.json" 2>/dev/null || true)"

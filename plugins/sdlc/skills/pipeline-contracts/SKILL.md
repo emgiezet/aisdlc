@@ -3,10 +3,10 @@ name: pipeline-contracts
 description: >
   The shared vocabulary every /sdlc command after ship and before spec speaks — tracker and
   browser descriptors, the operation names, chain markers, verdict tokens, the claim lock, the
-  pipeline labels, and the bugfix approval rule. Use when a command needs to talk to the tracker
-  or a browser, hand a PR or issue number to the next command, decide whether it may take a
-  PR another agent claimed, set or read a pipeline label, or decide whether a bugfix spec counts
-  as approved.
+  PR findings ledger, the pipeline labels, and the bugfix approval rule. Use when a command needs
+  to talk to the tracker or a browser, hand a PR or issue number to the next command, decide
+  whether it may take a PR another agent claimed, read or write a PR's findings ledger, set or
+  read a pipeline label, or decide whether a bugfix spec counts as approved.
 ---
 
 # Pipeline contracts
@@ -35,6 +35,7 @@ Read back every mutation before reporting it done. `local` is a real provider (f
 | Identity | **auth-check** **current-user** |
 | Issues | **get-issue** **search-issues** **create-issue** **comment-issue** **close-issue** **label-issue** **unlabel-issue** **assign-issue** |
 | Pull requests | **get-pr** **list-prs** **search-prs** **create-pr** **update-pr** **comment-pr** **label-pr** **unlabel-pr** **assign-pr** **review-pr** **merge-pr** **get-pr-diff** **get-pr-checks** **get-run-failed-logs** **checkout-pr** **rerun-check** **attach-image-evidence** |
+| Findings ledger | **get-pr-ledger** **put-pr-ledger** |
 | Labels | **ensure-labels** (only `/sdlc:init` calls it) |
 | Lock | **claim** **check-claim** **release** |
 | Decision map | **link-blocks** **list-blockers** **add-sub-issue** **list-frontier** |
@@ -62,7 +63,7 @@ commands travel in a block headed `— PREVIOUS STEP (/sdlc:<name>) said —`, v
 |---|---|---|
 | `/sdlc:qa`, `/sdlc:ship` | `PASS` `GAPS` | existing QA verdict |
 | `/sdlc:implement` | `BLOCKED` | `BLOCKED.md` written |
-| `/sdlc:review` | `APPROVED` `CHANGES_REQUESTED` | the submitted review |
+| `/sdlc:review` | `APPROVED` `CHANGES_REQUESTED` | the submitted review, derived from the findings ledger |
 | `/sdlc:triage` | `NO_ACTION_NEEDED` `BUG` `FEATURE` | route decision |
 | `/sdlc:root-cause` | `LOW_CONFIDENCE` | trailing flag, copied into the PR body by ship |
 | `/sdlc:arch-review` | `SOUND` `GAPS` | architecture verdict; `GAPS` = a blocker or unwaived major |
@@ -92,6 +93,31 @@ Hand-off issue → PR: **claim** the PR, then **release** the issue with outcome
 **review-pr** on a PR the current user authored (GitHub refuses self-review): the descriptor posts
 the body as a comment headed `🤖 Review (self-authored PR) — Verdict: <token>` and returns success;
 the command sets labels exactly as for a real review.
+
+## Findings ledger
+
+One comment per PR, written by **current-user** through **put-pr-ledger** and read through
+**get-pr-ledger**; the `local` tracker keeps it in `.aisdlc/tracker/prs/<n>.ledger.md`. Only
+`plugins/sdlc/bin/aisdlc-ledger` writes its contents; `/sdlc:review` is its only caller and never
+edits the JSON by hand.
+
+- **Marker**, the comment's first line: `<!-- aisdlc-ledger v1 digest=<sha256> -->`. The digest is
+  the sha256 of the ledger as `jq -cS .` prints it. `aisdlc-ledger read` recomputes it; a mismatch,
+  or no marker, is no ledger, and the review runs `full`. **get-pr-ledger** returns only a comment
+  current-user wrote, so another commenter's ledger is never read; the digest makes one edited by
+  hand unusable.
+- **Finding**: `id` (`F1`, `F2` … never reused), `severity` (`blocker|major|minor|nit`), `title`,
+  `anchors[{path,line,sha256}]` (sha256 of the line's bytes, trailing CR dropped; empty for a
+  command-computed signal), `status`, `first_seen` and `last_seen` (`{head,at}`), and `decision`
+  (`{by,at,reason}`) once a human acted.
+- **Status**: `open` — counts toward the verdict when `blocker` or `major`; `resolved` — its anchored
+  line is gone, an incremental re-review did not re-report it and its file changed since the last
+  review, or a signal was not re-emitted; `accepted` — a PR-body line `Waived: F<id> — <why> —
+  @<who>`; `rejected` — `Rejected: F<id> — <why> — @<who>`. A line without `@<who>` counts for nothing.
+- **Verdict**: `CHANGES_REQUESTED` while any `blocker` or `major` is `open`, else `APPROVED` —
+  computed by `aisdlc-ledger verdict`, never asserted. `review{head,at,verdict}` records the last
+  completed review; the next one is incremental from `review.head` when that commit is still an
+  ancestor of the PR head.
 
 ## Decision map
 

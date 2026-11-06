@@ -72,6 +72,12 @@ Not `gh pr edit`: it resolves the PR through a GraphQL query that still selects 
 `projectCards` connection, which fails on gh builds predating its removal.
 ### comment-pr
 `gh pr comment {n} --body-file {body-file}`
+### get-pr-ledger
+`me=$(gh api user --jq .login); gh api --paginate "repos/{owner}/{repo}/issues/{n}/comments" | jq -cs --arg me "$me" '[.[][] | select(.user.login == $me and (.body | startswith("<!-- aisdlc-ledger ")))] | last // empty | {id, body}'`
+Returns: JSON `{id, body}`, or empty output when absent. Only current-user's comment counts.
+### put-pr-ledger
+`id=$(<get-pr-ledger> | jq -r '.id // empty'); if [ -n "$id" ]; then gh api -X PATCH "repos/{owner}/{repo}/issues/comments/$id" -F body=@{body-file} --jq .id; else gh api -X POST "repos/{owner}/{repo}/issues/{n}/comments" -F body=@{body-file} --jq .id; fi` — `<get-pr-ledger>` is the command above.
+Returns: comment id.
 ### label-pr
 same as **label-issue** — PRs are issues to the REST API.
 ### unlabel-pr

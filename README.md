@@ -207,7 +207,8 @@ deletion retired in `.claude/retired-tests` on the base passes), and ship does n
   records as the approval in the spec it generates.
 - **Tests are the safety net, so they are dense.** Every `UC-<n>` gets a test carrying its id, which
   makes spec coverage a `grep`. A `Stop` hook blocks any session that deleted or skipped a test; a
-  `PreToolUse` hook blocks force pushes and `--no-verify`.
+  `PreToolUse` hook blocks force pushes, `--no-verify`, and an agent setting a spec's
+  `status: approved` — the runner's `verify` gate catches the same edit where hooks do not run.
 - **QA and review run before a human does.** `auto-qa` re-derives the use cases from the spec
   *before* reading the code; `code-reviewer` reads the spec before the diff. `PASS`/`GAPS` is the
   first line of the PR; `APPROVED`/`CHANGES_REQUESTED` sets its label.
@@ -233,7 +234,7 @@ never ask, and end with a verdict and a chain marker.
 | `/sdlc:implement <T>` | Refuses anything not `approved`; one playbook; a test carrying each `UC-<n>` before its code; full CI matrix; `BLOCKED.md` rather than a broken finish. |
 | `/sdlc:qa <T>` | Independent verification: use cases re-derived from the spec, gaps closed, a browser pass with screenshots for UI use cases when a browser is configured, `qa-report.md` with `PASS`/`GAPS`. |
 | `/sdlc:ship <T> [--docs]` | Draft PR with the verdict and riskiest changes up front, a visual Change map (mermaid module graph + before/after UC table), QA report as a comment, label `review`. `--docs` ships a documentation-only branch without a spec. |
-| `/sdlc:review <pr#> [--autofix] [--adversarial]` | Spec-first review in an isolated worktree: blocker/major/minor/nit, `APPROVED` or `CHANGES_REQUESTED`, pipeline label. With `--adversarial` (or profile `review-adversarial: true`): a second independent pass; stricter verdict wins. On its own PRs an autofix loop — conflicts, then findings, then CI — with new commits only. |
+| `/sdlc:review <pr#> [--autofix] [--adversarial]` | Spec-first review in an isolated worktree: blocker/major/minor/nit, `APPROVED` or `CHANGES_REQUESTED`, pipeline label. Findings live in a PR findings ledger (`bin/aisdlc-ledger`): stable `F<n>` ids across pushes, line anchors that follow moved code, human `Waived:`/`Rejected:` dispositions, a re-review that reads only the lines changed since the last one, and a verdict computed from the open findings — a finding citing a line the PR did not change is dropped. With `--adversarial` (or profile `review-adversarial: true`): a second independent pass. On its own PRs an autofix loop — conflicts, then findings, then CI — with new commits only. |
 | `/sdlc:fix-pr <pr#> [--ci-only]` | Drives one PR to `merge-ready`: base merge, review + autofix, CI stabilisation that classifies each red check (`real-bug` / `test-bug` / `flake` / `infra`) and never weakens one. |
 | `/sdlc:continue <T\|pr#>` | Resumes a `BLOCKED.md`, a `changes-requested` review, or a PR with no plan, then re-runs implement → qa. |
 | `/sdlc:autopilot <pr#> [--allow-merge]` | Diagnoses a PR's state and runs the right chain of the commands above. Never merges without the flag. |
@@ -275,7 +276,7 @@ Installable on their own with `npx skills add emgiezet/aisdlc --skill <name>`.
 | `task-router` | The three-tier instruction hierarchy — router, task-scoped playbooks, path-scoped rules — with line budgets and how to diagnose a router that loads the wrong file. |
 | `code-review` | Severity scale, the verdict rule, the review checklist, the five lenses of a specification review. |
 | `architecture-review` | Availability tiers 99.5 → 99.999 with the downtime, topology, deploy strategy and RPO/RTO each forces; dependency-chain arithmetic; traffic-profile rules; the `Non-functional targets` block. |
-| `pipeline-contracts` | The vocabulary every command shares: descriptors and their operations, chain markers, verdict tokens, the claim lock, pipeline labels, the bugfix approval rule. |
+| `pipeline-contracts` | The vocabulary every command shares: descriptors and their operations, chain markers, verdict tokens, the claim lock, the PR findings ledger, pipeline labels, the bugfix approval rule. |
 | `discovery` | Brief and product-brief formats, evidence tags that never upgrade, the Definition of Ready. |
 | `harness-eval` | Measuring the harness on a cheap model, and a table from each failure symptom to the instruction file that caused it. |
 | `rest-api-design` | Resource naming, status-code selection, one error envelope per API, bounded pagination, idempotency, and the breaking-change table for an HTTP surface. |
@@ -284,8 +285,8 @@ Installable on their own with `npx skills add emgiezet/aisdlc --skill <name>`.
 | `agent-orchestration` | The seven shapes for arranging agents — single, pipeline, fan-out, orchestrator/worker, handoff, debate, swarm — the control each one needs, the budgets, and the deterministic backbone that keeps the decision in code rather than in the model. |
 | `fleet-loop` | Running `aisdlc loop` from a session — the tracker as the work queue: which binary, the pre-flight checks, what the runner decides (approval label, claim, already-built) and what stays human. |
 
-Plus the `auto-qa` and `code-reviewer` agents, the `guard` hook, `bin/aisdlc`, and the shipped
-descriptors: trackers `github` and `local`, browsers `playwright` and `agent-browser`.
+Plus the `auto-qa` and `code-reviewer` agents, the `guard` hook, `bin/aisdlc`, `bin/aisdlc-ledger`,
+and the shipped descriptors: trackers `github` and `local`, browsers `playwright` and `agent-browser`.
 
 ## 👥 Workflows by role
 
@@ -604,7 +605,9 @@ aisdlc logs <id>                                 # read what it actually did
 
 ```bash
 make validate       # manifests, required files, instruction budgets, shellcheck
-make selftest       # 128 assertions over the queue runner, using a stub claude and a stub omp — no API calls
+make selftest       # assertions over the queue runner, the guard and aisdlc-ledger, using a stub claude and a stub omp — no API calls
+make coverage       # which commands, skills, hooks, subcommands and operations a test claims (# covers:)
+make coverage-check # fail if a unit covered on origin/main lost its claim (CI runs this on every PR)
 make eval-dry       # skill trigger sets, structural check only
 make harness-eval MODEL=haiku [SCENARIO=go-endpoint]   # the real thing; costs money
 make tool-integration              # real-binary parser tests; needs pinned toolchain (CI); skips per tool otherwise

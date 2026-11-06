@@ -12,7 +12,11 @@ value, because the pipeline has nowhere to put its output otherwise.
 
 - **Specs live in:** `specs/` — always a real directory, never `none`. Change the path if this repo
   keeps such things elsewhere; `/sdlc:init` creates it either way.
-- **Spec approval:** a human sets `status: approved` in the frontmatter. Nothing else may.
+- **Spec approval:** a human sets `status: approved` in the frontmatter. Nothing else may: the
+  `guard` pre-write hook denies an agent write that sets it, and `aisdlc` verify fails a branch
+  that changed `status:` or `approved-by:` in a spec the base already had. The one exception is
+  `/sdlc:triage` on an issue already labelled `bug`, which writes `status: approved` with
+  `approved-by: issue #<n> (label bug, @<author>)`; the runner re-checks that label before it runs.
 - **Branch naming:** `ai/<TICKET>-<slug>` for agent runs
 - **Pull request label:** `ai-sdlc`
 - **Default base ref:** `origin/main`
