@@ -51,12 +51,12 @@ rules:
       category: security
       cwe: CWE-915
     pattern-either:
-      - pattern: $Model::create($Request->all())
-      - pattern: $Model::create($Request->input())
-      - pattern: $Instance->fill($Request->all())
-      - pattern: $Instance->fill($Request->input())
-      - pattern: $Instance->update($Request->all())
-      - pattern: $Instance->update($Request->input())
+      - pattern: $MODEL::create($REQUEST->all())
+      - pattern: $MODEL::create($REQUEST->input())
+      - pattern: $INSTANCE->fill($REQUEST->all())
+      - pattern: $INSTANCE->fill($REQUEST->input())
+      - pattern: $INSTANCE->update($REQUEST->all())
+      - pattern: $INSTANCE->update($REQUEST->input())
 
   - id: slopguard.php.laravel.query-in-loop
     languages: [php]
@@ -89,4 +89,4 @@ rules:
     metadata:
       ap_id: AP-PHP-PERF-002
       category: performance
-    pattern: $Model::all()
+    pattern: $MODEL::all()
