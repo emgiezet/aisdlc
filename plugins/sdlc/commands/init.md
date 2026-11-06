@@ -57,10 +57,9 @@ out-of-bounds entries.
 config. Extract the **exact** commands with their flags. Check each tool is actually installed and
 say which are missing. If a single target runs everything, note it.
 
-**Test conventions and tiers.** File naming, location, framework per stack; what integration tests
-need running and which e2e runner exists. Group the test commands into tiers by what they touch —
-unit (no socket, database or browser), integration (real schema, containers), e2e (a deployed
-environment) — which CI job runs each, what gates a production deploy, and the existing test count.
+**Test conventions and tiers.** File naming, location, framework per stack, integration-test
+services, e2e runner, existing test count. Fill the tier table — unit (no socket, database or
+browser), integration, e2e — with the CI job that runs each tier and what gates a production deploy.
 
 **Task types.** This is the judgement call that matters most. Read the recent history
 (`git log --oneline -100` and the directories those commits touched) and ask: what kinds of change
@@ -136,9 +135,8 @@ Router near the top, and leave the rest alone.
   Delete template steps that do not apply here rather than leaving a hedge.
 - `.claude/rules/<stack>.md` — `paths:` frontmatter, this stack's conventions as observed in the
   code, and a copy-pasteable verification block at the end. ≤ 70 lines each.
-- `.claude/sdlc.md` — from `templates/sdlc.md`, every field answered including the test-tier and
-  CI-stage table, `none` where that is the truth. **Tracker descriptor** and **Browser descriptor**
-  are paths or `none`, never a kind name.
+- `.claude/sdlc.md` — from `templates/sdlc.md`, every field (test-tier table too) answered, `none`
+  where true; **Tracker descriptor** and **Browser descriptor** are paths or `none`, never kinds.
 - `.claude/trackers/<kind>.md` — copied byte-for-byte from `templates/trackers/<kind>.md`; the
   same for `.claude/browsers/<provider>.md` when a provider was chosen. Then run the descriptor's
   **auth-check**; a failure goes in the report, not under the rug.
