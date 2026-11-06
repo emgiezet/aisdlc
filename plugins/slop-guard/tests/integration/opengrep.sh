@@ -5,7 +5,8 @@ it_project opengrep-fixture-contract
 _og_fixture_scan_ok=0
 _og_fixture_json="${_IT_CUR_PROJ}/scan.json"
 # UC-3: the shared helper records one skip; REQUIRE=1 rejects it in the runner.
-if it_skip_unless_tool opengrep; then
+# The debug wrapper merges stderr into stdout; this case needs pure JSON stdout.
+if SLOPGUARD_IT_DEBUG=0 it_skip_unless_tool opengrep; then
     cp -R "${_IT_FIXTURES}" "${_IT_CUR_PROJ}/samples"
     _og_fixture_bin="${_IT_CUR_PROJ}/vendor/bin/$(lock_bin opengrep)"
     # UC-4: reject failed scans, invalid JSON, missing results and scan errors.
