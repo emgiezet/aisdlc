@@ -7,11 +7,10 @@
 # What this suite does NOT cover:
 #   - Whether rules actually match the bad fixtures (requires the opengrep binary).
 #   - Whether rules pass the good fixtures without false positives.
-# Those are covered by:
-#   opengrep --validate --config rules/opengrep
-#   opengrep --test rules/opengrep
-# once the opengrep binary is installed in CI (currently blocked on Etap 0
-# pinning of opengrep in tools/tools.lock.json).
+# Those are covered by tests/integration/opengrep.sh through make tool-integration:
+# the pinned OpenGrep binary scans a copy of every fixture, checks each configured
+# rule's own bad fixture, and rejects hits anywhere under good/. Offline runs
+# explicitly skip without the tool; SLOPGUARD_IT_REQUIRE=1 makes skips fatal in CI.
 #
 # What this suite DOES cover (offline, no network, no opengrep binary):
 #   1. Every rule file under rules/opengrep/ is valid YAML with the required

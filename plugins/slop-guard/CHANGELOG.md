@@ -5,6 +5,8 @@ All notable changes to Slop Guard will be documented in this file.
 ## Unreleased
 - **GH-65 React and Laravel repairs:** `rules/opengrep/{react,php-laravel}.yaml` and TypeScript URL fixtures distinguish validated URLs from shadowed sanitizer calls and recognize Laravel mass assignment and unbounded retrieval.
   **Why.** Safe URL validation must stay quiet without allowing local sanitizer-name shadows to bypass the rule.
+- **GH-65 fixture contract enforcement:** `tests/integration/opengrep.sh` discovers every configured OpenGrep rule, requires an own-AP bad hit and zero good-fixture hits, and retains language-group and adversarial regression assertions (UC-1–UC-14). Missing tools skip only offline; failed scans and invalid JSON fail the integration gate.
+  **Why.** Fixture presence and successful ad-hoc scans do not enforce the approved regression contract.
 - **GH-65 Go, Node and JVM repairs:** Go timeout and Node prototype-pollution rules retain unsafe return and request-key cases while permitting configured clients and null-prototype targets; Go/Node bad variants and Java good fixtures exercise these contracts.
   **Why.** Equivalent unsafe construction shapes escaped detection, while safe alternatives matched broad patterns.
 - **GH-65 Ruby fixture repairs:** `tests/fixtures/ruby/` replaces marker stubs with real unsafe APIs and safe parameterized, escaped or constrained alternatives.
