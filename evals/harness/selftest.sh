@@ -159,6 +159,33 @@ out="$(source "$AISDLC" help >/dev/null 2>&1; _branch_changes "$R" "$BASE" "spec
 [ -z "$out" ] && ok "GH-52 UC-3: agent-config-only diff empty" || bad "GH-52 UC-3" "$out"
 
 # --------------------------------------------------------------------------- #
+printf '\na phase that leaves the task branch stops the task\n'
+R="$WORK/branch-switch"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=branchswitch "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_bs_branch="$(task_field "$R" .branch)"; _bs_wt="$(task_field "$R" .worktree)"
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+[ "$(task_field "$R" .status)" = "failed" ] && ok "implement on its own branch: status failed" \
+    || bad "branch-switch status" "$(task_field "$R" .status)"
+[ "$(task_field "$R" .error)" = "phase 'implement' moved the worktree off the task branch $_bs_branch onto ai/SBX-1-agent-branch — verify, ship and review read only $_bs_branch" ] \
+    && ok "error names the task branch and the branch the agent switched to" \
+    || bad "branch-switch error" "$(task_field "$R" .error)"
+[ ! -f "${D}qa.json" ] && ok "qa never ran on the stray branch" || bad "branch-switch qa" "qa.json exists"
+[ "$(git -C "$_bs_wt" symbolic-ref --short HEAD 2>/dev/null)" = "ai/SBX-1-agent-branch" ] \
+    && [ "$(git -C "$R" rev-list --count "$_bs_branch..ai/SBX-1-agent-branch")" -ge 1 ] \
+    && ok "worktree kept as the agent left it, its commits intact" \
+    || bad "branch-switch worktree" "worktree $_bs_wt not kept on the agent branch"
+R="$WORK/detach-qa"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=detach-qa "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_bs_branch="$(task_field "$R" .branch)"
+[ "$(task_field "$R" .status)" = "failed" ] \
+    && [ "$(task_field "$R" .error)" = "phase 'qa' moved the worktree off the task branch $_bs_branch onto detached HEAD — verify, ship and review read only $_bs_branch" ] \
+    && ok "a later phase detaching HEAD is caught too" \
+    || bad "detach-qa" "status=$(task_field "$R" .status) error=$(task_field "$R" .error)"
+unset _bs_branch _bs_wt
+
+# --------------------------------------------------------------------------- #
 printf '\nthe spec gate refuses before spending anything\n'
 R="$WORK/draft"
 fresh_repo "$R" draft

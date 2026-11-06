@@ -19,6 +19,8 @@
 #   selfretire  deltest, and the branch adds its own .claude/retired-tests entry for it
 #   dirty     implement commits the test but leaves the code change uncommitted
 #   mdonly    implement commits only a .md file (for testing structure check with non-code changes)
+#   branchswitch  implement runs `git checkout -b` and commits there, off the task branch
+#   detach-qa     qa detaches HEAD before committing its report
 #
 # AISDLC_STUB_READINESS: when set and the prompt is NOT a phase command (does not start with /),
 #   the stub returns the variable's value as the model result text verbatim (readiness JSON).
@@ -146,6 +148,7 @@ case "$prompt" in
             commit "docs($ticket): implementation notes"
             result false 6 "stub phase complete" 0.05
         else
+            [ "${AISDLC_STUB:-ok}" = "branchswitch" ] && git checkout -q -b "ai/${ticket}-agent-branch"
             mkdir -p pkg
             printf 'package pkg\n\n// Stub implementation for %s.\nfunc Stub() string { return "%s" }\n' "$ticket" "$ticket" > "pkg/stub.go"
             name="TestStub_UC1"; skip=""
@@ -173,6 +176,7 @@ case "$prompt" in
         fi
         ;;
     /qa*)
+        [ "${AISDLC_STUB:-ok}" = "detach-qa" ] && git checkout -q --detach
         mkdir -p "specs/$ticket"
         printf '# QA report — %s\n**Verdict: PASS**\n\n## UC coverage\n| UC | test | verified |\n|----|------|----------|\n| UC-1 | TestStub_UC1 | automated |\n\nCovered: 1/1\n' \
             "$ticket" > "specs/$ticket/qa-report.md"

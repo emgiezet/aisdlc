@@ -1812,6 +1812,18 @@ _branch_changes() {
         || true
 }
 
+# _off_task_branch <wt> <branch>
+# Verify, ship, review and the eval all read the task branch. An agent that runs
+# `git checkout -b` (or detaches HEAD) in its worktree commits work none of them will see,
+# while the worktree itself still looks finished. Prints where HEAD is when it is not on
+# <branch> and returns 0; returns 1 when HEAD is on <branch>.
+_off_task_branch() {
+    local wt="$1" branch="$2" cur
+    cur="$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null)" || cur="detached HEAD"
+    [ "$cur" = "$branch" ] && return 1
+    printf '%s' "$cur"
+}
+
 
 # Native scope-check phase: classify the branch's changed files against the spec's
 # declared scope (In:/Out:/Context) and the project's repo-wide out-of-bounds list.
@@ -2776,6 +2788,20 @@ execute_task() {
             _ph_ended="$(ts)"
             _ph_sid="$(_ph_sid_detect "$_ph_sc_before" "$phase")"
             _ph_verdict="PASS"
+        fi
+
+        # Every phase must leave HEAD on the task branch, or the next one reads stray work.
+        local _off
+        if _off="$(_off_task_branch "$wt" "$branch")"; then
+            local _e="phase '$phase' moved the worktree off the task branch $branch onto $_off — verify, ship and review read only $branch"
+            printf '[%s] %s\n' "$(ts)" "$_e" >> "$log"
+            task_set "$repo" "$id" --arg e "$_e" '.error = $e'
+            set_status "$repo" "$id" failed
+            _ph_log "$phase" "FAIL" "$_ph_sid" "$_ph_started" "$_ph_ended"
+            archive_task "$repo" "$id"
+            say "  ✗ $id — $phase left $branch for $_off · worktree kept at $wt"
+            [ -n "$issue_n" ] && tracker_release "$repo" "$issue_n" "$issue_kind" "aisdlc" "aborted: $_e"
+            return 1
         fi
 
         # GH-52: fail immediately if implement exited cleanly but changed no real file.

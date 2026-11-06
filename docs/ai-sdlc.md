@@ -294,6 +294,10 @@ still a hard failure regardless of billing mode. That guard is what prevents a s
 being reported as a successful PR; billing mode has no bearing on whether Claude ran.
 A companion guard runs after `implement`: if the phase exits cleanly but the branch diff is empty
 (excluding `specs/<TICKET>/` and agent-config paths), the runner fails immediately with `phase 'implement' failed — it changed no file; see implement.json for why` and does not run later phases.
+A third guard runs after **every** phase: HEAD must still be on the task branch
+(`ai/<TICKET>-<id>`). An agent that ran `git checkout -b` or detached HEAD committed work that
+verify, ship and review never read, so the task fails with `phase '<phase>' moved the worktree
+off the task branch <branch> onto <where> — …` and keeps the worktree exactly as the agent left it.
 
 ### model_roles
 
@@ -450,6 +454,7 @@ causes across the entire workflow.
 | `BLOCKED` on the same ambiguity repeatedly | The spec template is missing a section your domain needs | Extend the template, not the individual spec |
 | Task status `refused` with `depends-on not met: <TOKEN>` | Dependent slice queued or run before its prerequisite merged | Wait for the prerequisite to merge; its `verify-report.md` must show `PASS` in the base tree |
 | PR record missing after ship or clean | Worktree local tracker `.aisdlc/tracker` not linked to repo canonical | Automatic repo tracker symlinking ensures worktree records land at repo root |
+| Task `failed`: `moved the worktree off the task branch` | The agent created or switched to its own branch inside the runner's worktree | Its commits sit on the branch named in the error, in the kept worktree; `aisdlc retry <id>` reruns on the task branch |
 
 **Limitation — dependencies outside the pipeline:** if a prerequisite was implemented without
 going through this pipeline it has no `verify-report.md`. Remove the `depends-on:` field from
