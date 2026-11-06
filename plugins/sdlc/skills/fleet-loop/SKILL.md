@@ -35,7 +35,7 @@ Each check is one command; a failure is reported to the user, not worked around.
 |---|---|---|
 | tracker | `grep 'Tracker descriptor' .claude/sdlc.md` | none → run `/sdlc:init`; `pull` needs `local` or `github` |
 | tracker auth | `gh auth status` (github only) | nothing can be listed or claimed |
-| runtime | `command -v claude` (or `omp`) | phases cannot run |
+| runtime | `command -v omp \|\| command -v claude` (`auto` takes the first) | phases cannot run |
 | verify commands | `jq .verify .aisdlc/config.json` | empty → every task ends `verify FAIL`, nothing ships |
 | claimable work | `"$AISDLC" pull --repo . --dry-run` | "nothing to pull" is a valid state, not an error |
 
