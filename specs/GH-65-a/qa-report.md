@@ -30,13 +30,13 @@ Reason for integration-only additions: UC-3 and UC-4 explicitly require integrat
 
 | Exact command | Observed result | Evidence |
 |---|---|---|
-| `CI= make validate` | Exit 2; embedded slop-guard suite: 725 passed, 0 failed; config validation: 21 validated, 3 skipped, 1 failed | `qa/suite-1.log` |
+| `CI= make validate` | Corrected-launcher rerun: exit 0, All checks passed; 725 slop-guard and 102 SDLC assertions passed; config validation: 22 validated, 3 skipped, 0 failed | `qa/suite-1-corrected.log` |
 | `plugins/slop-guard/tests/run-tests` | 725 passed, 0 failed; exit 0 | `qa/suite-2.log` |
 | `plugins/sdlc/tests/run-tests` | 102 passed, 0 failed; exit 0 | `qa/suite-3.log` |
 | `bash plugins/slop-guard/tests/catalog_test.sh` | 26 passed, 0 failed; exit 0 | `qa/suite-4.log` |
 | `plugins/slop-guard/scripts/gen-skills --check` | Deterministic output check PASSED; exit 0 | `qa/suite-5.log` |
-| `plugins/slop-guard/scripts/validate-configs` | 21 validated, 3 skipped, 1 failed; exit 1 | `qa/suite-6.log` |
-| `SLOPGUARD_IT_REQUIRE=1 SLOPGUARD_IT_DEBUG=1 make tool-integration` | 54 passed, 1 failed, 1 skipped, 1 known; exit 2; all 13 ticket assertions passed | `qa/suite-7.log` |
+| `plugins/slop-guard/scripts/validate-configs` | Corrected-launcher rerun: 22 validated, 3 skipped, 0 failed; exit 0 | `qa/suite-6-corrected.log` |
+| `SLOPGUARD_IT_REQUIRE=1 SLOPGUARD_IT_DEBUG=1 make tool-integration` | Corrected-launcher rerun: 55 passed, 1 failed, 0 skipped, 2 known; exit 2; all 13 ticket assertions passed | `qa/suite-7-corrected.log` |
 | `bash -n plugins/slop-guard/tests/tool-integration plugins/slop-guard/tests/integration/opengrep.sh` | Exit 0 | `qa/suite-8.log` |
 | `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -S warning plugins/slop-guard/tests/tool-integration plugins/slop-guard/tests/integration/opengrep.sh` | Exit 0, no warnings | `qa/suite-9.log` |
 | `bash specs/GH-65-a/qa/runner-contract-test.sh` | 6 passed, 0 failed, 0 skipped; exit 0 | `qa/runner-contract.log` |
@@ -50,7 +50,8 @@ No existing tests were changed. No implementation or spec was changed. `make sel
 
 ## Not verified
 
-- Full local suites are not all green. PHPStan fails with `Missing parameter 'env.SLOPGUARD_CACHE_DIR'` through this host's Docker launcher; Psalm has no binary. These are the same non-green integration cases documented in the supplied main baseline and do not exercise this ticket. The existing quarantined zizmor case remains `known`, unchanged.
-- Unlike the supplied baseline's ESLint `no-object-parameters` failure, that assertion **passed** in this run (`qa/suite-7.log`). This run explicitly enabled the stream-preserving debug wrapper changed by this branch; no new failing integration case appeared. No claim is made that the baseline failure is permanently resolved.
-- Config validation additionally cannot run Psalm, tflint, or zizmor from its direct PATH lookup. It fails on the same PHPStan launcher environment issue; it does not validate OpenGrep rules itself (its output says so). The real OpenGrep full-rules scan passed instead. These config-validation limitations are outside the touched C# rules, not silently counted as passes.
+- Full local real-tool integration is not green: after the PHP launcher's environment-forwarding correction, PHPStan's missing-return-type case still fails, now because its parallel worker crashes with exit 139 / segmentation fault (`qa/suite-7-corrected.log`). This is a different failure from the original missing-environment-variable artefact; no C# UC depends on PHPStan. The successful implementation-head CI run linked below is the available non-local coverage.
+- The original launcher-affected outputs remain in `qa/suite-1.log`, `qa/suite-6.log`, and `qa/suite-7.log` as historical evidence, superseded by the `-corrected.log` reruns. The original config-validation failure is resolved: PHPStan validation now passes. Psalm is now reachable by the integration runner: its bad case is quarantined `known` and its good case passes, so the corrected integration run has zero skips and two known cases (Psalm and zizmor).
+- The supplied baseline's flaky-local ESLint `no-object-parameters` failure passed in both of this ticket's runs. No claim is made that it is permanently resolved.
+- Config validation still skips Psalm, tflint, and zizmor through its direct PATH lookup. It does not validate OpenGrep rules itself (its output says so); the real OpenGrep full-rules scan passed instead. These limitations are outside the touched C# rules, not silently counted as passes.
 - CI at implementation head `4506b194e588c0b084eabb0648a647280ba07e7e` reports successful Validate and runner-and-fixture checks, including the real-tool suite: https://github.com/emgiezet/aisdlc/actions/runs/42201785412/job/127838570377 . Snapshot: `qa/pr-checks.json`. CI for this QA evidence commit has not been observed.
