@@ -1,0 +1,4 @@
+UC-11: real pinned OpenGrep, entire rule directory, copied fixture tree; each React href-js-scheme and Laravel mass-assignment-request-all/unbounded-all rule hits its exact own bad AP path.
+UC-12: same scan; zero good-tree hits for all three IDs including both sanitized React URL locations.
+UC-13: discover all rule IDs and AP metadata dynamically; each exact ID hits corresponding bad AP path; absent hit fails naming rule. Invalid scan/JSON also fails. Copy avoids tests-ignore.
+UC-14: all discovered exact IDs have no hits anywhere in good tree, not merely own AP files; offending ID causes named failure.

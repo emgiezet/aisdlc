@@ -1,0 +1,13 @@
+Environment for suites: PATH=/tmp/qa-bin:$PATH; CLAUDE_PLUGIN_DATA=/tmp/slopguard-data-GH-65-e; CLAUDE_PLUGIN_OPTION_TOOL_SOURCE=plugin-only
+bash -n plugins/slop-guard/tests/integration/opengrep.sh plugins/slop-guard/tests/opengrep_test.sh: exit 0
+Docker shellcheck -S warning for those files: exit 0
+CI= make validate: exit 2; embedded 725 passed, 0 failed; config validation 21 validated, 3 skipped, 1 failed (PHPStan env.SLOPGUARD_CACHE_DIR)
+plugins/slop-guard/tests/run-tests: exit 0; 725 passed, 0 failed
+plugins/sdlc/tests/run-tests: exit 0; 102 passed, 0 failed
+bash plugins/slop-guard/tests/catalog_test.sh: exit 0; 26 passed, 0 failed
+plugins/slop-guard/scripts/gen-skills --check: exit 0; deterministic
+plugins/slop-guard/scripts/validate-configs: exit 1; 21 validated, 3 skipped, 1 failed
+SLOPGUARD_IT_REQUIRE=1 make tool-integration: exit 2; 212 passed, 1 failed, 1 skipped, 1 known
+python3 specs/GH-65-e/qa/gate_test.py: exit 0; 8 tests, OK
+GH-65-e real OpenGrep assertions: UC-11 3 passing; UC-12 3 passing; UC-13 69 passing (56 own-AP + 13 adversarial variants); UC-14 56 passing; no ticket skips/failures.
+Implementation diff (excluding specs): 361 added, 41 deleted, 10 files. Approved line budget: 240.
