@@ -1,0 +1,7 @@
+ok UC-3: absent binary records exactly one skip (runner exit 0)
+ok UC-3: required absent binary rejects suite (runner exit 1)
+ok UC-4: nonzero scan with otherwise valid JSON fails (runner exit 1)
+ok UC-4: malformed scan JSON fails (runner exit 1)
+ok UC-4: missing results fails (runner exit 1)
+ok UC-4: parse errors fail (runner exit 1)
+6 passed, 0 failed, 0 skipped
