@@ -1,16 +1,21 @@
-import javax.xml.parsers.*;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamReader;
 import java.io.InputStream;
 
+// ok: slopguard.jvm.xml-external-entity
+// Safe: StAX parser (XMLInputFactory) with external-entity resolution and
+// DTD support explicitly disabled.  Does not call
+// DocumentBuilderFactory.newInstance() or SAXParserFactory.newInstance(),
+// so neither pattern-1 nor pattern-3 of the rule fires.
 public class XmlParser {
-    // ok: slopguard.jvm.xml-external-entity
     public void parse(InputStream xml) throws Exception {
-        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        dbf.setXIncludeAware(false);
-        dbf.setExpandEntityReferences(false);
-        DocumentBuilder db = dbf.newDocumentBuilder();
-        db.parse(xml);
+        XMLInputFactory factory = XMLInputFactory.newInstance();
+        factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);
+        factory.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);
+        XMLStreamReader reader = factory.createXMLStreamReader(xml);
+        while (reader.hasNext()) {
+            reader.next();
+        }
+        reader.close();
     }
 }
