@@ -25,13 +25,13 @@ All suite shells exported `PATH=/tmp/qa-bin:$PATH`, `CLAUDE_PLUGIN_DATA=/tmp/slo
 |---|---|---|
 | `bash -n plugins/slop-guard/tests/integration/opengrep.sh plugins/slop-guard/tests/opengrep_test.sh` | exit 0 | 0 |
 | `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -S warning plugins/slop-guard/tests/integration/opengrep.sh plugins/slop-guard/tests/opengrep_test.sh` | exit 0, no diagnostics | 0 |
-| `CI= make validate` | exit 2; embedded unit suite 725 passed / 0 failed; config stage 21 validated / 1 failed | 3 config checks; built-in shellcheck unavailable, separately completed above |
+| `CI= make validate` | exit 0; embedded unit suites 725 and 102 passed / 0 failed; config stage 22 validated / 0 failed; All checks passed | 3 config checks; built-in shellcheck unavailable, separately completed above |
 | `plugins/slop-guard/tests/run-tests` | exit 0; 725 passed / 0 failed | 0 |
 | `plugins/sdlc/tests/run-tests` | exit 0; 102 passed / 0 failed | 0 |
 | `bash plugins/slop-guard/tests/catalog_test.sh` | exit 0; 26 passed / 0 failed | 0 |
 | `plugins/slop-guard/scripts/gen-skills --check` | exit 0; deterministic output | 0 |
-| `plugins/slop-guard/scripts/validate-configs` | exit 1; 21 validated / 1 failed | 3 |
-| `SLOPGUARD_IT_REQUIRE=1 make tool-integration` | exit 2; 212 passed / 1 failed / 1 known | 1 |
+| `plugins/slop-guard/scripts/validate-configs` | exit 0; 22 validated / 0 failed | 3 |
+| `SLOPGUARD_IT_REQUIRE=1 make tool-integration` | exit 0; 214 passed / 0 failed / 2 known | 0 |
 | `python3 specs/GH-65-e/qa/gate_test.py` | exit 0; 8 tests, OK | 0 |
 
 Tests before → after: 725 → 733 for the slopguard offline runner plus the explicit new QA unit-suite invocation; the existing runner itself remains at 725 and does not auto-discover `qa/gate_test.py`. Other suite counts above are separate, not added into this comparison. The baseline gate suite did not exist (0 → 8); no existing tests were changed. The new offline-skip test asserts skip behavior and itself passes; it is not a skipped test.
@@ -40,6 +40,6 @@ Tests before → after: 725 → 733 for the slopguard offline runner plus the ex
 1. **[major, blocking] Approved added-line budget exceeded** — `specs/GH-65-e/spec.md:28`; implementation expansion includes `plugins/slop-guard/rules/opengrep/react.yaml:44` and `plugins/slop-guard/tests/integration/opengrep.sh:125`. `git diff origin/fix/gh65-4-runtime...HEAD --numstat -- . ':!specs'` measures **361 added lines**, 41 deleted lines, and 10 non-spec files against the approved **240 added-line / 11-file** budget. The source alone exceeds the line cap; QA evidence is excluded. `qa/scope.log` records the per-file counts. Passing behavior does not approve a larger review surface; the spec was not changed.
 
 ## Not verified
-- A completely green local real-tool suite: the unrelated PHPStan `missingType.return → AP-PHP-MAINT-003` case fails and Psalm is absent, matching the supplied environmental baseline. The unrelated isolated ESLint `anti-slop/no-object-parameters` case passes here (unlike that baseline). The existing zizmor known-failure remains known; no quarantine was edited.
-- Complete baseline-config validation: PHPStan fails because `env.SLOPGUARD_CACHE_DIR` is unavailable inside this host's Docker PHP launcher (`/tmp/qa-bin/php` forwards HOME but not that variable); Psalm, tflint and zizmor config checks skip because unavailable. These paths are unchanged by this ticket. `CI= make validate` stops at that config stage; no later stages are claimed as executed by it.
+- Unquarantined coverage of the existing zizmor checkout and Psalm TaintedSql cases: the real-tool suite reports both as known failures, not passing checks. No quarantine was edited. Psalm became resolvable from the assigned plugin data directory during the corrected rerun, so integration now reports zero skips; this does not establish that the known TaintedSql case works.
+- Complete baseline-config validation: Psalm, tflint and zizmor config checks still report unavailable and skip (3); integration resolution and config validation use different availability paths. PHPStan now passes. After the host PHP launcher's environment-forwarding correction, all three affected commands were rerun once; their current logs supersede the earlier launcher-artifact PHPStan failures. The unrelated isolated ESLint `anti-slop/no-object-parameters` case passes in this run; its supplied baseline failure is flaky-local, not attributed to this ticket.
 - The implementation head `c770c9a181b48111c95d7aa1fd673b628e7b6dd2` has successful CI evidence for the real pinned-tool workflow: [Validate run](https://github.com/emgiezet/aisdlc/actions/runs/42211070613/job/127869550704) and [runner-and-fixture](https://github.com/emgiezet/aisdlc/actions/runs/42211070613/job/127869550568), captured in `qa/pr-head-checks.json`. This is implementation-head evidence, not a claim that the subsequent QA commit's CI has run. No ticket UC depends on an environmental exemption.

@@ -2,21 +2,7 @@
 Plugin root: /tmp/qa-GH-65-e/plugins/slop-guard
 
 PASS  golangci-lint                      
-FAIL  PHPStan                              Fatal error: Uncaught _PHPStan_d6adcb4ac\Nette\InvalidArgumentException: Missing parameter 'env.SLOPGUARD_CACHE_DIR'. in phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php:97
-Stack trace:
-#0 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php(63): _PHPStan_d6adcb4ac\Nette\DI\Helpers::expandParameter('env.SLOPGUARD_C...', Array, NULL, false)
-#1 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php(43): _PHPStan_d6adcb4ac\Nette\DI\Helpers::expandString('%env.SLOPGUARD_...', Array, NULL)
-#2 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/src/Command/CommandHelper.php(225): _PHPStan_d6adcb4ac\Nette\DI\Helpers::expand('%env.SLOPGUARD_...', Array)
-#3 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/src/Command/AnalyseCommand.php(148): PHPStan\Command\CommandHelper::begin(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput), Array, NULL, NULL, Array, '/tmp/qa-GH-65-e...', NULL, NULL, false, true, NULL, NULL, true, true)
-#4 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Command/Command.php(259): PHPStan\Command\AnalyseCommand->execute(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#5 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Application.php(868): _PHPStan_d6adcb4ac\Symfony\Component\Console\Command\Command->run(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#6 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Application.php(261): _PHPStan_d6adcb4ac\Symfony\Component\Console\Application->doRunCommand(Object(PHPStan\Command\AnalyseCommand), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#7 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Application.php(157): _PHPStan_d6adcb4ac\Symfony\Component\Console\Application->doRun(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#8 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/bin/phpstan(116): _PHPStan_d6adcb4ac\Symfony\Component\Console\Application->run()
-#9 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/bin/phpstan(117): _PHPStan_d6adcb4ac\{closure}()
-#10 /tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan(7): require('phar:///tmp/slo...')
-#11 {main}
-  thrown in phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php on line 97
+PASS  PHPStan                            
 SKIP  Psalm                                (tool not installed)
 PASS  ruff                               
 PASS  ESLint                             
@@ -37,6 +23,10 @@ INFO  .gitleaks.toml        — no §9.3 validation row (betterleaks/gitleaks ha
 INFO  eslint.security-overlay.mjs — no §9.3 validation row (covered by the ESLint row above at runtime)
 
 --- Consistency check: rules/mapping/ ---
+PASS  mapping schema: zizmor.yaml (16 rules)
+INFO  consistency check: zizmor.yaml has no rule-catalogue extractor
+PASS  mapping schema: tflint.yaml (12 rules)
+INFO  consistency check: tflint.yaml has no rule-catalogue extractor
 PASS  mapping schema: ruff.yaml (41 rules)
 PASS  mapping schema: pylint.yaml (18 rules)
 INFO  consistency check: pylint.yaml has no rule-catalogue extractor
@@ -58,9 +48,5 @@ PASS  mapping schema: eslint-typed.yaml (5 rules)
 INFO  consistency check: eslint-typed.yaml has no rule-catalogue extractor
 PASS  mapping schema: checkov.yaml (14 rules)
 INFO  consistency check: checkov.yaml has no rule-catalogue extractor
-PASS  mapping schema: zizmor.yaml (16 rules)
-INFO  consistency check: zizmor.yaml has no rule-catalogue extractor
-PASS  mapping schema: tflint.yaml (12 rules)
-INFO  consistency check: tflint.yaml has no rule-catalogue extractor
 
-21 validated, 3 skipped (not validated — tools absent), 1 failed
+22 validated, 3 skipped (not validated — tools absent), 0 failed

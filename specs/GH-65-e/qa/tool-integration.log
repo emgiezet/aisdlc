@@ -33,7 +33,7 @@ slop-guard integration suite
   ok    UC-4: eslint AP-TS-MAINT-009 good fixture (targeted spyOn -> no AP-TS-MAINT-009)
 
 --- medium.sh ---
-  FAIL  phpstan: missingType.return → AP-PHP-MAINT-003: expected AP-PHP-MAINT-003; hook output: 
+  ok    phpstan: missingType.return → AP-PHP-MAINT-003
   ok    phpstan: fully-typed function produces no finding
   ok    golangci-lint: gosec G201 (fmt.Sprintf SQL) → AP-GO-SEC-002
   ok    golangci-lint: parameterised query produces no finding
@@ -219,9 +219,12 @@ slop-guard integration suite
   ok    GH-65-e UC-14: slopguard.migration.not-null-without-default is silent across all good fixtures
 
 --- stop.sh ---
-  skip  psalm: no binary (lockfile name: psalm)
+  known psalm stop-gate: TaintedSql → AP-PHP-SEC-001: expected AP-PHP-SEC-001; hook output: /tmp/qa-GH-65-e/plugins/slop-guard/lib/stop.sh: line 351: warning: command substitution: ignored null byte in input
+slopguard stop-gate: 1 blocker
+git diff HEAD
+  BLOCKER AP-SEC-001 CWE-798 [betterleaks:CredentialInDiff] Secret or credential detected in session diff. Fix: Remove the credential and rotate it; use an environment variable or secret manager
+  ok    psalm stop-gate: parameterised query produces no TaintedSql
   ok    checkov stop-gate: CKV_AWS_57 dir scan → AP-IaC-SEC-001
   ok    checkov stop-gate: compliant TF produces no finding
 
-212 passed, 1 failed, 1 skipped, 1 known
-make: *** [Makefile:301: tool-integration] Error 1
+214 passed, 0 failed, 0 skipped, 2 known

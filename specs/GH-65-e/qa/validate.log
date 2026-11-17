@@ -272,7 +272,7 @@ docs-lookups.json content after note-docs:
 [
   {
     "library": "/laravel/laravel",
-    "ts": "2026-11-17T08:24:26Z"
+    "ts": "2026-11-17T08:30:40Z"
   }
 ]
   ok    note-docs→docs_remember: memory file created (laravel@12.4)
@@ -784,21 +784,7 @@ docs-lookups.json content after note-docs:
 Plugin root: /tmp/qa-GH-65-e/plugins/slop-guard
 
 PASS  golangci-lint                      
-FAIL  PHPStan                              Fatal error: Uncaught _PHPStan_d6adcb4ac\Nette\InvalidArgumentException: Missing parameter 'env.SLOPGUARD_CACHE_DIR'. in phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php:97
-Stack trace:
-#0 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php(63): _PHPStan_d6adcb4ac\Nette\DI\Helpers::expandParameter('env.SLOPGUARD_C...', Array, NULL, false)
-#1 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php(43): _PHPStan_d6adcb4ac\Nette\DI\Helpers::expandString('%env.SLOPGUARD_...', Array, NULL)
-#2 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/src/Command/CommandHelper.php(225): _PHPStan_d6adcb4ac\Nette\DI\Helpers::expand('%env.SLOPGUARD_...', Array)
-#3 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/src/Command/AnalyseCommand.php(148): PHPStan\Command\CommandHelper::begin(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput), Array, NULL, NULL, Array, '/tmp/qa-GH-65-e...', NULL, NULL, false, true, NULL, NULL, true, true)
-#4 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Command/Command.php(259): PHPStan\Command\AnalyseCommand->execute(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#5 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Application.php(868): _PHPStan_d6adcb4ac\Symfony\Component\Console\Command\Command->run(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#6 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Application.php(261): _PHPStan_d6adcb4ac\Symfony\Component\Console\Application->doRunCommand(Object(PHPStan\Command\AnalyseCommand), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#7 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/symfony/console/Application.php(157): _PHPStan_d6adcb4ac\Symfony\Component\Console\Application->doRun(Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Input\ArgvInput), Object(_PHPStan_d6adcb4ac\Symfony\Component\Console\Output\ConsoleOutput))
-#8 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/bin/phpstan(116): _PHPStan_d6adcb4ac\Symfony\Component\Console\Application->run()
-#9 phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/bin/phpstan(117): _PHPStan_d6adcb4ac\{closure}()
-#10 /tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan(7): require('phar:///tmp/slo...')
-#11 {main}
-  thrown in phar:///tmp/slopguard-tools-qa/tools/phpstan/2.2.13/phpstan/vendor/nette/di/src/DI/Helpers.php on line 97
+PASS  PHPStan                            
 SKIP  Psalm                                (tool not installed)
 PASS  ruff                               
 PASS  ESLint                             
@@ -819,6 +805,10 @@ INFO  .gitleaks.toml        — no §9.3 validation row (betterleaks/gitleaks ha
 INFO  eslint.security-overlay.mjs — no §9.3 validation row (covered by the ESLint row above at runtime)
 
 --- Consistency check: rules/mapping/ ---
+PASS  mapping schema: zizmor.yaml (16 rules)
+INFO  consistency check: zizmor.yaml has no rule-catalogue extractor
+PASS  mapping schema: tflint.yaml (12 rules)
+INFO  consistency check: tflint.yaml has no rule-catalogue extractor
 PASS  mapping schema: ruff.yaml (41 rules)
 PASS  mapping schema: pylint.yaml (18 rules)
 INFO  consistency check: pylint.yaml has no rule-catalogue extractor
@@ -840,10 +830,246 @@ PASS  mapping schema: eslint-typed.yaml (5 rules)
 INFO  consistency check: eslint-typed.yaml has no rule-catalogue extractor
 PASS  mapping schema: checkov.yaml (14 rules)
 INFO  consistency check: checkov.yaml has no rule-catalogue extractor
-PASS  mapping schema: zizmor.yaml (16 rules)
-INFO  consistency check: zizmor.yaml has no rule-catalogue extractor
-PASS  mapping schema: tflint.yaml (12 rules)
-INFO  consistency check: tflint.yaml has no rule-catalogue extractor
 
-21 validated, 3 skipped (not validated — tools absent), 1 failed
-make: *** [Makefile:195: validate-slopguard] Error 1
+22 validated, 3 skipped (not validated — tools absent), 0 failed
+Validating plugin manifest: /tmp/qa-GH-65-e/plugins/slop-guard/.claude-plugin/plugin.json
+
+✔ Validation passed
+Validating JSON...
+  ✓ marketplace.json
+  ✓ plugin.json
+  ✓ hooks.json
+  ✓ .agents/plugins/marketplace.json
+  ✓ .grok-plugin/marketplace.json
+  ✓ .omp-plugin/marketplace.json
+  ✓ plugins/sdlc/plugin.json
+  ✓ plugins/slop-guard/plugin.json
+  ✓ evals/harness/scenarios/go-contract-change/scenario.json
+  ✓ evals/harness/scenarios/go-endpoint/scenario.json
+  ✓ evals/harness/scenarios/js-formatter/scenario.json
+  ✓ evals/harness/scenarios/rest-design/scenario.json
+  ✓ evals/harness/scenarios/ui-flow/scenario.json
+Checking plugin name matches the command namespace...
+  ✓ plugin name consistent
+Checking cross-marketplace consistency...
+  ✓ sdlc: found in Codex marketplace
+  ✓ sdlc: Codex source.path ./plugins/sdlc resolves
+  ✓ sdlc: portable manifest name matches
+  ✓ sdlc: found in Grok marketplace
+  ✓ sdlc: Grok source.path ./plugins/sdlc resolves
+  ✓ sdlc: found in omp marketplace
+  ✓ sdlc: omp source ./plugins/sdlc resolves
+  ✓ sdlc: version consistent across hosts (0.18.0)
+  ✓ slop-guard: found in Codex marketplace
+  ✓ slop-guard: Codex source.path ./plugins/slop-guard resolves
+  ✓ slop-guard: portable manifest name matches
+  ✓ slop-guard: found in Grok marketplace
+  ✓ slop-guard: Grok source.path ./plugins/slop-guard resolves
+  ✓ slop-guard: found in omp marketplace
+  ✓ slop-guard: omp source ./plugins/slop-guard resolves
+  ✓ slop-guard: version consistent across hosts (0.6.0)
+Checking omp adapters...
+  ✓ sdlc/package.json
+  ✓ sdlc: package.json version matches plugin.json (0.18.0)
+  ✓ sdlc: omp.extensions[0] ./extensions/omp.mjs exists
+  ✓ slop-guard/package.json
+  ✓ slop-guard: package.json version matches plugin.json (0.6.0)
+  ✓ slop-guard: omp.extensions[0] ./extensions/omp.mjs exists
+  ✓ plugins/sdlc/extensions/omp.mjs syntax ok
+  ✓ plugins/slop-guard/extensions/omp.mjs syntax ok
+Checking required files...
+  ✓ commands/init.md
+  ✓ commands/update.md
+  ✓ commands/slopguard-setup.md
+  ✓ commands/spec.md
+  ✓ commands/decompose.md
+  ✓ commands/mockup.md
+  ✓ commands/implement.md
+  ✓ commands/qa.md
+  ✓ commands/ship.md
+  ✓ commands/review.md
+  ✓ commands/fix-pr.md
+  ✓ commands/review-prs.md
+  ✓ commands/autopilot.md
+  ✓ commands/continue.md
+  ✓ commands/merge.md
+  ✓ commands/merge-buddy.md
+  ✓ commands/followup.md
+  ✓ commands/close-fixed.md
+  ✓ commands/changelog.md
+  ✓ commands/issue.md
+  ✓ commands/triage.md
+  ✓ commands/root-cause.md
+  ✓ commands/fix-issue.md
+  ✓ commands/brainstorm.md
+  ✓ commands/discover.md
+  ✓ commands/synthetic-users.md
+  ✓ commands/backlog.md
+  ✓ commands/ux-shape.md
+  ✓ commands/ux-setup.md
+  ✓ commands/chart.md
+  ✓ commands/test-env.md
+  ✓ commands/integration-tests.md
+  ✓ commands/verify-map.md
+  ✓ commands/ux-review.md
+  ✓ commands/retro.md
+  ✓ commands/arch-review.md
+  ✓ skills/spec-authoring/SKILL.md
+  ✓ skills/task-router/SKILL.md
+  ✓ skills/dense-testing/SKILL.md
+  ✓ skills/harness-eval/SKILL.md
+  ✓ skills/pipeline-contracts/SKILL.md
+  ✓ skills/code-review/SKILL.md
+  ✓ skills/discovery/SKILL.md
+  ✓ skills/architecture-review/SKILL.md
+  ✓ skills/rest-api-design/SKILL.md
+  ✓ skills/graphql-api-design/SKILL.md
+  ✓ skills/security-review/SKILL.md
+  ✓ skills/agent-orchestration/SKILL.md
+  ✓ skills/fleet-loop/SKILL.md
+  ✓ agents/auto-qa.md
+  ✓ agents/code-reviewer.md
+  ✓ templates/trackers/TEMPLATE.md
+  ✓ templates/trackers/github.md
+  ✓ templates/trackers/local.md
+  ✓ templates/browsers/TEMPLATE.md
+  ✓ templates/browsers/playwright.md
+  ✓ templates/browsers/agent-browser.md
+  ✓ templates/verify/TEMPLATE.md
+  ✓ templates/verify/feature-TEMPLATE.md
+  ✓ templates/playbooks/api-endpoint.md
+  ✓ templates/playbooks/db-change.md
+  ✓ templates/playbooks/ui-feature.md
+  ✓ templates/playbooks/service.md
+  ✓ templates/playbooks/infra-change.md
+  ✓ templates/playbooks/testing.md
+  ✓ templates/playbooks/graphql-api.md
+  ✓ templates/CLAUDE.md + templates/sdlc.md
+Checking instruction budgets (task-router skill)...
+  ✓ templates/CLAUDE.md 53 lines
+  ✓ every playbook within 70 lines
+  ✓ every command within 220 lines
+  ✓ every descriptor within 120 lines
+  ✓ browser descriptors have no TODO bodies
+Checking shell scripts...
+  ✓ plugins/sdlc/hooks/run-hook.cmd
+  ✓ plugins/sdlc/hooks/session-start
+  ✓ plugins/sdlc/hooks/guard
+  ✓ plugins/sdlc/bin/aisdlc
+  ✓ evals/harness/run.sh
+  ✓ evals/harness/selftest.sh
+  ✓ evals/harness/stub-claude
+  ✓ evals/harness/stub-gh
+  – shellcheck not installed, skipped
+Running sdlc hook tests...
+sdlc hook test suite
+
+  ok    PreToolUse (Grok): force-push camelCase payload blocked with {decision:deny}
+  ok    PreToolUse (Claude): force-push blocked with exit 2 and reason on stderr
+  ok    PreToolUse (Grok): safe command allows silently (exit 0, no stdout)
+  ok    PreToolUse (Claude): safe command allows silently (exit 0, no stdout)
+  ok    Stop (Grok): deleted test file → advisory on stderr, exits 0, no block
+  ok    Stop (Claude): deleted test file → blocks with exit 2 and reason on stderr
+  ok    SessionStart (Grok): registered command resolves via GROK_PLUGIN_ROOT, exits 0
+  ok    hooks.json: all referenced hook files exist and are executable
+  ok    stop: deletion listed with a reason passes and is reported as retired
+  ok    stop: ledger entry without a reason does not retire the test
+  ok    stop: glob entry retires every matching deletion; comment lines ignored
+  ok    stop: only unlisted deletions are reported
+  ok    stop (headless): a ledger entry written during the run is ignored
+  ok    stop (headless): a ledger entry committed on the default branch retires the test
+  ok    stop: SystemExit( in a test and a skip marker outside test files are not flagged
+  ok    stop: xit( added to a test file is flagged
+  ok    stop: the ledger does not excuse a skipped test
+  ok    guard pre-write UC-1: no marker — writes pass
+  ok    guard pre-write UC-2: marker present — a write outside allow: is denied
+  ok    guard pre-write UC-3: marker present — the map file under allow: passes
+  ok    guard pre-write UC-4: marker present — the marker itself (absolute path) passes
+  ok    guard pre-write UC-5: marker older than 12 h — allowed with a stale advisory
+  ok    guard pre-write UC-6: Grok camelCase payload — deny decision on stdout
+  ok    guard pre-write UC-7: 'specs/../src' does not pass as an allow: prefix
+  ok    omp adapter: destructive bash (git push --force) is blocked with guard message
+  ok    omp adapter: benign bash command is allowed
+  ok    omp adapter: write and edit pass without a planning marker and are gated by one
+  ok    omp adapter: missing hook script allows (fail-open) and decision is null
+  ok    omp adapter: unknown tool (read) spawns nothing and returns undefined
+  ok    omp adapter: turn_end sends an unchanged stop advisory once, and again after a clean turn
+change budget
+  ok    GH-50 UC-2: size: added lines count code only (30+5+7)
+  ok    GH-50 UC-2: size: files touched include the emptied file, exclude vendor/lock/specs
+  ok    GH-50 UC-2: size: module = first two path segments
+  ok    size: module list names the real directories
+  ok    size: vendored and spec paths never reach the module list
+  ok    eval: exactly at budget is clean
+  ok    eval: one line over budget is GAPS
+  ok    eval: past the hard ceiling is BLOCKED
+  ok    eval: thin edits across many modules are named as shotgun surgery
+  ok    eval: a focused change produces no findings
+  ok    eval: a large change inside two modules is over budget but not shotgun surgery
+  ok    GH-59 UC-2a: tolerance=0 shows bare budget limit
+  ok    GH-59 UC-2a: no tolerance suffix when tolerance=0
+  ok    GH-59 UC-3a: added lines past toleranced limit names effective limit
+  ok    GH-59 UC-3b: files past toleranced limit names effective limit
+  ok    GH-59 UC-3c: modules past toleranced limit names effective limit
+  ok    GH-59 UC-4a: added below toleranced limit is clean
+  ok    GH-59 UC-4a: added exactly at toleranced limit is clean
+  ok    GH-59 UC-4b: files exactly at toleranced limit is clean
+  ok    GH-59 UC-4c: modules exactly at toleranced limit is clean
+  ok    GH-59 UC-5: ceiling stays 3000 despite tolerance 100
+  ok    GH-59 UC-5: ceiling line carries no tolerance suffix
+  ok    GH-59 UC-6: 4 modules within toleranced limit 4 — no finding, no shotgun surgery
+  ok    GH-59 UC-8a: Budget column shows 400 +100% with tolerance
+  ok    GH-59 UC-8b: Budget column shows bare 400 with tolerance 0
+  ok    GH-59 UC-10a: verdict GAPS — profile tolerance=50 → limit 180, 181 is over
+  ok    GH-59 UC-10b: scope report uses profile tolerance=50 → effective limit 180
+  ok    GH-59 UC-10c: spec-side Tolerance 1000% absent from scope report
+HEAD is now at c4cb27d branch: 181 added lines
+  ok    GH-59 UC-2b: absent profile Tolerance → run_scope_check defaults 0 → bare over-budget finding
+  ok    budget: the spec's own budget wins
+  ok    budget: the profile answers when the spec is silent
+  ok    budget: the built-in default is the last resort
+  ok    budget: the repo may lower its own hard ceiling
+  ok    GH-59 UC-9a: _budget_profile returns 75 for Tolerance: 75%
+  ok    GH-59 UC-9b: _budget_profile returns empty when label absent
+verify: test file detection
+  ok    test path: evals/harness/selftest.sh
+  ok    test path: selftest.sh
+  ok    test path: scripts/deploy_test.sh
+  ok    test path: lib/test_parse.sh
+  ok    test path: hooks/guard.bats
+  ok    test path: plugins/x/tests/run-tests
+  ok    test path: pkg/stub_test.go
+  ok    test path: src/a.test.ts
+  ok    test path: app/test_api.py
+  ok    source path: evals/harness/run.sh
+  ok    source path: scripts/latest.sh
+  ok    source path: lib/contest.sh
+  ok    source path: plugins/sdlc/bin/aisdlc
+  ok    source path: src/testing.ts
+  ok    source path: docs/test-plan.md
+structure
+  ok    UC-2: before erosion equals 0.00 (formula)
+  ok    UC-2: after erosion equals 0.78 (formula)
+  ok    UC-2: erosion finding names before (0.00) and after (0.78)
+  ok    UC-5: new_hotspot record for CC-27 function absent before
+  ok    UC-5: hotspot25 record for CC-27 function
+  ok    UC-5: new hotspot finding emitted
+  ok    UC-5: hotspot over 25 finding emitted
+  ok    UC-6: no new_hotspot for function already at CC 30
+  ok    UC-6: no hotspot25 for function already above CC 25
+  ok    UC-6: no structure findings for stable CC 30 function
+  ok    UC-7 baseline: findings present with default thresholds
+  ok    UC-7: no finding with relaxed thresholds (0.5 / 1)
+  ok    UC-7: section lists GoFunc with CC 8 -> 14 despite no findings
+  ok    UC-1 SLOC: hotspot table includes SLOC value (100)
+  ok    UC-3 unit: skip body is 'skipped: lizard not installed'
+  ok    NF _budget_profile_float: Erosion delta max returns 0.5
+  ok    NF _budget_profile_float: New hotspots max returns 1
+  ok    NF _budget_profile_float: missing label returns empty (built-in default applies)
+  ok    NF lizard unparseable: garbage output yields 'skipped: lizard failed (unparseable output)'
+  ok    NF lizard real format: header-less quoted row accepted (not skipped)
+  ok    NF lizard real format: CCN column parsed (g CC=12 yields new_hotspot)
+  ok    NF lizard real format: f CCN=2 NLOC=6 is read (erosion 0.71 confirms f's mass)
+
+102 passed, 0 failed
+All checks passed.
