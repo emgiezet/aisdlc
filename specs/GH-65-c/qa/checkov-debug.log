@@ -1,0 +1,3 @@
+  ok    checkov (M): S3 without event notifications → AP-TF-SEC-018
+  ok    checkov (M): compliant TF produces no finding
+2 passed, 0 failed, 0 skipped, 0 known
