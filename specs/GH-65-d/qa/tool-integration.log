@@ -1,0 +1,96 @@
+slop-guard integration suite
+
+--- fast.sh ---
+  ok    ruff: SQL injection (bad fixture -> AP-PY-SEC-001)
+  ok    ruff: clean Python (good fixture -> silence)
+  ok    eslint: eval with user input (bad fixture -> AP-TS-SEC-002)
+  ok    eslint: clean React component (good fixture -> silence)
+  ok    hadolint: FROM ubuntu:latest (bad fixture -> AP-DOCKER-001)
+  ok    hadolint: compliant Dockerfile (good fixture -> silence)
+  ok    kube-linter: privileged container (bad fixture -> AP-K8S-001)
+  ok    kube-linter: compliant deployment (good fixture -> silence)
+  known zizmor: checkout without persist-credentials:false (bad fixture -> AP-CI-005): expected AP-CI-005; hook output: 
+  ok    zizmor: SHA-pinned workflow (good fixture -> silence)
+  ok    UC-3: eslint anti-slop/no-chained-type-assertions (bad fixture -> AP-TS-MAINT-005)
+  ok    UC-4: eslint anti-slop/require-safety-comment-for-type-assertion (bad fixture -> AP-TS-MAINT-005)
+  ok    UC-5: eslint anti-slop/no-known-value-widening (bad fixture -> AP-TS-MAINT-006)
+  ok    UC-6: eslint anti-slop good fixture (SAFETY-commented -> no AP-TS-MAINT-005 or -006)
+  ok    UC-6: eslint anti-slop/AP-TS-MAINT-006 good fixture (no widening -> no AP-TS-MAINT-006)
+  ok    UC-1a: anti-slop/no-unknown-parameters (isolated -> AP-TS-MAINT-007)
+  ok    UC-1b: anti-slop/no-unknown-type-aliases (isolated -> AP-TS-MAINT-007)
+  ok    UC-2: anti-slop/no-unknown-returns (isolated -> AP-TS-MAINT-007)
+  ok    UC-3: anti-slop/no-object-parameters (isolated -> AP-TS-MAINT-007)
+  ok    UC-4: anti-slop/no-unsafe-dictionary-type (isolated -> AP-TS-MAINT-007)
+  ok    UC-5: anti-slop/no-reflect-get (isolated -> AP-TS-MAINT-008)
+  ok    UC-6: anti-slop/no-reflect-apply (isolated -> AP-TS-MAINT-008)
+  ok    UC-7: AP-TS-MAINT-007 concrete types and direct access stay quiet
+  ok    UC-7: AP-TS-MAINT-008 concrete types and direct access stay quiet
+  ok    UC-1: AP-TS-MAINT-007 combined bad fixture reports its rule
+  ok    UC-1: AP-TS-MAINT-008 combined bad fixture reports its rule
+  ok    UC-1: eslint anti-slop/no-reduce-accumulator-copy (bad fixture -> AP-TS-PERF-005)
+  ok    UC-2: eslint AP-TS-PERF-005 good fixture (in-place accumulator -> no AP-TS-PERF-005)
+  ok    UC-3: eslint anti-slop/no-module-mocking (bad fixture -> AP-TS-MAINT-009)
+  ok    UC-4: eslint AP-TS-MAINT-009 good fixture (targeted spyOn -> no AP-TS-MAINT-009)
+
+--- medium.sh ---
+  FAIL  phpstan: missingType.return → AP-PHP-MAINT-003: expected AP-PHP-MAINT-003; hook output: 
+  ok    phpstan: fully-typed function produces no finding
+  ok    golangci-lint: gosec G201 (fmt.Sprintf SQL) → AP-GO-SEC-002
+  ok    golangci-lint: parameterised query produces no finding
+  ok    tflint: missing required_version → AP-TF-MAINT-003
+  ok    tflint: versioned module produces no finding
+  ok    checkov (M): S3 without event notifications → AP-TF-SEC-018
+  ok    checkov (M): compliant TF produces no finding
+  ok    opengrep: as unknown as T → AP-TS-MAINT-001
+  ok    opengrep: check_id prefix stripped; mapping matched by bare rule id
+  ok    opengrep: schema-typed boundary produces no finding
+
+--- opengrep.sh ---
+  ok    GH-65-a UC-4: OpenGrep scan succeeds with valid error-free JSON
+  ok    GH-65-a UC-1: slopguard.cs.process-start-user-input detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.process-start-user-input is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.path-traversal detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.path-traversal is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.crypto-weak-algorithm detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.crypto-weak-algorithm is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.insecure-random detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.insecure-random is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.xxe-xml detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.xxe-xml is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.ldap-injection detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.ldap-injection is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.unsafe-block detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.unsafe-block is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.raw-pointer-deref detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.raw-pointer-deref is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.mem-transmute detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.mem-transmute is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.from-utf8-unchecked detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.from-utf8-unchecked is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.command-injection detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.command-injection is silent across all good fixtures
+  ok    GH-65-b UC-5: SAFETY string does not suppress unsafe-block detection
+  ok    GH-65-c UC-7: slopguard.ruby.send-user-input detects its bad fixture
+  ok    GH-65-c UC-8: slopguard.ruby.send-user-input is silent across all good fixtures
+  ok    GH-65-c UC-7: slopguard.ruby.mass-assignment-without-permit detects its bad fixture
+  ok    GH-65-c UC-8: slopguard.ruby.mass-assignment-without-permit is silent across all good fixtures
+  ok    GH-65-c UC-7: slopguard.ruby.sql-string-interpolation detects its bad fixture
+  ok    GH-65-c UC-8: slopguard.ruby.sql-string-interpolation is silent across all good fixtures
+  ok    GH-65-c UC-7: slopguard.ruby.insecure-random detects its bad fixture
+  ok    GH-65-c UC-8: slopguard.ruby.insecure-random is silent across all good fixtures
+  ok    GH-65-d UC-9: slopguard.jvm.jackson-default-typing detects its bad fixture
+  ok    GH-65-d UC-10: slopguard.jvm.jackson-default-typing is silent across all good fixtures
+  ok    GH-65-d UC-9: slopguard.jvm.xml-external-entity detects its bad fixture
+  ok    GH-65-d UC-10: slopguard.jvm.xml-external-entity is silent across all good fixtures
+  ok    GH-65-d UC-9: slopguard.go.http-client-without-timeout detects its bad fixture
+  ok    GH-65-d UC-10: slopguard.go.http-client-without-timeout is silent across all good fixtures
+  ok    GH-65-d UC-9: slopguard.node.prototype-pollution-merge detects its bad fixture
+  ok    GH-65-d UC-10: slopguard.node.prototype-pollution-merge is silent across all good fixtures
+
+--- stop.sh ---
+  skip  psalm: no binary (lockfile name: psalm)
+  ok    checkov stop-gate: CKV_AWS_57 dir scan → AP-IaC-SEC-001
+  ok    checkov stop-gate: compliant TF produces no finding
+
+81 passed, 1 failed, 1 skipped, 1 known
+make: *** [Makefile:301: tool-integration] Error 1
