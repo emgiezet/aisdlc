@@ -1,0 +1,8 @@
+GH-65-b independent acceptance observations
+
+UC-5: Scan a copied fixture tree with the complete rules/opengrep directory using the pinned OpenGrep binary. Require at least one finding with the exact Rust rule ID on its own numbered bad fixture for unsafe-block (001), raw-pointer-deref (005), mem-transmute (006), from-utf8-unchecked (007), and command-injection (008).
+UC-6: In that scan each of the five Rust rule IDs must have zero findings anywhere under /good/. Retain and execute all inherited C# positive/negative checks.
+Non-functional: Preserve pinned version, copied-tree scanning and rejection of failed scans, malformed JSON and scan errors. Bad fixtures contain actual unsafe operations; good fixtures show documented unsafe FFI, reference dereferencing, from_bits, checked UTF-8 and allowlisted process arguments. No catalogue IDs, mappings, pins, generated skills or dispatch changes.
+Budget relative to origin/fix/gh65-1-csharp, excluding specs/: at most 270 added lines, 13 files and 2 modules.
+
+Spec read before implementation diff and tests. Existing real-binary tests cover both UCs exactly; no additional coverage-gap tests are needed.
