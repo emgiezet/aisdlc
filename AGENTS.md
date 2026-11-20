@@ -24,4 +24,4 @@ and burns context you will need for the code.
 | Verify an implementation against its spec | `$qa <TICKET>` |
 | Open a draft PR with the QA verdict | `$ship <TICKET>` |
 
-The unattended queue (`aisdlc run`) is Claude-only and is not available in Codex.
+The unattended queue (`aisdlc run`) runs on omp or Claude Code; it is not available in Codex.
