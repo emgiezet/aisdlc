@@ -28,6 +28,8 @@ printf 'sdlc hook test suite\n\n'
 . "${TESTS_DIR}/test_path_test.sh"
 # shellcheck source=structure_test.sh
 . "${TESTS_DIR}/structure_test.sh"
+# shellcheck source=symlink_install_test.sh
+. "${TESTS_DIR}/symlink_install_test.sh"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
