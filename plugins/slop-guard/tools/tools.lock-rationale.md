@@ -70,8 +70,8 @@ this bundle's `^20.19.0 || ^22.13.0 || >=24` floor or local Node 24.0.2.
 Keep regexp 2.10.0 rather than override outside its range, ignore EBADENGINE,
 or raise the supported Node floor to force a major upgrade.
 
-TypeScript 7 is excluded by this bundle's typescript-eslint 8.43.0 peer range
-`>=4.8.4 <6.0.0`; even 8.72.1 only widens that upper bound to `<6.1.0`.
+TypeScript 7 is excluded by this bundle's typescript-eslint 8.72.1 peer range
+`>=4.8.4 <6.1.0`.
 Psalm 7 remains outside the seven-day hold: stable 7.0.0–7.0.4 were published
 November 2–6. Its PHP requirement is not the blocker (`~8.3.16` permits CI).
 
