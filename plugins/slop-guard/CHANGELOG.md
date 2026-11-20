@@ -3,6 +3,26 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **Upgrade compatible ESLint plugin majors** (2026-11-06)
+  - `tools/node/{package.json,package-lock.json}`: eslint-plugin-react-hooks 7.1.1,
+    eslint-plugin-security 4.2.1 and eslint-plugin-n 18.5.0; lock regenerated with
+    scripts disabled and strict peer dependency resolution. Node now requires
+    `^20.19.0 || ^22.13.0 || >=24`, matching eslint-plugin-n 18 (CI uses Node 22).
+  - `tools/tools.lock.json` and the npm bundle: ESLint and @eslint/js 9.39.5,
+    the newest eligible 9.x release, accepted by every plugin's peer range.
+  - **Why only three majors?** eslint-plugin-react 7.37.5 supports ESLint only
+    through `^9.7`; typescript-eslint 8.72.1 supports TypeScript `>=4.8.4 <6.1.0`.
+    ESLint 10 and TypeScript 7 therefore stay out. regexp 3 is blocked by transitive
+    jsdoc-type-pratt-parser 9.x requiring Node `^22.22.2 || >=24.15.0`; that excludes
+    supported Node 20 and early Node 22/24, so regexp remains 2.10.0.
+    Psalm 7.0.0–7.0.4 were published Nov 2–6, inside the seven-day hold, so Psalm
+    remains 6.16.1. Psalm 7's PHP requirement includes `~8.3.16`, compatible with CI.
+    No baseline config migration is required for the three adopted plugins.
+  - Explicit baseline rule names are unchanged, but upstream coverage tightens:
+    hooks checks more `use`/effect-event misuse; security detects more child-process,
+    filesystem, template-require and RegExp calls; n updates deprecated API data.
+  - The regenerated npm lock applies the seven-day publication hold to transitive
+    dependencies too, with cutoff `2026-10-30T09:56:41Z`.
 - **Refresh minor/patch analyzer pins** (2026-11-06)
   - `tools/tools.lock.json`: Betterleaks 1.9.0, golangci-lint 2.15.0, hadolint 2.15.1,
     jscpd 5.4.2, PHPStan 2.3.4, tflint 0.65.0 and zizmor 1.31.1; every platform's
