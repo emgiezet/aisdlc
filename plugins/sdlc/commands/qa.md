@@ -70,9 +70,18 @@ Then re-run the affected suites and refresh the matrix with the real numbers.
 
 ## Phase 3: Report
 
-Write `specs/<TICKET>/qa-report.md` in the `auto-qa` format: verdict on the first line, UC
-coverage table, exact suite output with skip counts, per-tier counts of new tests, numbered
-findings with file and line, and an explicit "Not verified" section.
+Write `specs/<TICKET>/qa-report.md` in the `auto-qa` format. Its first two lines are exactly:
+
+```markdown
+# QA report — <TICKET>
+Verdict: PASS
+```
+
+or `Verdict: GAPS (<n> findings, <n> blocking)` on the second line. Write the verdict line
+plain, starting with `Verdict:` — no bold, no bare `PASS`: `/sdlc:merge` gate 4 and
+`/sdlc:retro` read the verdict from a line starting `Verdict:` (`pipeline-contracts`).
+Then: UC coverage table, exact suite output with skip counts, per-tier counts of new tests,
+numbered findings with file and line, and an explicit "Not verified" section.
 
 Verdict rules:
 
