@@ -23,6 +23,19 @@ All notable changes to Slop Guard will be documented in this file.
     filesystem, template-require and RegExp calls; n updates deprecated API data.
   - The regenerated npm lock applies the seven-day publication hold to transitive
     dependencies too, with cutoff `2026-10-30T09:56:41Z`.
+- **Refresh minor/patch analyzer pins** (2026-11-06)
+  - `tools/tools.lock.json`: Betterleaks 1.9.0, golangci-lint 2.15.0, hadolint 2.15.1,
+    jscpd 5.4.2, PHPStan 2.3.4, tflint 0.65.0 and zizmor 1.31.1; every platform's
+    SHA-256 recomputed from a local release-asset download.
+  - `tools/python/{requirements.in,requirements.lock}`: Ruff 0.17.3 and Checkov 3.4.0,
+    regenerated with uv's universal Python 3.9 hash-pinned compile command.
+  - `tools/node/{package.json,package-lock.json}`: typescript-eslint 8.72.1 and
+    eslint-plugin-no-unsanitized 4.1.5; npm lock regenerated with scripts disabled.
+  - `tests/tool-integration`: the debug wrapper records both streams without mixing
+    PHPStan's new Turbo diagnostic on stderr into the JSON consumed from stdout.
+  - **Why not every latest tag?** The seven-day publication hold excludes Ruff 0.17.4,
+    Checkov 3.4.1–3.4.3, Betterleaks 1.10.0, PHPStan 2.3.5 and zizmor 1.32.0.
+    Opengrep, kube-linter, jq and shellcheck remain unchanged.
 
 - **Double-cast detection, AP-AGENT-011, deslop duplicate check — and the Opengrep pass actually runs** (2026-10-20, #63)
   - `rules/opengrep/react.yaml`: `slopguard.ts.double-cast` matches `$X as unknown as $T` and `<$T>(<unknown>$X)` → AP-TS-MAINT-001, severity `error` (a single `as` stays `warn` via ESLint). The catalogue entry's `detect:` and `bad:`/`good:` show the validate → widen → assert-back detour. Fixtures `tests/fixtures/ts/{bad,good}/AP-TS-MAINT-001.ts`: 3 hits / 0 hits against opengrep 1.30.0.
