@@ -54,7 +54,7 @@ if it_skip_unless_tool eslint-stack; then
         "$(cat "${_IT_FIXTURES}/ts/bad/eval.ts")"
     _fast_out=$(it_run "$_fast_proj" "${_fast_proj}/app.ts" fast)
     it_expect_ap "$_fast_out" AP-TS-SEC-002 \
-        "eslint: eval with user input (bad fixture -> AP-TS-SEC-002)"
+        "GH-78 UC-3: eslint eval with user input (bad fixture -> AP-TS-SEC-002)"
 
     it_project eslint-good; _fast_proj="$_IT_CUR_PROJ"
     it_skip_unless_tool eslint-stack
@@ -64,7 +64,7 @@ if it_skip_unless_tool eslint-stack; then
         "$(cat "${_IT_FIXTURES}/ts/good/sample.tsx")"
     _fast_out=$(it_run "$_fast_proj" "${_fast_proj}/app.tsx" fast)
     it_expect_silent "$_fast_out" \
-        "eslint: clean React component (good fixture -> silence)"
+        "GH-78 UC-4: eslint clean React component (good fixture -> silence)"
 fi
 
 # --------------------------------------------------------------------------- #
