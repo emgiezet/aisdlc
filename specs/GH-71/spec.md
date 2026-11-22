@@ -28,6 +28,7 @@ Change budget: 160 added lines, 12 files, 6 modules
 - `plugins/sdlc/bin/aisdlc` — `cmd_add`, `resolve_default`, `check_runtime`, and the worker's persisted runtime.
 - `evals/harness/selftest.sh` — offline exercising of the real runner with controlled `PATH` and runtime subprocesses.
 - `docs/ai-sdlc.md`, `README.md`, `plugins/sdlc/commands/init.md`, `plugins/sdlc/commands/update.md` — operator and config-generation contract.
+- `AGENTS.md`, `plugins/sdlc/templates/AGENTS.md`, `plugins/sdlc/skills/fleet-loop/SKILL.md` — supported runtimes and preflight.
 
 ## Acceptance criteria
 
