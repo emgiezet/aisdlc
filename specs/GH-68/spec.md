@@ -21,7 +21,9 @@ Out:
 - Changes to AP definitions, analyzer behavior, hook routing, or the security review agent's tool permissions.
 - A second host-specific copy of the skills, or live model calls in the regression suite.
 
-Change budget: 250 added lines, 15 files, 6 modules
+Change budget: 250 added lines, 26 files, 6 modules
+
+The file count includes 13 checked-in files regenerated from the same generator fix; the runner's size filter counts these `SKILL.md` paths.
 
 ## Context
 
