@@ -570,7 +570,7 @@ Zasady:
 
 ### 4.8 Plik konfiguracyjny stosu — `rules/stacks.json`
 
-Jeden obiekt JSON kluczowany tagami stosu. Jest to **jedyne źródło prawdy** dla tagów stosu — `lib/detect.sh`, walidacja `.slopguard.json`, routing skilli i dobór reguł Opengrep czytają ten plik zamiast twardych kodowań w każdym z handlerów. Ścieżka nadpisywalna przez zmienną `SLOPGUARD_STACKS_JSON`, co pozwala testom wskazać inny plik bez modyfikacji kodu.
+Jeden obiekt JSON kluczowany tagami stosu. Jest to **jedyne źródło prawdy** dla tagów stosu — `lib/detect.sh`, walidacja `.slopguard.json` i dobór reguł Opengrep czytają ten plik. Host dobiera przenośne skille na podstawie opisów, nie tego pliku. Ścieżka nadpisywalna przez `SLOPGUARD_STACKS_JSON`.
 
 Schemat wpisu:
 
@@ -595,8 +595,8 @@ Pola:
 - `anchors` — co najmniej jedno z: `files` (dokładne nazwy pliku w katalogu głównym), `globs` (glob shella w katalogu głównym), `dirs` (katalogi w katalogu głównym), `manifest` (mapa plik → lista podciągów; wykrycie gdy dowolny podciąg pasuje). Wpisy `anchors` są zestawiane operatorem **OR** — wystarczy, że jeden pasuje. Wymagane.
 - `requires` (opcjonalne) — tag musi być niezależnie wykryty, żeby ten tag był aktywny. Bramka detekcji dla `laravel`/`symfony`/`doctrine` → `php` oraz `typescript`/`react`/`vite`/`express` → `node`.
 - `implies` (opcjonalne) — tagi aktywowane automatycznie po wykryciu tego tagu. Stosowane dla `helm` → `["kubernetes"]`. `implies` nie jest bramką detekcji — nie blokuje wykrycia tagu nadrzędnego.
-- `globs` — wzorce plików należące do stosu, używane w Etapie 5 do routingu skilli i reguł Opengrep.
-- `skill` — nazwa katalogu skilla pod `plugins/slop-guard/skills/`.
+- `globs` — wzorce plików należących do stosu, używane do doboru reguł Opengrep.
+- `skill` — nazwa katalogu skilla; generator nie używa jej do routingu według ścieżek.
 
 Przykładowy plik obejmujący jeden język tier 1, framework z `requires`, tag z `implies` i język tier 2:
 

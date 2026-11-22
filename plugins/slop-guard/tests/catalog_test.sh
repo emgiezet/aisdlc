@@ -245,16 +245,40 @@ for skill_dir in "${SKILLS_DIR}"/*/; do
 done
 [ "$SKILLS_OVER_BUDGET" -eq 0 ] && ok "all generated SKILL.md files within §3 budgets (150 lines, 3000 tokens)"
 
+TMP_IDEMPOTENT="$(mktemp -d)"
+trap 'rm -rf "$TMP_IDEMPOTENT"' EXIT
+
 # ─── 9. Shipped and freshly generated skills load as YAML metadata ─────────────
-if frontmatter_output="$("${PYTHON:-python3}" "${PLUGIN_ROOT}/evals/skill-frontmatter.py" 2>&1)"; then
-    ok "skill frontmatter eval: ${frontmatter_output}"
+FRONTMATTER_EVAL="${PLUGIN_ROOT}/evals/skill-frontmatter.py"
+if frontmatter_output="$("${PYTHON:-python3}" "$FRONTMATTER_EVAL" 2>&1)"; then
+    while IFS= read -r result; do
+        case "$result" in
+            generated:*) ok "GH-68 UC-1: $result" ;;
+            shipped:*) ok "GH-68 UC-2: $result" ;;
+        esac
+    done <<< "$frontmatter_output"
 else
-    bad "skill frontmatter eval" "$frontmatter_output"
+    bad "GH-68 UC-1/UC-2: skill frontmatter eval" "$frontmatter_output"
+fi
+
+# Put an otherwise valid skill with a host-specific key in a throwaway package.
+FM_PLUGIN="${TMP_IDEMPOTENT}/frontmatter"
+mkdir -p "${FM_PLUGIN}/evals" "${FM_PLUGIN}/scripts" "${FM_PLUGIN}/skills/nonportable"
+cp "$FRONTMATTER_EVAL" "${FM_PLUGIN}/evals/"
+cp "$GEN_SKILLS" "${FM_PLUGIN}/scripts/"
+cp -R "${SKILLS_DIR}/agent-discipline" "${FM_PLUGIN}/skills/"
+printf '%s\n' '---' 'name: nonportable' 'description: Valid description' \
+    'context: fork' '---' > "${FM_PLUGIN}/skills/nonportable/SKILL.md"
+if frontmatter_output="$(SLOPGUARD_CATALOG="$CATALOG" "${PYTHON:-python3}" \
+    "${FM_PLUGIN}/evals/skill-frontmatter.py" 2>&1)"; then
+    bad "GH-68 UC-3: reject host-specific metadata" "invalid skill was accepted"
+elif grep -Fxq 'FAIL shipped/nonportable: unexpected frontmatter field(s): context' <<< "$frontmatter_output"; then
+    ok "GH-68 UC-3: reject host-specific metadata with a diagnostic"
+else
+    bad "GH-68 UC-3: reject host-specific metadata" "$frontmatter_output"
 fi
 
 # ─── 10. gen-skills idempotency (run twice, diff SKILL.md files) ──────────────
-TMP_IDEMPOTENT="$(mktemp -d)"
-trap 'rm -rf "$TMP_IDEMPOTENT"' EXIT
 
 # Snapshot current SKILL.md hashes
 find "$SKILLS_DIR" -name 'SKILL.md' | sort | xargs md5sum 2>/dev/null \
@@ -268,7 +292,7 @@ find "$SKILLS_DIR" -name 'SKILL.md' | sort | xargs md5sum 2>/dev/null \
     | sed "s|${SKILLS_DIR}/||g" > "${TMP_IDEMPOTENT}/after.md5"
 
 if diff -q "${TMP_IDEMPOTENT}/before.md5" "${TMP_IDEMPOTENT}/after.md5" >/dev/null 2>&1; then
-    ok "gen-skills is idempotent (second run produced identical SKILL.md files)"
+    ok "GH-68 UC-4: gen-skills is idempotent (second run produced identical SKILL.md files)"
 else
     bad "gen-skills idempotency" "SKILL.md hashes differ between first and second run"
     diff "${TMP_IDEMPOTENT}/before.md5" "${TMP_IDEMPOTENT}/after.md5" | head -10
