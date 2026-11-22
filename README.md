@@ -74,8 +74,8 @@ For an immediate `slopguard` shell command, run
 `CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true slopguard deps-check` to query registries;
 without that flag, dependency checks make no network requests.
 
-Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI (for the queue runner). `gh` only for the
-`github` tracker; without one `/sdlc:init` selects the file-backed `local` provider.
+Requires `git` ≥ 2.31, `jq`, `flock`, and `omp` or `claude` for the queue runner. `gh` is only
+for the `github` tracker; without it `/sdlc:init` selects the file-backed `local` provider.
 
 ### 🔐 Credentials for the queue runner
 

@@ -130,6 +130,7 @@ If `/sdlc:init --discovery` wrote a `## Definition of Ready` block, leave it exa
 
 - Add **absent** keys with the defaults `aisdlc help` prints, except `base`, which comes from this
   repo: `git symbolic-ref --short refs/remotes/origin/HEAD` (fall back to the checked-out branch).
+  Leave `runtime` absent unless already pinned, as `/sdlc:init` does; absence selects `auto`.
 - **Never rewrite a value that is there.** A budget someone lowered on purpose stays lowered; a
   `readiness_min` someone configured stays configured.
 - No `.aisdlc/config.json` at all → write one with those keys. The runner works without it; the

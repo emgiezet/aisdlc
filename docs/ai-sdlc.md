@@ -487,11 +487,11 @@ The harness runs on Claude Code, Codex, Grok, and omp. The queue runner runs on 
 | Unattended queue (`aisdlc run`) | ✓ | — | — | ✓ |
 | `Stop` hook (test-deletion guard) | blocking | blocking | advisory (exit 0, stderr) | — |
 | `PreToolUse` hooks (force-push guard, secrets) | blocking | blocking | blocking | extension adapter |
-| Model roles (`model_roles`) | queue phases + `sdlc-scribe` delegation | — | — | `sdlc-scribe` delegation; optional `@role` aliases |
+| Model roles (`model_roles`) | queue phases + `sdlc-scribe` delegation | — | — | queue phases + `sdlc-scribe` delegation; optional `@role` aliases |
 
 On omp, hook enforcement arrives through an extension module (`plugins/<name>/extensions/omp.mjs`, declared via `package.json` → `omp.extensions`) that translates omp's `tool_call` events into calls to the same bash policies Claude and Grok use. Without that adapter the plugin installs as documentation with zero enforcement — omp has no `hooks/hooks.json` surface.
 
-Where `model_roles` is configured, `close-fixed`, `merge-buddy` and `changelog` hand their collection step to the `sdlc-scribe` agent — which needs a host that runs subagents, so Claude Code and omp only. Claude Code resolves that agent's model from its frontmatter; omp additionally resolves `@role` aliases through the optional `modelRoles` mapping in `.omp/config.yml` (see `plugins/sdlc/templates/omp/config.yml` for a copy-and-edit example). Codex and Grok expose no subagent model surface, so the delegation never fires there and the collection runs inline; the phase mapping reaches only the queue, which is Claude-only regardless.
+Where `model_roles` is configured, `close-fixed`, `merge-buddy` and `changelog` delegate collection to `sdlc-scribe` on Claude Code and omp, and run inline on Codex and Grok. Claude Code resolves the agent's model from its frontmatter; omp additionally resolves `@role` aliases through `modelRoles` in `.omp/config.yml` (see `plugins/sdlc/templates/omp/config.yml`). The queue's phase mapping works on both supported runtimes.
 
 `/sdlc:init` writes both `CLAUDE.md` and `AGENTS.md` into the target repository. `AGENTS.md`
 is the Codex entry point: it points Codex agents at the same three-tier instruction hierarchy
