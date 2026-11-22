@@ -2,29 +2,29 @@
   "schema": 1,
   "tools": {
     "betterleaks": {
-      "version": "1.9.0",
+      "version": "1.10.1",
       "assets": {
         "linux-amd64": {
-          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_linux_x64.tar.gz",
-          "sha256": "f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7"
+          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.10.1/betterleaks_1.10.1_linux_x64.tar.gz",
+          "sha256": "c174b42d7aa60caf58c0c3e555c0e4bed01fe6b0d99a412bce777b5af4ce913e"
         },
         "linux-arm64": {
-          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_linux_arm64.tar.gz",
-          "sha256": "1d39116e0a58dc94574715e2aa12a2dbd5062f193eee3fec011fef6ba06bd13b"
+          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.10.1/betterleaks_1.10.1_linux_arm64.tar.gz",
+          "sha256": "62a63199f9f61a6b5e5a6f58f048493db20fbc8c770014f4d903a4d97886e1bf"
         },
         "darwin-amd64": {
-          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_darwin_x64.tar.gz",
-          "sha256": "68dfd83458d9e7f90663daa7a81c7f944083b170dae82e4f5f8d0581ed519ef1"
+          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.10.1/betterleaks_1.10.1_darwin_x64.tar.gz",
+          "sha256": "1ae2e3885d161918d8ad2e911e205e73f0d9ffba52c85b38126586c52d355ef4"
         },
         "darwin-arm64": {
-          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_darwin_arm64.tar.gz",
-          "sha256": "83dd7eaab13d44a1e8e347a17064cdef153a1478db473276d41b38d55613d3f2"
+          "url": "https://github.com/betterleaks/betterleaks/releases/download/v1.10.1/betterleaks_1.10.1_darwin_arm64.tar.gz",
+          "sha256": "ca91eb3b006f15478411f235b5e2712fb15cea74f6701ebadc2364efe0af1403"
         }
       },
       "bin": "betterleaks"
     },
     "checkov": {
-      "version": "3.4.0",
+      "version": "3.4.3",
       "python_lock": "tools/python/requirements.lock",
       "bin": "checkov"
     },
@@ -100,24 +100,24 @@
       "bin": "jq"
     },
     "jscpd": {
-      "version": "5.4.2",
+      "version": "5.4.3",
       "bin": "jscpd",
       "assets": {
         "linux-amd64": {
-          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.2/jscpd-linux-x64-gnu.tar.gz",
-          "sha256": "216bae5de2b30c57f893286585c7a348e8af7cd36810949831f569d29f495a3b"
+          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.3/jscpd-linux-x64-gnu.tar.gz",
+          "sha256": "a19d719331b21a047a7537f982566dabcf6d6e5f51581c3b80d9c420979cc92c"
         },
         "linux-arm64": {
-          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.2/jscpd-linux-arm64-gnu.tar.gz",
-          "sha256": "f796d57334c34e9361575588ee130f8b0a00388e7e42f3b27f7d50d4aecf85ae"
+          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.3/jscpd-linux-arm64-gnu.tar.gz",
+          "sha256": "221a62a254ab4cc42f26e076943ca79ecd311ae41646a76a08e4b790ed8c5fbe"
         },
         "darwin-amd64": {
-          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.2/jscpd-darwin-x64.tar.gz",
-          "sha256": "ae8d24aba2719df7682b1bb2c5021ab096116b8240c45fdae88654fc1ff36b17"
+          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.3/jscpd-darwin-x64.tar.gz",
+          "sha256": "7e5b81a0b30f1d261bf9cd8d8e72be43f0ce55a54a9374f1111123bb29362362"
         },
         "darwin-arm64": {
-          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.2/jscpd-darwin-arm64.tar.gz",
-          "sha256": "b51d22d7c7610d27d8fd022577021ff3266a10f13295a2e545a8b8e126133a88"
+          "url": "https://github.com/kucherenko/jscpd/releases/download/v5.4.3/jscpd-darwin-arm64.tar.gz",
+          "sha256": "e119c4c5388118ad348a799c478589f7ad0fa707c0b7c819d6febc94f6f98522"
         }
       }
     },
@@ -166,24 +166,24 @@
       "bin": "opengrep"
     },
     "phpstan": {
-      "version": "2.3.4",
+      "version": "2.3.5",
       "bin": "phpstan",
       "assets": {
         "linux-amd64": {
-          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.4/phpstan.phar",
-          "sha256": "a961d12cc71941a31ad6560e6a330347d487612628c3202a718f71a59de21a7c"
+          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.5/phpstan.phar",
+          "sha256": "4b3ed7850a20b092331bd1040e4f54a1d3c0559b4cf006431073997ebcb4324b"
         },
         "linux-arm64": {
-          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.4/phpstan.phar",
-          "sha256": "a961d12cc71941a31ad6560e6a330347d487612628c3202a718f71a59de21a7c"
+          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.5/phpstan.phar",
+          "sha256": "4b3ed7850a20b092331bd1040e4f54a1d3c0559b4cf006431073997ebcb4324b"
         },
         "darwin-amd64": {
-          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.4/phpstan.phar",
-          "sha256": "a961d12cc71941a31ad6560e6a330347d487612628c3202a718f71a59de21a7c"
+          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.5/phpstan.phar",
+          "sha256": "4b3ed7850a20b092331bd1040e4f54a1d3c0559b4cf006431073997ebcb4324b"
         },
         "darwin-arm64": {
-          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.4/phpstan.phar",
-          "sha256": "a961d12cc71941a31ad6560e6a330347d487612628c3202a718f71a59de21a7c"
+          "url": "https://github.com/phpstan/phpstan/releases/download/2.3.5/phpstan.phar",
+          "sha256": "4b3ed7850a20b092331bd1040e4f54a1d3c0559b4cf006431073997ebcb4324b"
         }
       }
     },
@@ -210,7 +210,7 @@
       }
     },
     "ruff": {
-      "version": "0.17.3",
+      "version": "0.17.5",
       "python_lock": "tools/python/requirements.lock",
       "bin": "ruff"
     },
@@ -237,46 +237,46 @@
       "bin": "shellcheck"
     },
     "tflint": {
-      "version": "0.65.0",
+      "version": "0.66.0",
       "bin": "tflint",
       "assets": {
         "linux-amd64": {
-          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.65.0/tflint_linux_amd64.zip",
-          "sha256": "d4c545ed2e29d6338604b586f34f544f380f70f243aa72f7b484713835eaec61"
+          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.66.0/tflint_linux_amd64.zip",
+          "sha256": "22be11cadc25cd02401e94c0ccc91aa63467debb8485c2a755d98f4c0a9d1e2e"
         },
         "linux-arm64": {
-          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.65.0/tflint_linux_arm64.zip",
-          "sha256": "843017c47a98be1de4d88fa038daa293770fe25cd01656c4f08b2e30d1d3b3a0"
+          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.66.0/tflint_linux_arm64.zip",
+          "sha256": "1105a0a5ddee7cdac7957a3475571a946b839192ea1bc0c722c6c4686001067e"
         },
         "darwin-amd64": {
-          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.65.0/tflint_darwin_amd64.zip",
-          "sha256": "27696ea23ed77c1918945147ebfe6485a74f58560b9557ccecc77379205702c5"
+          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.66.0/tflint_darwin_amd64.zip",
+          "sha256": "e2d98b60adb2602a252ee9efb036e237edf13c8fda91f4d513d3357e1a01a889"
         },
         "darwin-arm64": {
-          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.65.0/tflint_darwin_arm64.zip",
-          "sha256": "5a71c63481ba56760864298011fdb7317a9ae80a0bbaeceefa35883c7f62ac71"
+          "url": "https://github.com/terraform-linters/tflint/releases/download/v0.66.0/tflint_darwin_arm64.zip",
+          "sha256": "859b26af07ead7e65cee7eec9d050b2e2571dc28395b7a39191cae088cd67803"
         }
       }
     },
     "zizmor": {
-      "version": "1.31.1",
+      "version": "1.32.0",
       "bin": "zizmor",
       "assets": {
         "linux-amd64": {
-          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-x86_64-unknown-linux-gnu.tar.gz",
-          "sha256": "d185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99"
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b"
         },
         "linux-arm64": {
-          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-aarch64-unknown-linux-gnu.tar.gz",
-          "sha256": "37eebbd5762a44f262d94875431b14a6d2402991e90a685113ea97b8b41be833"
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "cb152b207f815116d7fa1c1ee4614f61578803351395052908095e79adfd9fd0"
         },
         "darwin-amd64": {
-          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-x86_64-apple-darwin.tar.gz",
-          "sha256": "72ae63bb85b67229c06242f04195cb43927e9fab5f43803c6434dc701a517d61"
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-x86_64-apple-darwin.tar.gz",
+          "sha256": "6983143c719ada6845a69cc4dd2bacc215f971662fecd8bbd2678388e5ce5969"
         },
         "darwin-arm64": {
-          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.31.1/zizmor-aarch64-apple-darwin.tar.gz",
-          "sha256": "ad5aa633cd56215b11e6c51d51f90c7e6b22904a75047d1215abbd422f61d698"
+          "url": "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-aarch64-apple-darwin.tar.gz",
+          "sha256": "6efed18c4539a663fd3c851a2be9533fd8456c4e646d9416206da059154a0d3c"
         }
       }
     }

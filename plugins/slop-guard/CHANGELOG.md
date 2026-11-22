@@ -3,6 +3,22 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **Refresh mature analyzer pins** (2026-11-22)
+  - `tools/tools.lock.json`: Betterleaks 1.10.1, jscpd 5.4.3, PHPStan 2.3.5,
+    tflint 0.66.0 and zizmor 1.32.0; all 20 platform assets downloaded locally
+    and hashed with `sha256sum`.
+  - `tools/python/{requirements.in,requirements.lock}`: Ruff 0.17.5 and Checkov
+    3.4.3; universal Python 3.9 hash lock regenerated with publication cutoff
+    `2026-11-15T12:03:19Z`, including transitive dependencies.
+  - **Why not every latest tag?** PHPStan 2.3.6, Ruff 0.17.6 and Checkov 3.4.6
+    are inside the seven-day hold. Checkov 3.4.4/3.4.5 require Python 3.10;
+    retain Python 3.9 compatibility. Opengrep stays at 1.30.0 for GH-65's
+    stacked fixture PRs. The npm bundle stays unchanged: eligible
+    typescript-eslint 8.72.x requires minimatch `^10.2.2`, but
+    GHSA-g3hv-75wg-m249 is fixed only in minimatch 11.0.1 or later.
+    typescript-eslint 8.73.0 clears its hold at `2026-11-23T17:07:26.146Z`;
+    no incompatible override bypasses the dependency contract.
+
 - **GH-65 C# fixture repairs:** `rules/opengrep/csharp.yaml` distinguishes literal process names and disabled XML resolvers; `tests/fixtures/csharp/` exercises unsafe APIs and safe counterparts, including direct assignments and resolver re-enablement.
   **Why.** Placeholder fixtures could not prove detection, and broad patterns flagged safe code. `tests/integration/opengrep.sh` now scans copied fixtures with the full pinned ruleset, enforcing C# per-rule bad hits and silence across all good fixtures; failed or malformed scans fail the gate. The XXE syntactic rule recognizes same-scope `var`/`XmlDocument` declarations followed by `LoadXml`, not field assignments, target-typed `new`, or `Load(stream)`.
 - **Refresh minor/patch analyzer pins** (2026-11-06)
