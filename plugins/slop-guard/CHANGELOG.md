@@ -3,6 +3,8 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **GH-65 C# fixture repairs:** `rules/opengrep/csharp.yaml` distinguishes literal process names and disabled XML resolvers; `tests/fixtures/csharp/` exercises unsafe APIs and safe counterparts, including direct assignments and resolver re-enablement.
+  **Why.** Placeholder fixtures could not prove detection, and broad patterns flagged safe code. `tests/integration/opengrep.sh` now scans copied fixtures with the full pinned ruleset, enforcing C# per-rule bad hits and silence across all good fixtures; failed or malformed scans fail the gate. The XXE syntactic rule recognizes same-scope `var`/`XmlDocument` declarations followed by `LoadXml`, not field assignments, target-typed `new`, or `Load(stream)`.
 - **Refresh minor/patch analyzer pins** (2026-11-06)
   - `tools/tools.lock.json`: Betterleaks 1.9.0, golangci-lint 2.15.0, hadolint 2.15.1,
     jscpd 5.4.2, PHPStan 2.3.4, tflint 0.65.0 and zizmor 1.31.1; every platform's
