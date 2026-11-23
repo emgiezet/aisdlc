@@ -25,7 +25,7 @@ Out:
 - Redesign of already repaired detectors from `GH-65-a`–`GH-65-d`; removal/quarantine of failing tests or of pre-existing OpenGrep rules.
 - Catalogue/AP IDs, mappings, tool pin, generated skills, detection dispatch, CI setup and changes outside this issue's OpenGrep fixture contract.
 
-Change budget: 240 added lines, 11 files, 2 modules
+Change budget: 365 added lines, 11 files, 2 modules (widened from 240 lines by the owner on 2026-11-23: react.yaml rule rewrite and its integration assertions)
 
 ## Context
 
