@@ -1,0 +1,110 @@
+sdlc hook test suite
+
+  ok    PreToolUse (Grok): force-push camelCase payload blocked with {decision:deny}
+  ok    PreToolUse (Claude): force-push blocked with exit 2 and reason on stderr
+  ok    PreToolUse (Grok): safe command allows silently (exit 0, no stdout)
+  ok    PreToolUse (Claude): safe command allows silently (exit 0, no stdout)
+  ok    Stop (Grok): deleted test file → advisory on stderr, exits 0, no block
+  ok    Stop (Claude): deleted test file → blocks with exit 2 and reason on stderr
+  ok    SessionStart (Grok): registered command resolves via GROK_PLUGIN_ROOT, exits 0
+  ok    hooks.json: all referenced hook files exist and are executable
+  ok    stop: deletion listed with a reason passes and is reported as retired
+  ok    stop: ledger entry without a reason does not retire the test
+  ok    stop: glob entry retires every matching deletion; comment lines ignored
+  ok    stop: only unlisted deletions are reported
+  ok    stop (headless): a ledger entry written during the run is ignored
+  ok    stop (headless): a ledger entry committed on the default branch retires the test
+  ok    stop: SystemExit( in a test and a skip marker outside test files are not flagged
+  ok    stop: xit( added to a test file is flagged
+  ok    stop: the ledger does not excuse a skipped test
+  ok    guard pre-write UC-1: no marker — writes pass
+  ok    guard pre-write UC-2: marker present — a write outside allow: is denied
+  ok    guard pre-write UC-3: marker present — the map file under allow: passes
+  ok    guard pre-write UC-4: marker present — the marker itself (absolute path) passes
+  ok    guard pre-write UC-5: marker older than 12 h — allowed with a stale advisory
+  ok    guard pre-write UC-6: Grok camelCase payload — deny decision on stdout
+  ok    guard pre-write UC-7: 'specs/../src' does not pass as an allow: prefix
+  ok    omp adapter: destructive bash (git push --force) is blocked with guard message
+  ok    omp adapter: benign bash command is allowed
+  ok    omp adapter: write and edit pass without a planning marker and are gated by one
+  ok    omp adapter: missing hook script allows (fail-open) and decision is null
+  ok    omp adapter: unknown tool (read) spawns nothing and returns undefined
+  ok    omp adapter: turn_end sends an unchanged stop advisory once, and again after a clean turn
+change budget
+  ok    GH-50 UC-2: size: added lines count code only (30+5+7)
+  ok    GH-50 UC-2: size: files touched include the emptied file, exclude vendor/lock/specs
+  ok    GH-50 UC-2: size: module = first two path segments
+  ok    size: module list names the real directories
+  ok    size: vendored and spec paths never reach the module list
+  ok    eval: exactly at budget is clean
+  ok    eval: one line over budget is GAPS
+  ok    eval: past the hard ceiling is BLOCKED
+  ok    eval: thin edits across many modules are named as shotgun surgery
+  ok    eval: a focused change produces no findings
+  ok    eval: a large change inside two modules is over budget but not shotgun surgery
+  ok    GH-59 UC-2a: tolerance=0 shows bare budget limit
+  ok    GH-59 UC-2a: no tolerance suffix when tolerance=0
+  ok    GH-59 UC-3a: added lines past toleranced limit names effective limit
+  ok    GH-59 UC-3b: files past toleranced limit names effective limit
+  ok    GH-59 UC-3c: modules past toleranced limit names effective limit
+  ok    GH-59 UC-4a: added below toleranced limit is clean
+  ok    GH-59 UC-4a: added exactly at toleranced limit is clean
+  ok    GH-59 UC-4b: files exactly at toleranced limit is clean
+  ok    GH-59 UC-4c: modules exactly at toleranced limit is clean
+  ok    GH-59 UC-5: ceiling stays 3000 despite tolerance 100
+  ok    GH-59 UC-5: ceiling line carries no tolerance suffix
+  ok    GH-59 UC-6: 4 modules within toleranced limit 4 — no finding, no shotgun surgery
+  ok    GH-59 UC-8a: Budget column shows 400 +100% with tolerance
+  ok    GH-59 UC-8b: Budget column shows bare 400 with tolerance 0
+  ok    GH-59 UC-10a: verdict GAPS — profile tolerance=50 → limit 180, 181 is over
+  ok    GH-59 UC-10b: scope report uses profile tolerance=50 → effective limit 180
+  ok    GH-59 UC-10c: spec-side Tolerance 1000% absent from scope report
+HEAD is now at afa5c0e branch: 181 added lines
+  ok    GH-59 UC-2b: absent profile Tolerance → run_scope_check defaults 0 → bare over-budget finding
+  ok    budget: the spec's own budget wins
+  ok    budget: the profile answers when the spec is silent
+  ok    budget: the built-in default is the last resort
+  ok    budget: the repo may lower its own hard ceiling
+  ok    GH-59 UC-9a: _budget_profile returns 75 for Tolerance: 75%
+  ok    GH-59 UC-9b: _budget_profile returns empty when label absent
+verify: test file detection
+  ok    test path: evals/harness/selftest.sh
+  ok    test path: selftest.sh
+  ok    test path: scripts/deploy_test.sh
+  ok    test path: lib/test_parse.sh
+  ok    test path: hooks/guard.bats
+  ok    test path: plugins/x/tests/run-tests
+  ok    test path: pkg/stub_test.go
+  ok    test path: src/a.test.ts
+  ok    test path: app/test_api.py
+  ok    source path: evals/harness/run.sh
+  ok    source path: scripts/latest.sh
+  ok    source path: lib/contest.sh
+  ok    source path: plugins/sdlc/bin/aisdlc
+  ok    source path: src/testing.ts
+  ok    source path: docs/test-plan.md
+structure
+  ok    UC-2: before erosion equals 0.00 (formula)
+  ok    UC-2: after erosion equals 0.78 (formula)
+  ok    UC-2: erosion finding names before (0.00) and after (0.78)
+  ok    UC-5: new_hotspot record for CC-27 function absent before
+  ok    UC-5: hotspot25 record for CC-27 function
+  ok    UC-5: new hotspot finding emitted
+  ok    UC-5: hotspot over 25 finding emitted
+  ok    UC-6: no new_hotspot for function already at CC 30
+  ok    UC-6: no hotspot25 for function already above CC 25
+  ok    UC-6: no structure findings for stable CC 30 function
+  ok    UC-7 baseline: findings present with default thresholds
+  ok    UC-7: no finding with relaxed thresholds (0.5 / 1)
+  ok    UC-7: section lists GoFunc with CC 8 -> 14 despite no findings
+  ok    UC-1 SLOC: hotspot table includes SLOC value (100)
+  ok    UC-3 unit: skip body is 'skipped: lizard not installed'
+  ok    NF _budget_profile_float: Erosion delta max returns 0.5
+  ok    NF _budget_profile_float: New hotspots max returns 1
+  ok    NF _budget_profile_float: missing label returns empty (built-in default applies)
+  ok    NF lizard unparseable: garbage output yields 'skipped: lizard failed (unparseable output)'
+  ok    NF lizard real format: header-less quoted row accepted (not skipped)
+  ok    NF lizard real format: CCN column parsed (g CC=12 yields new_hotspot)
+  ok    NF lizard real format: f CCN=2 NLOC=6 is read (erosion 0.71 confirms f's mass)
+
+102 passed, 0 failed
