@@ -1,45 +1,48 @@
+Verdict: PASS
 # QA report — GH-65-e
-Verdict: GAPS (1 findings, 1 blocking)
 
 ## UC coverage
 | UC | Requirement | Passing automated evidence | Verified |
 |---|---|---|---|
-| UC-11 | Three React/Laravel IDs hit their own bad AP fixture | `tests/integration/opengrep.sh:125–146`: 3 real-binary assertions | yes |
-| UC-12 | Those IDs have no findings anywhere under good/ | Same named UC-12 assertions: 3 passing, including the React sanitized href/src fixture | yes |
-| UC-13 | Every configured exact ID hits its metadata-bound bad AP; missing hits fail naming ID | Whole-ruleset UC-13 assertions: 56 own-AP checks and 13 variant checks; `qa/gate_test.py` additionally proves missing/wrong-ID hits, new-rule discovery, scan failure, malformed JSON and offline skip decisions | yes |
-| UC-14 | Every configured exact ID has no good-tree findings | Whole-ruleset UC-14 assertions: 56 passing; `qa/gate_test.py` proves a hit in another AP's good file fails naming the offending ID | yes |
+| UC-11 | Three React/Laravel IDs hit their own bad AP fixture | `tests/integration/opengrep.sh:125–146`: 3 real-binary assertions | automated |
+| UC-12 | Those IDs have zero findings anywhere under good/ | 3 named UC-12 assertions, including sanitized React href/src | automated |
+| UC-13 | Every exact rule ID hits its metadata-bound bad AP; missing hits name the rule | 56 own-AP and 13 adversarial-variant assertions; `qa/gate_test.py` covers missing/wrong IDs, new-rule discovery, scan failure, invalid JSON and offline behavior | automated |
+| UC-14 | Every configured ID has zero good-tree findings | 56 named assertions; `qa/gate_test.py` rejects a good hit outside the rule's own AP pair | automated |
 
-Covered: 4/4 UCs automated. No ticket UC is skipped or failing. The verdict is blocked by the approved scope budget, not by detector behavior.
-
-The pinned OpenGrep resolved from the assigned plugin data directory reports `1.30.0` (`qa/opengrep-version.log`). The shipped integration test scans a copied fixture tree using the entire rule directory and `--no-rewrite-rule-ids`; earlier group assertions remain present and pass. New unit tests exercise the shipped gate's decisions with synthetic scanner output, not the detectors; detector coverage comes exclusively from the real-binary integration suite.
+Covered: 4/4 UCs automated · 0 manual · 0 failing · 0 skipped.
+Pinned OpenGrep reports 1.30.0. The real integration suite scans copied fixtures with the full rule directory and exact IDs, retaining all earlier language-group assertions.
 
 verification map: none
 browser: none — no UI UCs.
 
+## Change budget
+After `git fetch origin`, current PR base is `fix/gh65-4-runtime` (including owner commit `74fba77`).
+`git diff --numstat origin/fix/gh65-4-runtime...HEAD -- . ':!specs'` measures **361 added lines, 41 deleted lines, 10 files, 1 module** (`plugins/slop-guard`; first-two-segment convention in `plugins/sdlc/bin/aisdlc:1434–1455`).
+Approved `spec.md:28`: **365 added lines, 11 files, 2 modules**. All dimensions comply; the former budget finding is resolved by the owner's approval, not a code exemption. Per-file evidence: `qa/fresh/budget.txt`.
+
 ## Test suites
-Tiers (new tests): unit 8 / integration 0 / e2e 0
+Tiers (new tests this rerun): unit 0 / integration 0 / e2e 0.
+The existing QA gate suite has 8 unit tests; all were rerun without modification. Tests before → after: unchanged (725 slopguard + 102 sdlc + 436 selftest + 26 catalogue + 214 integration + 8 gate).
 
-All suite shells exported `PATH=/tmp/qa-bin:$PATH`, `CLAUDE_PLUGIN_DATA=/tmp/slopguard-data-GH-65-e`, and `CLAUDE_PLUGIN_OPTION_TOOL_SOURCE=plugin-only`. Complete output is committed under `qa/`.
+Environment: `CLAUDE_PLUGIN_DATA=$HOME/.local/share/claude/plugins/slop-guard`, `CLAUDE_PLUGIN_OPTION_TOOL_SOURCE=plugin-only`; corrected runs prepend `$PWD/specs/GH-65-e/qa/bin` and the pinned shellcheck directory to PATH. The committed PHP launcher uses local Docker image `aisdlc-tool-bumps-php:8.3` because the host has no PHP; it forwards cache variables and host paths. `slopguard doctor --install --all` completed with every tool present and version-matched (`qa/fresh/doctor.log`).
 
-| Exact command | Result | Skips |
+| Exact command | Real result | Skips |
 |---|---|---|
 | `bash -n plugins/slop-guard/tests/integration/opengrep.sh plugins/slop-guard/tests/opengrep_test.sh` | exit 0 | 0 |
 | `docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -S warning plugins/slop-guard/tests/integration/opengrep.sh plugins/slop-guard/tests/opengrep_test.sh` | exit 0, no diagnostics | 0 |
-| `CI= make validate` | exit 0; embedded unit suites 725 and 102 passed / 0 failed; config stage 22 validated / 0 failed; All checks passed | 3 config checks; built-in shellcheck unavailable, separately completed above |
-| `plugins/slop-guard/tests/run-tests` | exit 0; 725 passed / 0 failed | 0 |
-| `plugins/sdlc/tests/run-tests` | exit 0; 102 passed / 0 failed | 0 |
-| `bash plugins/slop-guard/tests/catalog_test.sh` | exit 0; 26 passed / 0 failed | 0 |
-| `plugins/slop-guard/scripts/gen-skills --check` | exit 0; deterministic output | 0 |
-| `plugins/slop-guard/scripts/validate-configs` | exit 0; 22 validated / 0 failed | 3 |
-| `SLOPGUARD_IT_REQUIRE=1 make tool-integration` | exit 0; 214 passed / 0 failed / 2 known | 0 |
-| `python3 specs/GH-65-e/qa/gate_test.py` | exit 0; 8 tests, OK | 0 |
+| `TMPDIR=$HOME/.cache/pr83-qa-tmp CI= make validate` | exit 0; 725 slopguard + 102 sdlc passed, 0 failed; 25 configs validated; All checks passed | 0 |
+| `make selftest` | exit 0; 436 passed, 0 failed | 0 |
+| `bash plugins/slop-guard/tests/catalog_test.sh` | exit 0; 26 passed, 0 failed | 0 |
+| `plugins/slop-guard/scripts/gen-skills --check` | exit 0, deterministic | 0 |
+| `plugins/slop-guard/scripts/validate-configs` | exit 0; 25 validated, 0 failed | 0 |
+| `SLOPGUARD_IT_REQUIRE=1 make tool-integration` | exit 0; 214 passed, 0 failed, 2 pre-existing known cases | 0 |
+| `python3 specs/GH-65-e/qa/gate_test.py` | exit 0; Ran 8 tests, OK | 0 |
 
-Tests before → after: 725 → 733 for the slopguard offline runner plus the explicit new QA unit-suite invocation; the existing runner itself remains at 725 and does not auto-discover `qa/gate_test.py`. Other suite counts above are separate, not added into this comparison. The baseline gate suite did not exist (0 → 8); no existing tests were changed. The new offline-skip test asserts skip behavior and itself passes; it is not a skipped test.
+Exact full output is committed under `qa/fresh/`; `validate-isolated.log`, `configs-php.log`, and `integration-php.log` are the final corrected runs. Initial no-PHP runs recorded two missing-tool skips (integration exit 2). The first corrected validation encountered `/tmp` quota exhaustion during the unchanged concurrent state test (`jq: error: writing output failed: Disk quota exceeded`; 724 passed, 1 failed). Moving only TMPDIR to the home filesystem yielded 725/725, zero skips, with no test or implementation changes. All attempts remain in evidence; no failure was suppressed or assertion weakened.
 
 ## Findings
-1. **[major, blocking] Approved added-line budget exceeded** — `specs/GH-65-e/spec.md:28`; implementation expansion includes `plugins/slop-guard/rules/opengrep/react.yaml:44` and `plugins/slop-guard/tests/integration/opengrep.sh:125`. `git diff origin/fix/gh65-4-runtime...HEAD --numstat -- . ':!specs'` measures **361 added lines**, 41 deleted lines, and 10 non-spec files against the approved **240 added-line / 11-file** budget. The source alone exceeds the line cap; QA evidence is excluded. `qa/scope.log` records the per-file counts. Passing behavior does not approve a larger review surface; the spec was not changed.
+None. Zero blocking findings.
 
 ## Not verified
-- Unquarantined coverage of the existing zizmor checkout and Psalm TaintedSql cases: the real-tool suite reports both as known failures, not passing checks. No quarantine was edited. Psalm became resolvable from the assigned plugin data directory during the corrected rerun, so integration now reports zero skips; this does not establish that the known TaintedSql case works.
-- Complete baseline-config validation: Psalm, tflint and zizmor config checks still report unavailable and skip (3); integration resolution and config validation use different availability paths. PHPStan now passes. After the host PHP launcher's environment-forwarding correction, all three affected commands were rerun once; their current logs supersede the earlier launcher-artifact PHPStan failures. The unrelated isolated ESLint `anti-slop/no-object-parameters` case passes in this run; its supplied baseline failure is flaky-local, not attributed to this ticket.
-- The implementation head `c770c9a181b48111c95d7aa1fd673b628e7b6dd2` has successful CI evidence for the real pinned-tool workflow: [Validate run](https://github.com/emgiezet/aisdlc/actions/runs/42211070613/job/127869550704) and [runner-and-fixture](https://github.com/emgiezet/aisdlc/actions/runs/42211070613/job/127869550568), captured in `qa/pr-head-checks.json`. This is implementation-head evidence, not a claim that the subsequent QA commit's CI has run. No ticket UC depends on an environmental exemption.
+- The pre-existing quarantined zizmor checkout and Psalm TaintedSql cases remain `known`, not passing; no quarantine or test was altered. Neither is a GH-65-e UC.
+- Hosted CI for this new evidence commit has not yet completed. No claim is made that local verification substitutes for the merge gate's CI check.

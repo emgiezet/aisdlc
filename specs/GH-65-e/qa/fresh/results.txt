@@ -1,0 +1,9 @@
+syntax exit=0
+shellcheck exit=0
+validate exit=0
+selftest exit=0
+catalog exit=0
+generated exit=0
+configs exit=0
+integration exit=2
+gate exit=0
