@@ -1,0 +1,6 @@
+Derived from the approved spec before reading the implementation or tests:
+UC-7: A pinned real OpenGrep full-directory scan of a copied fixture tree must return valid JSON successfully and show insecure-random -> ruby/bad/AP-RB-SEC-001.rb, mass-assignment-without-permit -> ruby/bad/AP-RB-SEC-006.rb, sql-string-interpolation -> ruby/bad/AP-RB-SEC-007.rb, and send-user-input -> ruby/bad/AP-RB-SEC-005.rb (confirm mapping from catalogue after diff). Each of the four IDs must hit its corresponding fixture.
+UC-8: That same scan must show zero hits for each of these four IDs anywhere under good/. Existing C# and Rust checks must still pass.
+Non-functional: pinned real binary; scan failures and JSON errors remain failures; fixture pairs express dangerous calls versus safe operations, not name markers.
+
+Post-diff mapping confirmation: the spec lists a set, not ordered mappings. ruby.yaml confirms send-user-input -> AP-RB-SEC-001, mass-assignment-without-permit -> AP-RB-SEC-005, sql-string-interpolation -> AP-RB-SEC-006, insecure-random -> AP-RB-SEC-007. The initial tentative mapping above was incorrect; these confirmed mappings govern verification.

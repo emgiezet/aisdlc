@@ -1,0 +1,178 @@
+{
+  "exit": 0,
+  "errors": [],
+  "rust": [
+    {
+      "id": "slopguard.rs.unsafe-block",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-001-string.rs",
+      "line": 4
+    },
+    {
+      "id": "slopguard.rs.raw-pointer-deref",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-001-string.rs",
+      "line": 6
+    },
+    {
+      "id": "slopguard.rs.unsafe-block",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-001.rs",
+      "line": 3
+    },
+    {
+      "id": "slopguard.rs.raw-pointer-deref",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-001.rs",
+      "line": 5
+    },
+    {
+      "id": "slopguard.rs.unwrap-in-library",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-002.rs",
+      "line": 3
+    },
+    {
+      "id": "slopguard.rs.unwrap-in-library",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-002.rs",
+      "line": 8
+    },
+    {
+      "id": "slopguard.rs.serde-missing-deny-unknown",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-003.rs",
+      "line": 4
+    },
+    {
+      "id": "slopguard.rs.integer-arithmetic-overflow",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-004.rs",
+      "line": 3
+    },
+    {
+      "id": "slopguard.rs.unsafe-block",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-005.rs",
+      "line": 3
+    },
+    {
+      "id": "slopguard.rs.raw-pointer-deref",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-005.rs",
+      "line": 4
+    },
+    {
+      "id": "slopguard.rs.unsafe-block",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-006.rs",
+      "line": 5
+    },
+    {
+      "id": "slopguard.rs.mem-transmute",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-006.rs",
+      "line": 5
+    },
+    {
+      "id": "slopguard.rs.unsafe-block",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-007.rs",
+      "line": 3
+    },
+    {
+      "id": "slopguard.rs.from-utf8-unchecked",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-007.rs",
+      "line": 3
+    },
+    {
+      "id": "slopguard.rs.command-injection",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/rust/bad/AP-RS-SEC-008.rs",
+      "line": 5
+    }
+  ],
+  "csharp": [
+    {
+      "id": "slopguard.cs.sql-string-interpolation",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-001.cs",
+      "line": 8
+    },
+    {
+      "id": "slopguard.cs.binary-formatter",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-002.cs",
+      "line": 8
+    },
+    {
+      "id": "slopguard.cs.binary-formatter",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-002.cs",
+      "line": 9
+    },
+    {
+      "id": "slopguard.cs.process-start-user-input",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-003-direct.cs",
+      "line": 11
+    },
+    {
+      "id": "slopguard.cs.process-start-user-input",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-003.cs",
+      "line": 8
+    },
+    {
+      "id": "slopguard.cs.path-traversal",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-004.cs",
+      "line": 11
+    },
+    {
+      "id": "slopguard.cs.path-traversal",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-004.cs",
+      "line": 17
+    },
+    {
+      "id": "slopguard.cs.crypto-weak-algorithm",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-005.cs",
+      "line": 10
+    },
+    {
+      "id": "slopguard.cs.crypto-weak-algorithm",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-005.cs",
+      "line": 17
+    },
+    {
+      "id": "slopguard.cs.insecure-random",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-006.cs",
+      "line": 10
+    },
+    {
+      "id": "slopguard.cs.insecure-random",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-006.cs",
+      "line": 11
+    },
+    {
+      "id": "slopguard.cs.insecure-random",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-006.cs",
+      "line": 16
+    },
+    {
+      "id": "slopguard.cs.insecure-random",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-006.cs",
+      "line": 18
+    },
+    {
+      "id": "slopguard.cs.xxe-xml",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-007-reenabled.cs",
+      "line": 14
+    },
+    {
+      "id": "slopguard.cs.xxe-xml",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-007-reenabled.cs",
+      "line": 26
+    },
+    {
+      "id": "slopguard.cs.xxe-xml",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-007-reenabled.cs",
+      "line": 27
+    },
+    {
+      "id": "slopguard.cs.xxe-xml",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-007.cs",
+      "line": 11
+    },
+    {
+      "id": "slopguard.cs.ldap-injection",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-008.cs",
+      "line": 11
+    },
+    {
+      "id": "slopguard.cs.ldap-injection",
+      "path": "/tmp/GH-65-b-scan-9mgKqR/samples/csharp/bad/AP-CS-SEC-008.cs",
+      "line": 18
+    }
+  ]
+}
