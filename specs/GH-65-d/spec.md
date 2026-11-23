@@ -24,7 +24,7 @@ Out:
 - C#/Rust/Ruby rule redesign (`GH-65-a`–`GH-65-c`); React and Laravel repairs and all-rule assertion (`GH-65-e`). Earlier checks remain enforced.
 - Rule/AP IDs, catalogue, mappings, tool pin, generated skills and dispatch.
 
-Change budget: 300 added lines, 13 files, 2 modules
+Change budget: 340 added lines, 13 files, 2 modules (widened from 300 lines by the owner on 2026-11-23: in-scope Go/Node fixtures)
 
 ## Context
 

@@ -1,0 +1,29 @@
+               
+               
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 144 files tracked by git with 56 Code rules:
+                                                                                                                        
+  Language      Rules   Files          Origin   Rules                                                                   
+ ─────────────────────────────        ────────────────                                                                  
+  ts                8      21          Custom      56                                                                   
+  csharp            8      18                                                                                           
+  php               8      17                                                                                           
+  rust              8      17                                                                                           
+  java              8      16                                                                                           
+  ruby              8      14                                                                                           
+  js                7      12                                                                                           
+  go                2      10                                                                                           
+  yaml              2       6                                                                                           
+  python            2       4                                                                                           
+  dockerfile        1       4                                                                                           
+  <multilang>       1       2                                                                                           
+                                                                                                                        
+                
+                
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+
+Ran 56 rules on 141 files: 123 findings.

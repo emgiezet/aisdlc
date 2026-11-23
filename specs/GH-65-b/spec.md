@@ -24,7 +24,7 @@ Out:
 - C# behavior from `GH-65-a` (retain its test), Ruby (`GH-65-c`), JVM/Go/Node (`GH-65-d`), React/Laravel and full-rule gate (`GH-65-e`).
 - Rule/AP IDs, catalogue, mappings, binary pin, generated skills and dispatch; no blanket disabling of unsafe-block detection.
 
-Change budget: 270 added lines, 13 files, 2 modules
+Change budget: 270 added lines, 14 files, 2 modules (widened from a 13-file cap by the owner on 2026-11-23: the extra file is the AP-RS-SEC-001 string regression fixture)
 
 ## Context
 

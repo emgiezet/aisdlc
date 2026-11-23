@@ -1,0 +1,17 @@
+slopguard doctor — plugin: /tmp/budget-GH-65-b/plugins/slop-guard  data: /home/mgz/.local/share/slop-guard
+scope: stacks: github-actions (use --all for every pinned tool)
+
+  betterleaks  source: missing  lockfile: 1.9.0  [NOT FOUND]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.gitleaks.toml  mode: overlay
+    install:  slopguard doctor --install
+  checkov  source: missing  lockfile: 3.4.0  [NOT FOUND]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.checkov.yaml  mode: overlay
+    install:  slopguard doctor --install
+  jq  source: plugin  version: jq-1.8.2  [ok]  config: none  mode: overlay
+  shellcheck  source: plugin  version: ShellCheck - shell script analysis tool  [ok]  config: none  mode: overlay
+  zizmor  source: missing  lockfile: 1.31.1  [NOT FOUND]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/zizmor.yml  mode: overlay
+    install:  slopguard doctor --install
+
+Extensions (./.slopguard):
+  (no .slopguard/ directory)
+
+Some tools are missing or version-mismatched.
+Run:  slopguard doctor --install

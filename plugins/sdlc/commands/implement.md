@@ -62,7 +62,10 @@ and the wandering that precedes the guess costs more than the whole task should.
    Run the profile's `unit` row every time; the `integration` row only when the diff touches what
    that tier covers or the spec has an `integration` UC; the `e2e` row only when the spec has an
    `e2e` UC.
-4. Create the working branch if not already on one: `ai/<TICKET>-<slug>`.
+4. Branch: run `git branch --show-current`. On the default branch (`main`, `master`) →
+   `git switch -c ai/<TICKET>-<slug>`. On **any other branch, whatever its name** → stay on it:
+   the queue runner hands you `ai/<TICKET>-<id>` and reads only that branch, so work committed
+   anywhere else is lost. After this step never create, switch or detach a branch.
 
 Output a 3–5 bullet grounding summary. Then start writing code — there is no gate here.
 
@@ -139,7 +142,7 @@ Write `specs/<TICKET>/BLOCKED.md` and exit non-zero. No partial success reportin
 <the specific decision or missing piece — one question, answerable>
 
 ## State
-Branch `ai/<TICKET>-<slug>`, <n> commits, UCs done: UC-1, UC-2. Working tree: clean/dirty.
+Branch `<current branch>`, <n> commits, UCs done: UC-1, UC-2. Working tree: clean/dirty.
 ```
 
 Stop here for: a spec/test contradiction, a second failure of the same CI command, a required
@@ -155,7 +158,7 @@ Do not open a PR from here; `/sdlc:ship` does that after QA.
 
 ```
 ## Implemented — <TICKET>
-Branch: ai/<TICKET>-<slug> · <n> commits
+Branch: <current branch> · <n> commits
 UCs: <n>/<n> with tests carrying their ids
 Tests: <before> → <after> · skipped: 0
 CI matrix: <command> ✓ · <command> ✓ · …

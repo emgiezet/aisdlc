@@ -1,0 +1,3 @@
+bash -n plugins/slop-guard/tests/tool-integration plugins/slop-guard/tests/integration/opengrep.sh
+
+EXIT: 0

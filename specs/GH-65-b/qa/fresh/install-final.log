@@ -1,0 +1,28 @@
+slopguard doctor — plugin: /tmp/budget-GH-65-b/plugins/slop-guard  data: /tmp/budget-gh65b-tools
+scope: all pinned tools
+
+  betterleaks  source: plugin  version: betterleaks version 1.9.0  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.gitleaks.toml  mode: overlay
+  checkov  source: plugin  version: 3.4.0  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.checkov.yaml  mode: overlay
+  eslint-stack  source: plugin  version: v9.35.0  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/eslint.config.mjs  mode: overlay
+  golangci-lint  source: plugin  version: golangci-lint has version 2.15.0 built with go1.27.0 from 25c5369a on 2026-10-16T11:03:09Z  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.golangci.yml  mode: overlay
+  hadolint  source: plugin  version: Haskell Dockerfile Linter 2.15.1  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.hadolint.yaml  mode: overlay
+  jq  source: plugin  version: jq-1.8.2  [ok]  config: none  mode: overlay
+  jscpd  source: plugin  version: jscpd 5.4.2  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.jscpd.json  mode: overlay
+  kube-linter  source: plugin  version: 0.8.3  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.kube-linter.yaml  mode: overlay
+  opengrep  source: plugin  version: 1.30.0  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/rules/opengrep  mode: overlay
+  phpstan  source: plugin  version: PHPStan - PHP Static Analysis Tool 2.3.4  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/phpstan.neon  mode: overlay
+  psalm  source: plugin  version: Psalm 6.16.1@f1f5de594dc76faf8784e02d3dc4716c91c6f6ac  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/psalm.xml  mode: overlay
+  ruff  source: plugin  version: ruff 0.17.3  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/ruff.toml  mode: overlay
+  shellcheck  source: plugin  version: ShellCheck - shell script analysis tool  [ok]  config: none  mode: overlay
+  tflint  source: missing  lockfile: 0.65.0  [NOT FOUND]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/.tflint.hcl  mode: overlay
+    → installing...
+slopguard: downloading tflint 0.65.0...
+cp: error writing '/tmp/budget-gh65b-tools/tools/tflint/.0.65.0.stage.1142163/./tflint': Disk quota exceeded
+slopguard: installed tflint binary reports the wrong version
+    → install FAILED
+  zizmor  source: plugin  version: zizmor 1.31.1  [ok]  config: /tmp/budget-GH-65-b/plugins/slop-guard/configs/baseline/zizmor.yml  mode: overlay
+
+Extensions (./.slopguard):
+  (no .slopguard/ directory)
+
+Some tools are missing or version-mismatched.
