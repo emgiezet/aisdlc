@@ -18,10 +18,54 @@ rules:
       category: security
       cwe: CWE-1321
     pattern-either:
-      - pattern: $OBJ[$KEY] = $VAL
       - pattern: Object.assign($TARGET, $REQ.body)
       - pattern: Object.assign($TARGET, $REQ.query)
       - pattern: Object.assign($TARGET, $REQ.params)
+      - pattern: |
+          for (const $KEY in $REQ.body) {
+            ...
+            $OBJ[$KEY] = $REQ.body[$KEY];
+            ...
+          }
+      - pattern: |
+          for (const $KEY in $REQ.query) {
+            ...
+            $OBJ[$KEY] = $REQ.query[$KEY];
+            ...
+          }
+      - pattern: |
+          for (const $KEY in $REQ.params) {
+            ...
+            $OBJ[$KEY] = $REQ.params[$KEY];
+            ...
+          }
+      - patterns:
+          - pattern: |
+              for (const $KEY of Object.keys($REQ.body)) {
+                ...
+                $OBJ[$KEY] = $REQ.body[$KEY];
+                ...
+              }
+          - pattern-not-inside: |
+              const $OBJ = Object.create(null);
+              ...
+              for (const $KEY of Object.keys($REQ.body)) {
+                ...
+                $OBJ[$KEY] = $REQ.body[$KEY];
+                ...
+              }
+      - pattern: |
+          for (const $KEY of Object.keys($REQ.query)) {
+            ...
+            $OBJ[$KEY] = $REQ.query[$KEY];
+            ...
+          }
+      - pattern: |
+          for (const $KEY of Object.keys($REQ.params)) {
+            ...
+            $OBJ[$KEY] = $REQ.params[$KEY];
+            ...
+          }
       - pattern: |
           function $MERGE($A, $B) {
             ...

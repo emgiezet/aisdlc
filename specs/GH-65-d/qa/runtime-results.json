@@ -1,0 +1,149 @@
+{
+  "errors": [],
+  "results": [
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return-expr.go",
+      "start": 14,
+      "end": 14
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return-expr.go",
+      "start": 20,
+      "end": 20
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return-expr.go",
+      "start": 26,
+      "end": 29
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return-expr.go",
+      "start": 35,
+      "end": 38
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return-zero.go",
+      "start": 14,
+      "end": 17
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return-zero.go",
+      "start": 23,
+      "end": 26
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return.go",
+      "start": 11,
+      "end": 11
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-return.go",
+      "start": 17,
+      "end": 21
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-zero.go",
+      "start": 12,
+      "end": 12
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001-zero.go",
+      "start": 17,
+      "end": 20
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001.go",
+      "start": 10,
+      "end": 10
+    },
+    {
+      "check_id": "slopguard.go.http-client-without-timeout",
+      "path": "samples/go/bad/AP-GO-PERF-001.go",
+      "start": 21,
+      "end": 21
+    },
+    {
+      "check_id": "slopguard.jvm.jackson-default-typing",
+      "path": "samples/java/bad/AP-JVM-SEC-005.java",
+      "start": 8,
+      "end": 8
+    },
+    {
+      "check_id": "slopguard.jvm.xml-external-entity",
+      "path": "samples/java/bad/AP-JVM-SEC-007.java",
+      "start": 8,
+      "end": 8
+    },
+    {
+      "check_id": "slopguard.jvm.xml-external-entity",
+      "path": "samples/java/bad/AP-JVM-SEC-007.java",
+      "start": 9,
+      "end": 9
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001-handler.js",
+      "start": 4,
+      "end": 6
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001-handler.js",
+      "start": 12,
+      "end": 14
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001-handler.js",
+      "start": 21,
+      "end": 23
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001-keys.js",
+      "start": 4,
+      "end": 6
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001-keys.js",
+      "start": 12,
+      "end": 14
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001-keys.js",
+      "start": 21,
+      "end": 23
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001.js",
+      "start": 2,
+      "end": 7
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001.js",
+      "start": 12,
+      "end": 12
+    },
+    {
+      "check_id": "slopguard.node.prototype-pollution-merge",
+      "path": "samples/node/bad/AP-NODE-SEC-001.js",
+      "start": 19,
+      "end": 19
+    }
+  ]
+}

@@ -3,6 +3,8 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **GH-65 Go, Node and JVM repairs:** Go timeout and Node prototype-pollution rules retain unsafe return and request-key cases while permitting configured clients and `Object.keys(req.body)` copies into null-prototype targets; Go/Node bad variants and Java good fixtures exercise these contracts.
+  **Why.** Equivalent unsafe construction shapes escaped detection, while safe alternatives matched broad patterns. The generic dynamic-key assignment branch was replaced with request-key copy patterns to avoid flagging unrelated assignments. `tests/integration/opengrep.sh` enforces UC-9/UC-10: all four runtime IDs must detect their own bad fixture and remain silent across every good fixture, preserving C#/Rust/Ruby assertions.
 - **GH-65 Ruby fixture repairs:** `tests/fixtures/ruby/` replaces marker stubs with real unsafe APIs and safe parameterized, escaped or constrained alternatives.
   **Why.** Fixture presence alone did not demonstrate that the existing rules detect their intended bad operations. `tests/integration/opengrep.sh` now enforces Ruby UC-7/UC-8: each repaired ID must detect its bad fixture and remain silent across all good fixtures, alongside the C# and Rust contracts.
 - **GH-65 Rust fixture repairs:** `rules/opengrep/rust.yaml` recognizes documented unsafe blocks and raw-pointer dereferences; `tests/fixtures/rust/` exercises unsafe operations, transmute, UTF-8 validation and process arguments with safe counterparts and a string-content adversarial case. `tests/integration/opengrep.sh` enforces Rust UC-5/UC-6 alongside the C# contracts.
