@@ -1,0 +1,66 @@
+=== Slop Guard: baseline config validation ===
+Plugin root: /tmp/budget-GH-65-d/plugins/slop-guard
+
+PASS  golangci-lint                      
+SKIP  PHPStan                              (tool not installed)
+SKIP  Psalm                                (tool not installed)
+PASS  ruff                               
+FAIL  ESLint                               
+Oops! Something went wrong! :(
+
+ESLint: 9.35.0
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@spacemansh/anti-slop' imported from /tmp/slopguard-validate.WM9cUn/eslint.config.mjs
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:255:9)
+    at packageResolve (node:internal/modules/esm/resolve:767:81)
+    at moduleResolve (node:internal/modules/esm/resolve:853:18)
+    at defaultResolve (node:internal/modules/esm/resolve:983:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:799:12)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:723:25)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:706:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:307:38)
+    at #link (node:internal/modules/esm/module_job:163:49)
+PASS  tflint                             
+PASS  Checkov                            
+PASS  kube-linter (checks list)          
+PASS  kube-linter (lint fixtures)        
+PASS  hadolint                           
+PASS  zizmor                             
+INFO  Opengrep rules — no rule files yet; validation starts with the Stage 3 rules
+
+--- Configs without a §9.3 validation row ---
+INFO  phpmd.xml             — no §9.3 validation row (no validate command defined in spec)
+INFO  pyrightconfig.json    — no §9.3 validation row (pyright --outputjson is a runtime invocation)
+INFO  .sqlfluff             — no §9.3 validation row (sqlfluff lint is per-file, no schema-check command)
+INFO  .squawk.toml          — no §9.3 validation row (squawk has no config-validate subcommand)
+INFO  .gitleaks.toml        — no §9.3 validation row (betterleaks/gitleaks has no config-validate subcommand)
+INFO  eslint.security-overlay.mjs — no §9.3 validation row (covered by the ESLint row above at runtime)
+
+--- Consistency check: rules/mapping/ ---
+PASS  mapping schema: zizmor.yaml (16 rules)
+INFO  consistency check: zizmor.yaml has no rule-catalogue extractor
+PASS  mapping schema: tflint.yaml (12 rules)
+INFO  consistency check: tflint.yaml has no rule-catalogue extractor
+PASS  mapping schema: ruff.yaml (41 rules)
+PASS  mapping schema: pylint.yaml (18 rules)
+INFO  consistency check: pylint.yaml has no rule-catalogue extractor
+PASS  mapping schema: phpstan.yaml (14 rules)
+INFO  consistency check: phpstan.yaml has no rule-catalogue extractor
+PASS  mapping schema: opengrep.yaml (56 rules)
+INFO  consistency check: opengrep.yaml has no rule-catalogue extractor
+PASS  mapping schema: mypy.yaml (19 rules)
+INFO  consistency check: mypy.yaml has no rule-catalogue extractor
+PASS  mapping schema: kube-linter.yaml (18 rules)
+PASS  mapping schema: jscpd.yaml (1 rules)
+INFO  consistency check: jscpd.yaml has no rule-catalogue extractor
+PASS  mapping schema: hadolint.yaml (62 rules)
+INFO  consistency check: hadolint.yaml has no rule-catalogue extractor
+PASS  mapping schema: golangci-lint.yaml (20 rules)
+PASS  mapping schema: eslint.yaml (58 rules)
+INFO  consistency check: eslint.yaml has no rule-catalogue extractor
+PASS  mapping schema: eslint-typed.yaml (5 rules)
+INFO  consistency check: eslint-typed.yaml has no rule-catalogue extractor
+PASS  mapping schema: checkov.yaml (14 rules)
+INFO  consistency check: checkov.yaml has no rule-catalogue extractor
+
+22 validated, 2 skipped (not validated — tools absent), 1 failed
