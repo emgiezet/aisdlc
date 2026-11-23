@@ -1,0 +1,3 @@
+docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:stable -S warning plugins/slop-guard/tests/tool-integration plugins/slop-guard/tests/integration/opengrep.sh
+
+EXIT: 0

@@ -1,0 +1,6 @@
+Spec-first observations (recorded before reading implementation/tests):
+UC-1: With OpenGrep 1.30.0 and all rules, scanning a copied fixtures tree must report each of six specific C# check IDs on its corresponding bad fixture (003..008); another rule's hit cannot substitute.
+UC-2: The same six IDs must have no findings in any good/ directory, including non-C# good fixtures.
+UC-3: Without OpenGrep, the new integration case must record exactly one skip, and requiring tools must yield nonzero suite exit.
+UC-4: With a binary present, failed scan or malformed JSON must fail, never masquerade as empty successful results.
+Non-functional: source tests tree must not be scanned in place; use pinned 1.30.0; fixtures remain valid meaningful unsafe/safe examples; parse errors must fail.
