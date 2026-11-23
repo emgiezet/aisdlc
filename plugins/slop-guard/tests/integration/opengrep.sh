@@ -76,4 +76,27 @@ RUST_CONTRACTS
     else
         it_bad 'GH-65-b UC-5: SAFETY string does not suppress unsafe-block detection' 'missing unsafe-block result or failed scan'
     fi
+    # GH-65-c UC-7/UC-8: retain C#/Rust checks and enforce the Ruby fixtures.
+    while read -r _og_id _og_ap; do
+        if [ "$_og_fixture_scan_ok" = 1 ] && jq -e --arg id "$_og_id" --arg ap "$_og_ap" '
+            any(.results[]; .check_id == $id and
+                (.path | endswith("/ruby/bad/" + $ap + ".rb")))
+            ' "$_og_fixture_json" >/dev/null; then
+            it_ok "GH-65-c UC-7: ${_og_id} detects its bad fixture"
+        else
+            it_bad "GH-65-c UC-7: ${_og_id} detects its bad fixture" 'missing own-rule result or failed scan'
+        fi
+        if [ "$_og_fixture_scan_ok" = 1 ] && jq -e --arg id "$_og_id" '
+            all(.results[]; .check_id != $id or (.path | contains("/good/") | not))
+            ' "$_og_fixture_json" >/dev/null; then
+            it_ok "GH-65-c UC-8: ${_og_id} is silent across all good fixtures"
+        else
+            it_bad "GH-65-c UC-8: ${_og_id} is silent across all good fixtures" 'good-fixture finding or failed scan'
+        fi
+    done <<'RUBY_CONTRACTS'
+slopguard.ruby.send-user-input AP-RB-SEC-001
+slopguard.ruby.mass-assignment-without-permit AP-RB-SEC-005
+slopguard.ruby.sql-string-interpolation AP-RB-SEC-006
+slopguard.ruby.insecure-random AP-RB-SEC-007
+RUBY_CONTRACTS
 fi

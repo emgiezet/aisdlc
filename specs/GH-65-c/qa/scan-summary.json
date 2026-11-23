@@ -1,0 +1,40 @@
+{
+  "errors": [],
+  "ruby": [
+    {
+      "check_id": "slopguard.ruby.send-user-input",
+      "path": "/tmp/qa-GH-65-c-scan-4TkBrR/samples/ruby/bad/AP-RB-SEC-001.rb",
+      "line": 8
+    },
+    {
+      "check_id": "slopguard.ruby.mass-assignment-without-permit",
+      "path": "/tmp/qa-GH-65-c-scan-4TkBrR/samples/ruby/bad/AP-RB-SEC-005.rb",
+      "line": 4
+    },
+    {
+      "check_id": "slopguard.ruby.mass-assignment-without-permit",
+      "path": "/tmp/qa-GH-65-c-scan-4TkBrR/samples/ruby/bad/AP-RB-SEC-005.rb",
+      "line": 11
+    },
+    {
+      "check_id": "slopguard.ruby.sql-string-interpolation",
+      "path": "/tmp/qa-GH-65-c-scan-4TkBrR/samples/ruby/bad/AP-RB-SEC-006.rb",
+      "line": 4
+    },
+    {
+      "check_id": "slopguard.ruby.sql-string-interpolation",
+      "path": "/tmp/qa-GH-65-c-scan-4TkBrR/samples/ruby/bad/AP-RB-SEC-006.rb",
+      "line": 10
+    },
+    {
+      "check_id": "slopguard.ruby.insecure-random",
+      "path": "/tmp/qa-GH-65-c-scan-4TkBrR/samples/ruby/bad/AP-RB-SEC-007.rb",
+      "line": 4
+    },
+    {
+      "check_id": "slopguard.ruby.insecure-random",
+      "path": "/tmp/qa-GH-65-c-scan-4TkBrR/samples/ruby/bad/AP-RB-SEC-007.rb",
+      "line": 10
+    }
+  ]
+}
