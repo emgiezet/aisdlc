@@ -533,12 +533,12 @@ plugin options dialog.
 
 ### Prevention skills
 
-Alongside the runtime checks, Slop Guard loads language-specific prevention skills that put the
-rules in the agent's context before it writes any code. Each skill covers the highest-impact
-anti-patterns for one stack: blockers first, then performance, then maintainability — one line
-each, with the safe alternative.
+Slop Guard ships language-specific prevention skills with the highest-impact anti-patterns:
+blockers first, then performance, then maintainability. Hosts discover these skills by their
+portable descriptions, not by path globs. Independently, the `pre-write` hook adds first-edit
+guidance for supported languages.
 
-| Skill | Loads when editing |
+| Skill | Relevant files or work |
 |---|---|
 | `php-antipatterns` | `*.php`, `*.blade.php` |
 | `go-antipatterns` | `*.go` |
@@ -548,7 +548,7 @@ each, with the safe alternative.
 | `sql-antipatterns` | `*.sql` |
 | `iac-antipatterns` | `*.tf`, `*.yaml`, `*.yml`, `Dockerfile` (IaC context) |
 | `auth-antipatterns` | auth, login, session, token, password and OAuth paths — AP-AUTH-001 through AP-AUTH-011 |
-| `agent-discipline` | always — AP-AGENT-001 through AP-AGENT-009 |
+| `agent-discipline` | General agent work |
 
 `auth-antipatterns` is the one catalogue that is not a language: token entropy, reset-token storage
 and TTL, password hashing, session rotation and invalidation, JWT verification, re-authentication
@@ -609,6 +609,9 @@ make eval-dry       # skill trigger sets, structural check only
 make harness-eval MODEL=haiku [SCENARIO=go-endpoint]   # the real thing; costs money
 make tool-integration              # real-binary parser tests; needs pinned toolchain (CI); skips per tool otherwise
 ```
+
+Local Slop Guard catalogue validation (`make validate`) requires Python 3 with PyYAML 6.0.3.
+Set `PYTHON` to the Python executable with that dependency installed if it is not `python3`.
 
 `make selftest` is the one to run after touching `bin/aisdlc`. It exists because a real run once
 found that `claude` consumes stdin, which silently ate the queue's phase list — the kind of defect

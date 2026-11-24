@@ -72,7 +72,7 @@ allows the action.
 
 | # | Decision | Answer | Date | Consequence |
 |---|---|---|---|---|
-| D13 | Single source of truth for stack tags | **`rules/stacks.json`** | 2026-09-17 | `lib/detect.sh`, `.slopguard.json` validation, skill routing and Opengrep rule selection all read this one file. Path overridable via `SLOPGUARD_STACKS_JSON` so tests can point elsewhere. Required before Stage 1: without it `detect_stacks` cannot add tier-2 languages without duplicating tag lists. |
+| D13 | Single source of truth for stack tags | **`rules/stacks.json`** | 2026-09-17 | `lib/detect.sh`, `.slopguard.json` validation and Opengrep rule selection read this file. Path overridable via `SLOPGUARD_STACKS_JSON`. As of GH-68, portable skills are discovered by description; the generator does not read this file. |
 
 ### Non-Blocking
 
