@@ -3,6 +3,28 @@
 All notable changes to Slop Guard will be documented in this file.
 
 ## Unreleased
+- **Upgrade compatible ESLint plugin majors** (2026-11-06)
+  - `tools/node/{package.json,package-lock.json}`: eslint-plugin-react-hooks 7.1.1,
+    eslint-plugin-security 4.2.1 and eslint-plugin-n 18.5.0; lock regenerated with
+    scripts disabled and strict peer dependency resolution. Node now requires
+    `^22.18.0 || >=24`: eslint-plugin-n 18 needs `^20.19.0 || ^22.13.0 || >=24` and the
+    unchanged `@spacemansh/anti-slop` 0.3.0 needs `>=22.18.0`, so Node 20, Node 22
+    before 22.18 and Node 23 fail strict installs (CI uses Node 22).
+  - `tools/tools.lock.json` and the npm bundle: ESLint and @eslint/js 9.39.5,
+    the newest eligible 9.x release, accepted by every plugin's peer range.
+  - **Why only three majors?** eslint-plugin-react 7.37.5 supports ESLint only
+    through `^9.7`; typescript-eslint 8.72.1 supports TypeScript `>=4.8.4 <6.1.0`.
+    ESLint 10 and TypeScript 7 therefore stay out. regexp 3 is blocked by transitive
+    jsdoc-type-pratt-parser 9.x requiring Node `^22.22.2 || >=24.15.0`; that excludes
+    supported Node 22.18–22.22.1 and 24.0–24.14, so regexp remains 2.10.0.
+    Psalm 7.0.0–7.0.4 were published Nov 2–6, inside the seven-day hold, so Psalm
+    remains 6.16.1. Psalm 7's PHP requirement includes `~8.3.16`, compatible with CI.
+    No baseline config migration is required for the three adopted plugins.
+  - Explicit baseline rule names are unchanged, but upstream coverage tightens:
+    hooks checks more `use`/effect-event misuse; security detects more child-process,
+    filesystem, template-require and RegExp calls; n updates deprecated API data.
+  - The regenerated npm lock applies the seven-day publication hold to transitive
+    dependencies too, with cutoff `2026-10-30T09:56:41Z`.
 - **Every slop-guard skill loads in omp** (2026-10-26)
   - `scripts/gen-skills`: JSON-quote descriptions with jq (valid YAML strings, colons, quotes and backslashes preserved) and emit only `name` and `description` — no `paths`, no `user-invocable`. `skill_paths` and the `rules/stacks.json` dependency are gone. The thirteen catalogue skills are regenerated.
   - `skills/secure-review/SKILL.md`, `skills/deslop/SKILL.md`: frontmatter reduced to `name` + `description`; the body tells the model to delegate to `agents/security-reviewer.md` / `agents/deslop.md`. The reviewer's read-only restriction stays where it is enforced, the agent's `disallowedTools`.
