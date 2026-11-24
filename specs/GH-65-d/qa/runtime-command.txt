@@ -1,0 +1,14 @@
+Environment:
+export PATH=/tmp/qa-bin:$PATH
+export CLAUDE_PLUGIN_DATA=/tmp/slopguard-data-GH-65-d
+export CLAUDE_PLUGIN_OPTION_TOOL_SOURCE=plugin-only
+export CLAUDE_PLUGIN_ROOT="$PWD/plugins/slop-guard"
+source plugins/slop-guard/lib/tools.sh
+bin=$(resolve_tool opengrep)
+work=$(mktemp -d "$PWD/.qa-runtime-XXXXXX")
+cp -R plugins/slop-guard/tests/fixtures "$work/samples"
+"$bin" --version
+"$bin" scan --json --disable-nosem --no-rewrite-rule-ids --config "$CLAUDE_PLUGIN_ROOT/rules/opengrep" "$work/samples"
+Result: exit 0; version 1.30.0; errors []; target IDs have Go 12, Jackson 1, XML 2, Node 9 hits, all in bad/.
+Filtered actual results: runtime-results.json. Scanner stderr: runtime-scan.stderr.
+The copied tree and unfiltered JSON were removed after extracting the evidence. No annotation suppression was enabled.

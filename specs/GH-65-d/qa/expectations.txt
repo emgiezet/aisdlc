@@ -1,0 +1,4 @@
+Spec-first observables, recorded before implementation/tests review:
+UC-9: pinned OpenGrep scans a copied fixture tree with the entire rules directory, emits valid JSON without scan errors, and each of slopguard.jvm.jackson-default-typing, slopguard.jvm.xml-external-entity, slopguard.go.http-client-without-timeout, slopguard.node.prototype-pollution-merge has >=1 hit in its matching bad AP fixture.
+UC-10: the same four rule IDs have exactly zero findings anywhere under good/ in the copied tree, including both XML locations; previous C#/Rust/Ruby bad-positive/good-negative integration assertions continue to pass.
+Non-functional: no annotation exclusions or de-insecured bad fixtures; invalid JSON/nonzero scanner exits fail the tests.

@@ -1,0 +1,10 @@
+4	0	plugins/slop-guard/CHANGELOG.md
+7	7	plugins/slop-guard/rules/opengrep/php-laravel.yaml
+135	9	plugins/slop-guard/rules/opengrep/react.yaml
+32	0	plugins/slop-guard/tests/fixtures/ts/bad/AP-TS-SEC-004-arrow-shadow.tsx
+16	0	plugins/slop-guard/tests/fixtures/ts/bad/AP-TS-SEC-004-call.tsx
+32	0	plugins/slop-guard/tests/fixtures/ts/bad/AP-TS-SEC-004-import-shadow.tsx
+29	0	plugins/slop-guard/tests/fixtures/ts/bad/AP-TS-SEC-004-shadow.tsx
+30	20	plugins/slop-guard/tests/fixtures/ts/good/AP-TS-SEC-004.tsx
+72	0	plugins/slop-guard/tests/integration/opengrep.sh
+4	5	plugins/slop-guard/tests/opengrep_test.sh

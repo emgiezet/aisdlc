@@ -7,9 +7,14 @@ def run_formula(name, a, b)
 end
 
 # ok: slopguard.ruby.send-user-input
-ALLOWED_ACTIONS = %w[approve reject archive].freeze
+# Safe: dispatch table of lambdas — no send/public_send called with a variable.
+SAFE_ACTIONS = {
+  'approve' => ->(o) { o.approve },
+  'reject'  => ->(o) { o.reject },
+  'archive' => ->(o) { o.archive }
+}.freeze
 
 def call_action(obj, action_name)
-  raise ArgumentError unless ALLOWED_ACTIONS.include?(action_name)
-  obj.public_send(action_name)
+  fn = SAFE_ACTIONS.fetch(action_name) { raise ArgumentError, "Unknown action" }
+  fn.call(obj)
 end

@@ -1,0 +1,70 @@
+slop-guard integration suite
+
+--- fast.sh ---
+  FAIL  ruff: SQL injection (bad fixture -> AP-PY-SEC-001): expected AP-PY-SEC-001; hook output: slopguard: ruff unavailable — run: slopguard doctor --install
+  ok    ruff: clean Python (good fixture -> silence)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  hadolint: no binary (lockfile name: hadolint)
+  ok    kube-linter: privileged container (bad fixture -> AP-K8S-001)
+  ok    kube-linter: compliant deployment (good fixture -> silence)
+  skip  zizmor: no binary (lockfile name: zizmor)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+  skip  eslint-stack: no binary (lockfile name: eslint)
+
+--- medium.sh ---
+  skip  phpstan: no binary (lockfile name: phpstan)
+  skip  golangci-lint: v1.x in PATH; dispatcher requires v2 (slopguard doctor --install)
+  skip  tflint: no binary (lockfile name: tflint)
+  skip  checkov: no binary (lockfile name: checkov)
+  ok    opengrep: as unknown as T → AP-TS-MAINT-001
+  ok    opengrep: check_id prefix stripped; mapping matched by bare rule id
+  ok    opengrep: schema-typed boundary produces no finding
+
+--- opengrep.sh ---
+  ok    GH-65-a UC-4: OpenGrep scan succeeds with valid error-free JSON
+  ok    GH-65-a UC-1: slopguard.cs.process-start-user-input detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.process-start-user-input is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.path-traversal detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.path-traversal is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.crypto-weak-algorithm detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.crypto-weak-algorithm is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.insecure-random detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.insecure-random is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.xxe-xml detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.xxe-xml is silent across all good fixtures
+  ok    GH-65-a UC-1: slopguard.cs.ldap-injection detects its bad fixture
+  ok    GH-65-a UC-2: slopguard.cs.ldap-injection is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.unsafe-block detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.unsafe-block is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.raw-pointer-deref detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.raw-pointer-deref is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.mem-transmute detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.mem-transmute is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.from-utf8-unchecked detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.from-utf8-unchecked is silent across all good fixtures
+  ok    GH-65-b UC-5: slopguard.rs.command-injection detects its bad fixture
+  ok    GH-65-b UC-6: slopguard.rs.command-injection is silent across all good fixtures
+  ok    GH-65-b UC-5: SAFETY string does not suppress unsafe-block detection
+
+--- stop.sh ---
+  skip  psalm: no binary (lockfile name: psalm)
+  skip  checkov: no binary (lockfile name: checkov)
+
+30 passed, 1 failed, 27 skipped, 0 known
+make: *** [Makefile:303: tool-integration] Error 1
