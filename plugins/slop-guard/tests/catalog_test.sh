@@ -15,7 +15,6 @@ ok()  { printf '  ok    %s\n' "$1"; PASS=$(( PASS + 1 )); }
 bad() { printf '  FAIL  %s: %s\n' "$1" "$2"; FAIL=$(( FAIL + 1 )); }
 
 CATALOG="${PLUGIN_ROOT}/rules/catalog.yaml"
-STACKS="${PLUGIN_ROOT}/rules/stacks.json"
 TOOLS_LOCK="${PLUGIN_ROOT}/tools/tools.lock.json"
 MAPPING_DIR="${PLUGIN_ROOT}/rules/mapping"
 OPENGREP_DIR="${PLUGIN_ROOT}/rules/opengrep"
@@ -246,50 +245,54 @@ for skill_dir in "${SKILLS_DIR}"/*/; do
 done
 [ "$SKILLS_OVER_BUDGET" -eq 0 ] && ok "all generated SKILL.md files within §3 budgets (150 lines, 3000 tokens)"
 
-# ─── 9. Every SKILL.md has valid frontmatter ──────────────────────────────────
-FM_FAILURES=0
-for skill_dir in "${SKILLS_DIR}"/*/; do
-    skill_name="$(basename "$skill_dir")"
-    md="${skill_dir}/SKILL.md"
-    [ -f "$md" ] || continue
-    has_name=false; has_desc=false; has_uinv=false
-    in_fm=false; fm_done=false
-    while IFS= read -r line; do
-        case "$line" in
-            "---") 
-                if ! $in_fm && ! $fm_done; then in_fm=true
-                elif $in_fm; then in_fm=false; fm_done=true; break
-                fi ;;
-            "name: "*)        $in_fm && has_name=true ;;
-            "description: "*) $in_fm && has_desc=true ;;
-            "user-invocable: "*) $in_fm && has_uinv=true ;;
-        esac
-    done < "$md"
-    if ! $has_name || ! $has_desc || ! $has_uinv; then
-        bad "SKILL.md frontmatter" "${skill_name}: missing name/description/user-invocable"
-        FM_FAILURES=$(( FM_FAILURES + 1 ))
-    fi
-done
-[ "$FM_FAILURES" -eq 0 ] && ok "all SKILL.md files have valid frontmatter"
-
-# ─── 10. gen-skills idempotency (run twice, diff SKILL.md files) ──────────────
 TMP_IDEMPOTENT="$(mktemp -d)"
 trap 'rm -rf "$TMP_IDEMPOTENT"' EXIT
+
+# ─── 9. Shipped and freshly generated skills load as YAML metadata ─────────────
+FRONTMATTER_EVAL="${PLUGIN_ROOT}/evals/skill-frontmatter.py"
+if frontmatter_output="$("${PYTHON:-python3}" "$FRONTMATTER_EVAL" 2>&1)"; then
+    while IFS= read -r result; do
+        case "$result" in
+            generated:*) ok "GH-68 UC-1: $result" ;;
+            shipped:*) ok "GH-68 UC-2: $result" ;;
+        esac
+    done <<< "$frontmatter_output"
+else
+    bad "GH-68 UC-1/UC-2: skill frontmatter eval" "$frontmatter_output"
+fi
+
+# Put an otherwise valid skill with a host-specific key in a throwaway package.
+FM_PLUGIN="${TMP_IDEMPOTENT}/frontmatter"
+mkdir -p "${FM_PLUGIN}/evals" "${FM_PLUGIN}/scripts" "${FM_PLUGIN}/skills/nonportable"
+cp "$FRONTMATTER_EVAL" "${FM_PLUGIN}/evals/"
+cp "$GEN_SKILLS" "${FM_PLUGIN}/scripts/"
+cp -R "${SKILLS_DIR}/agent-discipline" "${FM_PLUGIN}/skills/"
+printf '%s\n' '---' 'name: nonportable' 'description: Valid description' \
+    'context: fork' '---' > "${FM_PLUGIN}/skills/nonportable/SKILL.md"
+if frontmatter_output="$(SLOPGUARD_CATALOG="$CATALOG" "${PYTHON:-python3}" \
+    "${FM_PLUGIN}/evals/skill-frontmatter.py" 2>&1)"; then
+    bad "GH-68 UC-3: reject host-specific metadata" "invalid skill was accepted"
+elif grep -Fxq 'FAIL shipped/nonportable: unexpected frontmatter field(s): context' <<< "$frontmatter_output"; then
+    ok "GH-68 UC-3: reject host-specific metadata with a diagnostic"
+else
+    bad "GH-68 UC-3: reject host-specific metadata" "$frontmatter_output"
+fi
+
+# ─── 10. gen-skills idempotency (run twice, diff SKILL.md files) ──────────────
 
 # Snapshot current SKILL.md hashes
 find "$SKILLS_DIR" -name 'SKILL.md' | sort | xargs md5sum 2>/dev/null \
     | sed "s|${SKILLS_DIR}/||g" > "${TMP_IDEMPOTENT}/before.md5"
 
 # Re-run generator
-SLOPGUARD_CATALOG="$CATALOG" SLOPGUARD_STACKS_JSON="$STACKS" \
-    bash "$GEN_SKILLS" >/dev/null 2>&1
+SLOPGUARD_CATALOG="$CATALOG" bash "$GEN_SKILLS" >/dev/null 2>&1
 
 # Re-hash
 find "$SKILLS_DIR" -name 'SKILL.md' | sort | xargs md5sum 2>/dev/null \
     | sed "s|${SKILLS_DIR}/||g" > "${TMP_IDEMPOTENT}/after.md5"
 
 if diff -q "${TMP_IDEMPOTENT}/before.md5" "${TMP_IDEMPOTENT}/after.md5" >/dev/null 2>&1; then
-    ok "gen-skills is idempotent (second run produced identical SKILL.md files)"
+    ok "GH-68 UC-4: gen-skills is idempotent (second run produced identical SKILL.md files)"
 else
     bad "gen-skills idempotency" "SKILL.md hashes differ between first and second run"
     diff "${TMP_IDEMPOTENT}/before.md5" "${TMP_IDEMPOTENT}/after.md5" | head -10
@@ -320,7 +323,7 @@ OVER_BUDGET_CATALOG="${TMP_IDEMPOTENT}/overbud.yaml"
 
 OB_TMP="${TMP_IDEMPOTENT}/ob_skills"
 mkdir -p "$OB_TMP"
-if SLOPGUARD_CATALOG="$OVER_BUDGET_CATALOG" SLOPGUARD_STACKS_JSON="$STACKS" \
+if SLOPGUARD_CATALOG="$OVER_BUDGET_CATALOG" \
     SLOPGUARD_SKILLS_DIR="$OB_TMP" bash "$GEN_SKILLS" >/dev/null 2>&1; then
     bad "over-budget catalog" "gen-skills should have exited non-zero on over-budget catalog"
 else
@@ -364,17 +367,12 @@ else
     fi
 fi
 
-# ─── 15. secure-review SKILL.md has context: fork ─────────────────────────────
+# ─── 15. secure-review SKILL.md exists ────────────────────────────────────────
 SECURE_REVIEW="${SKILLS_DIR}/secure-review/SKILL.md"
-if [ ! -f "$SECURE_REVIEW" ]; then
-    bad "secure-review SKILL.md" "not found: skills/secure-review/SKILL.md"
-else
+if [ -f "$SECURE_REVIEW" ]; then
     ok "skills/secure-review/SKILL.md exists"
-    if grep -q '^context: fork' "$SECURE_REVIEW"; then
-        ok "secure-review skill has context: fork"
-    else
-        bad "secure-review context" "SKILL.md missing 'context: fork' in frontmatter"
-    fi
+else
+    bad "secure-review SKILL.md" "not found: skills/secure-review/SKILL.md"
 fi
 
 # ─── 16. Shell checks on scripts ──────────────────────────────────────────────
