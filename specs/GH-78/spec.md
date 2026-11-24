@@ -1,7 +1,7 @@
 ---
 ticket: GH-78
 title: Upgrade the compatible ESLint analyzer bundle
-status: draft
+status: approved
 stacks: [slop-guard catalogue]
 ---
 
@@ -41,7 +41,7 @@ Change budget: 120 added lines, 9 files, 2 modules
 
 ## Non-functional
 
-Supported Node range: `^20.19.0 || ^22.13.0 || >=24`. The shipped baseline's explicit enabled rule names stay unchanged; upstream matching semantics may tighten.
+Supported Node range: `^22.18.0 || >=24` — the intersection of every engine in the lock (`eslint-plugin-n` 18.5.0: `^20.19.0 || ^22.13.0 || >=24`; unchanged `@spacemansh/anti-slop` 0.3.0: `>=22.18.0`). Strict installs on Node 20, Node 22 before 22.18 and Node 23 fail with EBADENGINE, which is expected, not a regression. The shipped baseline's explicit enabled rule names stay unchanged; upstream matching semantics may tighten.
 
 ## Open questions
 

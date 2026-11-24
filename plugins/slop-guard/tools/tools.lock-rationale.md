@@ -61,12 +61,19 @@ this in the PR description.
 ESLint and @eslint/js 9.39.5 (published July 10) satisfy every pinned plugin's
 ESLint peer range. ESLint 10 remains excluded by eslint-plugin-react 7.37.5.
 
+Supported Node is `^22.18.0 || >=24`, the intersection of every locked engine:
+eslint-plugin-n 18.5.0 declares `^20.19.0 || ^22.13.0 || >=24`, and the unchanged
+`@spacemansh/anti-slop` 0.3.0 declares `>=22.18.0`. Strict `npm ci` fails with
+EBADENGINE on Node 20, Node 22 before 22.18 and Node 23. Re-check this range
+against `packages[*].engines.node` in `node/package-lock.json` after every lock
+regeneration; `package.json` `engines` must not advertise more than the lock installs.
+
 regexp 3 blocked: transitive jsdoc-type-pratt-parser requires node
 `^22.22.2 || >=24.15.0`. eslint-plugin-regexp 3.3.2 accepts ESLint `>=9.38.0`,
 but depends on jsdoc-type-pratt-parser `^9.0.0`; every eligible parser release
 9.0.0–9.4.0 has that stricter Node engine. Parser 9.5.0 also has it and was
 published Nov 3, inside the seven-day hold. No eligible parser 9.x satisfies
-this bundle's `^20.19.0 || ^22.13.0 || >=24` floor or local Node 24.0.2.
+this bundle's `^22.18.0 || >=24` range or local Node 24.0.2.
 Keep regexp 2.10.0 rather than override outside its range, ignore EBADENGINE,
 or raise the supported Node floor to force a major upgrade.
 
