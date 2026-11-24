@@ -79,6 +79,9 @@ mkdir -p "$STUB_DIR"
 ln -sf "$HARNESS_DIR/stub-claude" "$STUB_DIR/claude"
 ln -sf "$HARNESS_DIR/stub-omp" "$STUB_DIR/omp"
 export PATH="$STUB_DIR:$PATH"
+# Both stubs are on PATH, so the built-in `auto` runtime would pick omp for every case. Pin the
+# baseline to claude; the auto-detection cases unset this and control PATH themselves.
+export AISDLC_RUNTIME=claude
 
 printf 'aisdlc runner selftest (stub claude and stub omp, no API calls)\n\n'
 
@@ -1435,12 +1438,16 @@ grep -q 'edited .claude/' "$D/implement.log" && ok "the log names the policy edi
 printf '\nthe runtime is validated and resolved like every other default\n'
 R="$WORK/omp-config"
 fresh_repo "$R"
-"$AISDLC" add SBX-1 --repo "$R" --runtime nonsense >/dev/null 2>&1 \
-    && bad "runtime" "an unknown runtime was accepted" || ok "an unknown runtime is refused"
+if "$AISDLC" add SBX-1 --repo "$R" --runtime nonsense >/dev/null 2>&1 ||
+    [ -n "$(task_field "$R" .id)" ]; then
+    bad "GH-71 UC-5: unknown runtime is refused" "add succeeded or queued a task"
+else
+    ok "GH-71 UC-5: unknown runtime is refused without queueing"
+fi
 mkdir -p "$R/.aisdlc"
 printf '{"verify":["true"],"runtime":"omp"}\n' > "$R/.aisdlc/config.json"
 "$AISDLC" add SBX-1 --repo "$R" >/dev/null 2>&1
-[ "$(task_field "$R" .runtime)" = "omp" ] && ok "config.json sets the runtime" \
+[ "$(task_field "$R" .runtime)" = "omp" ] && ok "GH-71 UC-3: config wins over the Claude environment default" \
     || bad "runtime" "runtime is $(task_field "$R" .runtime)"
 # A queued omp task on a machine without omp: refuse up front, leave the task queued.
 NO_OMP="$WORK/no-omp-bin"
@@ -1452,6 +1459,85 @@ PATH="$NO_OMP" "$AISDLC" run --repo "$R" --once >/dev/null 2>&1 \
     && bad "runtime" "run started without omp installed" || ok "run refuses when a queued task's runtime is missing"
 [ "$(task_field "$R" .status)" = "queued" ] && ok "the task stays queued" \
     || bad "runtime" "status is $(task_field "$R" .status)"
+
+printf '\nruntime auto: omp before claude, explicit choice wins, none installed fails\n'
+AUTO_NONE="$WORK/auto-none-bin"; AUTO_CLAUDE="$WORK/auto-claude-bin"; AUTO_BOTH="$WORK/auto-both-bin"
+mkdir -p "$AUTO_NONE" "$AUTO_CLAUDE" "$AUTO_BOTH"
+for tool in git jq flock bash sed awk grep find sort sha256sum cut tr wc head tail date dirname basename mkdir cat printf readlink ls mktemp rm mv cp touch tee uname env; do
+    p="$(command -v "$tool")" || continue
+    for d in "$AUTO_NONE" "$AUTO_CLAUDE" "$AUTO_BOTH"; do ln -sf "$p" "$d/$tool"; done
+done
+ln -sf "$HARNESS_DIR/stub-claude" "$AUTO_CLAUDE/claude"
+ln -sf "$HARNESS_DIR/stub-claude" "$AUTO_BOTH/claude"
+ln -sf "$HARNESS_DIR/stub-omp" "$AUTO_BOTH/omp"
+auto_add() { local bin="$1"; shift; env -u AISDLC_RUNTIME PATH="$bin" "$AISDLC" add SBX-1 "$@" 2>&1; }
+
+R="$WORK/auto-both"; fresh_repo "$R"
+out="$(auto_add "$AUTO_BOTH" --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "omp" ] && ok "GH-71 UC-1: auto stores omp when both runtimes are installed" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+grep -Fq 'on omp (auto-detected), no spend cap' <<< "$out" && ok "GH-71 UC-1: add reports auto and no spend cap" \
+    || bad "runtime auto" "missing runtime or cap note: $out"
+
+R="$WORK/auto-claude"; fresh_repo "$R"
+out="$(auto_add "$AUTO_CLAUDE" --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "claude" ] && ok "GH-71 UC-2: auto falls back to claude without omp" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-explicit"; fresh_repo "$R"
+printf '{"verify":["true"],"runtime":"omp"}\n' > "$R/.aisdlc/config.json"
+out="$(AISDLC_RUNTIME=omp "$AISDLC" add SBX-1 --repo "$R" --runtime claude)"
+[ "$(task_field "$R" .runtime)" = "claude" ] && ok "GH-71 UC-3: explicit flag wins over config and environment" \
+    || bad "runtime precedence" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-config"; fresh_repo "$R"
+printf '{"verify":["true"],"runtime":"auto"}\n' > "$R/.aisdlc/config.json"
+out="$(auto_add "$AUTO_CLAUDE" --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "claude" ] && ok "GH-71 UC-3: explicit auto in config detects too" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-flag"; fresh_repo "$R"
+printf '{"verify":["true"],"runtime":"claude"}\n' > "$R/.aisdlc/config.json"
+out="$(auto_add "$AUTO_BOTH" --repo "$R" --runtime auto)"
+[ "$(task_field "$R" .runtime)" = "omp" ] && ok "GH-71 UC-3: explicit auto flag detects ahead of config" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-env"; fresh_repo "$R"
+out="$(AISDLC_RUNTIME=auto PATH="$AUTO_BOTH" "$AISDLC" add SBX-1 --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "omp" ] && ok "GH-71 UC-3: explicit auto in environment detects too" \
+    || bad "runtime auto" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/runtime-env"; fresh_repo "$R"
+out="$(AISDLC_RUNTIME=claude PATH="$AUTO_BOTH" "$AISDLC" add SBX-1 --repo "$R")"
+[ "$(task_field "$R" .runtime)" = "claude" ] && ok "GH-71 UC-3: environment wins over the built-in default" \
+    || bad "runtime precedence" "runtime is $(task_field "$R" .runtime): $out"
+
+R="$WORK/auto-none"; fresh_repo "$R"
+if out="$(auto_add "$AUTO_NONE" --repo "$R")"; then
+    bad "runtime auto" "add succeeded with no runtime installed: $out"
+else
+    printf '%s\n' "$out" | grep -q 'neither omp nor claude is installed' \
+        && ok "GH-71 UC-4: no installed runtime refuses with the reason" \
+        || bad "runtime auto" "unexpected refusal: $out"
+fi
+[ -z "$(task_field "$R" .id)" ] && ok "GH-71 UC-4: nothing is queued without a runtime" \
+    || bad "runtime auto" "a task was queued without a runtime"
+
+R="$WORK/runtime-persisted"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime claude --no-pr >/dev/null 2>&1
+AISDLC_RUNTIME=omp "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && [ "$(task_field "$R" '.sessions[0].runtime')" = "claude" ] \
+    && ok "GH-71 UC-6: worker uses the stored runtime, not the current environment" \
+    || bad "runtime worker" "stored Claude task did not complete on Claude"
+
+R="$WORK/runtime-legacy"; fresh_repo "$R"
+"$AISDLC" add SBX-1 --repo "$R" --runtime omp --no-pr >/dev/null 2>&1
+D="$(ls -d "$R"/.aisdlc/tasks/*/ | head -1)"
+jq 'del(.runtime)' "$D/task.json" > "$D/task.tmp" && mv "$D/task.tmp" "$D/task.json"
+AISDLC_RUNTIME=omp "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+[ "$(task_field "$R" .status)" = "done" ] && [ "$(task_field "$R" '.sessions[0].runtime')" = "claude" ] \
+    && ok "GH-71 UC-6: worker runs a legacy runtime-less task on Claude" \
+    || bad "runtime worker" "legacy task did not complete on Claude"
 
 printf '\nsessions: claude records phase sessions (UC-1)\n'
 R="$WORK/sessions-uc1"; fresh_repo "$R"

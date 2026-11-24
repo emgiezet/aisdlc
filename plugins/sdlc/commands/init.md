@@ -145,13 +145,13 @@ Router near the top, and leave the rest alone.
   launching the app and driving one feature.
 - `.aisdlc/config.json` — runner defaults: `{"model", "budget", "base", "workers", "label",
   "specs_dir", "billing", "readiness_min": null, "max_open_prs": null, "max_run_usd": null}`,
-  plus `"harness_version"` set to this plugin's version (from
-  `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`), which `/sdlc:update` compares to find
-  stale generated files. Pick `base` from the actual default branch. Set `"billing":
-  "subscription"` under a Claude Pro/Max plan (no per-token cost: the queue omits the spend cap
-  and records `cost_usd: null`, not a misleading zero); omit it or use `"api"` otherwise.
-  `"archive_transcripts": "off"` keeps transcripts out of the archive. The three `null` keys mean
-  disabled/unlimited; set a threshold to opt in. Never overwrite a value the operator set.
+  plus `"harness_version"` from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`, which
+  `/sdlc:update` compares to find stale generated files. Pick `base` from the default branch.
+  `"billing": "subscription"` under a Claude Pro/Max plan (no per-token cost: the queue omits
+  the spend cap and records `cost_usd: null`, not a misleading zero); else omit it or `"api"`.
+  Leave `"runtime"` out — `auto` runs omp if installed, else claude; pin `"claude"` or `"omp"`
+  only for, say, a CI stage. `"archive_transcripts": "off"` keeps transcripts out of the archive.
+  The `null` keys mean disabled/unlimited until given a threshold. Never overwrite an operator's value.
 - `specs/.gitkeep` and `specs/briefs/.gitkeep` — so both directories exist before the first artefact.
 - `.gitignore` — append `.aisdlc/` if absent (runner state and the `local` tracker; never committed).
 - Labels (`github` only): **ensure-labels** with the profile's PR label, the four pipeline labels,
