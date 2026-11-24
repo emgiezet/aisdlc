@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Host has no PHP; preserve host paths and PHPStan cache environment.
+exec docker run --rm --user "$(id -u):$(id -g)" \
+    -v /home:/home -v /tmp:/tmp -w "$PWD" \
+    -e SLOPGUARD_CACHE_DIR -e HOME \
+    aisdlc-tool-bumps-php:8.3 php "$@"

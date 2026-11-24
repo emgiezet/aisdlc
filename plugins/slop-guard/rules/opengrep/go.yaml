@@ -24,6 +24,50 @@ rules:
               $C := &http.Client{$...FIELDS}
           - pattern-not: |
               $C := &http.Client{$...FIELDS, Timeout: $_, $...MORE}
+          - pattern-not: |
+              $C := &http.Client{Timeout: $_, $...MORE}
+      # Timeout: 0 is time.Duration's zero value — semantically no timeout.
+      # The pattern-not above suppresses any Timeout field (including 0), so
+      # we re-catch zero explicitly here as independent pattern-either branches.
+      - pattern: |
+          $C := &http.Client{Timeout: 0, $...MORE}
+      - pattern: |
+          $C := &http.Client{$...FIELDS, Timeout: 0, $...MORE}
+      # Same zero-timeout cases for direct return expressions (not assignments).
+      - pattern: |
+          return &http.Client{Timeout: 0}
+      - pattern: |
+          return &http.Client{Timeout: 0, $...MORE}
+      - pattern: |
+          return &http.Client{$...FIELDS, Timeout: 0}
+      - pattern: |
+          return &http.Client{$...FIELDS, Timeout: 0, $...MORE}
+      # Zero duration expression in return: 0 * time.X is still no timeout.
+      - pattern: |
+          return &http.Client{Timeout: 0 * $_}
+      - pattern: |
+          return &http.Client{Timeout: 0 * $_, $...MORE}
+      - pattern: |
+          return &http.Client{$...FIELDS, Timeout: 0 * $_}
+      - pattern: |
+          return &http.Client{$...FIELDS, Timeout: 0 * $_, $...MORE}
+      # Zero duration expression in assignments.
+      - pattern: |
+          $C := &http.Client{Timeout: 0 * $_}
+      - pattern: |
+          $C := &http.Client{Timeout: 0 * $_, $...MORE}
+      - pattern: |
+          $C := &http.Client{$...FIELDS, Timeout: 0 * $_}
+      - pattern: |
+          $C := &http.Client{$...FIELDS, Timeout: 0 * $_, $...MORE}
+      # Return of zero-value client with no Timeout field at all.
+      - patterns:
+          - pattern: |
+              return &http.Client{$...FIELDS}
+          - pattern-not: |
+              return &http.Client{$...FIELDS, Timeout: $_, $...MORE}
+          - pattern-not: |
+              return &http.Client{Timeout: $_, $...MORE}
 
   - id: slopguard.go.goroutine-per-item-unbounded
     languages: [go]

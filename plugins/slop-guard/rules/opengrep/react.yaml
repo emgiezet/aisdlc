@@ -41,16 +41,142 @@ rules:
       ap_id: AP-TS-SEC-004
       category: security
       cwe: CWE-79
+    # Pattern strategy (syntactic only; no taint mode):
+    #
+    # Arm A — flag any dynamic value that is NOT a sanitizeUrl() call.
+    #   Catches bare identifiers, template literals, and arbitrary function calls
+    #   such as getUserUrl() that provide no scheme guarantee.
+    #
+    # Arm B — flag a sanitizeUrl() call that lacks the trusted import.
+    #   An attacker can define `const sanitizeUrl = (url: string) => url` in the
+    #   same file, giving the call the right name without any sanitization.
+    #   pattern-not-inside checks whether the file-scope named import
+    #   `import { sanitizeUrl } from '@braintree/sanitize-url'` is present; if
+    #   absent the exclusion in Arm A is re-examined here and the rule fires.
+    #
+    # Tradeoff: only the exact named import `{ sanitizeUrl }` from the exact
+    # package string '@braintree/sanitize-url' is recognised as trustworthy.
+    # Aliased imports (sanitizeUrl as su) and re-exports remain false-negatives.
+    # This is accepted in exchange for not silently bypassing name-matched shadows.
     pattern-either:
-      - pattern: $EL.href = $VAR
-      - pattern: $EL.src = $VAR
-      - pattern: window.location.href = $VAR
-      - pattern: <$TAG href={$VAR} .../>
-      - pattern: <$TAG href={$VAR}>...</$TAG>
-      - pattern: <$TAG src={$VAR} .../>
-      - pattern: <$TAG src={$VAR}>...</$TAG>
-      - pattern: "React.createElement($TAG, {href: $VAR, ...})"
-      - pattern: "React.createElement($TAG, {src: $VAR, ...})"
+      # --- Arm A: dynamic value that is not a sanitizeUrl() call ---
+      - patterns:
+          - pattern: $EL.href = $VAR
+          - pattern-not: $EL.href = sanitizeUrl(...)
+      - patterns:
+          - pattern: $EL.src = $VAR
+          - pattern-not: $EL.src = sanitizeUrl(...)
+      - patterns:
+          - pattern: window.location.href = $VAR
+          - pattern-not: window.location.href = sanitizeUrl(...)
+      - patterns:
+          - pattern: <$TAG href={$VAR} .../>
+          - pattern-not: <$TAG href={sanitizeUrl(...)} .../>
+      - patterns:
+          - pattern: <$TAG href={$VAR}>...</$TAG>
+          - pattern-not: <$TAG href={sanitizeUrl(...)} >...</$TAG>
+      - patterns:
+          - pattern: <$TAG src={$VAR} .../>
+          - pattern-not: <$TAG src={sanitizeUrl(...)} .../>
+      - patterns:
+          - pattern: <$TAG src={$VAR}>...</$TAG>
+          - pattern-not: <$TAG src={sanitizeUrl(...)} >...</$TAG>
+      - patterns:
+          - pattern: "React.createElement($TAG, {href: $VAR, ...})"
+          - pattern-not: "React.createElement($TAG, {href: sanitizeUrl(...), ...})"
+      - patterns:
+          - pattern: "React.createElement($TAG, {src: $VAR, ...})"
+          - pattern-not: "React.createElement($TAG, {src: sanitizeUrl(...), ...})"
+      # --- Arm B: sanitizeUrl() call without the trusted named import (shadow) ---
+      - patterns:
+          - pattern: $EL.href = sanitizeUrl(...)
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: $EL.src = sanitizeUrl(...)
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: window.location.href = sanitizeUrl(...)
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: <$TAG href={sanitizeUrl(...)} .../>
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: <$TAG href={sanitizeUrl(...)} >...</$TAG>
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: <$TAG src={sanitizeUrl(...)} .../>
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: <$TAG src={sanitizeUrl(...)} >...</$TAG>
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: "React.createElement($TAG, {href: sanitizeUrl(...), ...})"
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      - patterns:
+          - pattern: "React.createElement($TAG, {src: sanitizeUrl(...), ...})"
+          - pattern-not-inside: |
+              import { sanitizeUrl } from '@braintree/sanitize-url'
+              ...
+      # --- Arm C: sanitizeUrl() call inside a function whose body re-binds sanitizeUrl ---
+      # Detects the import-shadow bypass: the trusted @braintree import is present
+      # at the module level, but an inner function declares `const sanitizeUrl = ...`
+      # that shadows the import within that scope.  Arms A and B cannot catch this
+      # because Arm A excludes sanitizeUrl() calls and Arm B only tests the import.
+      - patterns:
+          - pattern-either:
+              - pattern: $EL.href = sanitizeUrl(...)
+              - pattern: $EL.src = sanitizeUrl(...)
+              - pattern: window.location.href = sanitizeUrl(...)
+              - pattern: <$TAG href={sanitizeUrl(...)} .../>
+              - pattern: <$TAG href={sanitizeUrl(...)} >...</$TAG>
+              - pattern: <$TAG src={sanitizeUrl(...)} .../>
+              - pattern: <$TAG src={sanitizeUrl(...)} >...</$TAG>
+              - pattern: "React.createElement($TAG, {href: sanitizeUrl(...), ...})"
+              - pattern: "React.createElement($TAG, {src: sanitizeUrl(...), ...})"
+          - pattern-inside: |
+              function $F(...) {
+                ...
+                const sanitizeUrl = ...
+                ...
+              }
+      # --- Arm C2: sanitizeUrl() inside an arrow function/component that re-binds sanitizeUrl ---
+      # Same bypass as Arm C but using an arrow-function body.  A React component or
+      # utility written as `const F = (...) => { const sanitizeUrl = ...; return JSX; }`
+      # is not covered by Arm C's `function $F(...)` pattern-inside.
+      - patterns:
+          - pattern-either:
+              - pattern: $EL.href = sanitizeUrl(...)
+              - pattern: $EL.src = sanitizeUrl(...)
+              - pattern: window.location.href = sanitizeUrl(...)
+              - pattern: <$TAG href={sanitizeUrl(...)} .../>
+              - pattern: <$TAG href={sanitizeUrl(...)} >...</$TAG>
+              - pattern: <$TAG src={sanitizeUrl(...)} .../>
+              - pattern: <$TAG src={sanitizeUrl(...)} >...</$TAG>
+              - pattern: "React.createElement($TAG, {href: sanitizeUrl(...), ...})"
+              - pattern: "React.createElement($TAG, {src: sanitizeUrl(...), ...})"
+          - pattern-inside: |
+              const $F = (...) => {
+                ...
+                const sanitizeUrl = ...
+                ...
+              }
+
 
   - id: slopguard.ts.double-cast
     languages: [typescript]

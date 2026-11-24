@@ -1,0 +1,21 @@
+test_UC_13_accepts_complete_exact_id_ap_results (__main__.GateTests.test_UC_13_accepts_complete_exact_id_ap_results)
+UC-13: complete exact-ID/AP results pass. ... ok
+test_UC_13_discovers_new_rule_and_reports_missing_hit (__main__.GateTests.test_UC_13_discovers_new_rule_and_reports_missing_hit)
+UC-13: newly configured rules enter the gate automatically. ... ok
+test_UC_13_failed_scan_cannot_pass_with_valid_results (__main__.GateTests.test_UC_13_failed_scan_cannot_pass_with_valid_results)
+UC-13: nonzero scans cannot satisfy the contract. ... ok
+test_UC_13_invalid_json_cannot_pass (__main__.GateTests.test_UC_13_invalid_json_cannot_pass)
+UC-13: invalid JSON cannot satisfy the contract. ... ok
+test_UC_13_missing_own_bad_hit_names_rule (__main__.GateTests.test_UC_13_missing_own_bad_hit_names_rule)
+UC-13: absent own bad result fails with rule ID. ... ok
+test_UC_13_offline_missing_tool_skips_without_scanning (__main__.GateTests.test_UC_13_offline_missing_tool_skips_without_scanning)
+UC-13: missing OpenGrep preserves the offline skip. ... ok
+test_UC_13_other_rule_cannot_satisfy_own_ap (__main__.GateTests.test_UC_13_other_rule_cannot_satisfy_own_ap)
+UC-13: another rule cannot supply the required hit. ... ok
+test_UC_14_good_hit_outside_own_ap_names_offending_rule (__main__.GateTests.test_UC_14_good_hit_outside_own_ap_names_offending_rule)
+UC-14: a different AP's good fixture still fails the offending ID. ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 3.016s
+
+OK

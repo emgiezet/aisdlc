@@ -1,0 +1,25 @@
+{
+  "version": "1.30.0",
+  "assets": {
+    "linux-amd64": {
+      "url": "https://github.com/opengrep/opengrep/releases/download/v1.30.0/opengrep_manylinux_x86",
+      "sha256": "35779bdd72e92129c8df2a77f0c55e8c08356801ea92591ef32108d6b28d564c"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/opengrep/opengrep/releases/download/v1.30.0/opengrep_manylinux_aarch64",
+      "sha256": "a5d5a4a58ba5d46ff51e921663da1c2bba38f4b03987f4aeec87f16c6ad3ecae"
+    },
+    "darwin-arm64": {
+      "url": "https://github.com/opengrep/opengrep/releases/download/v1.30.0/opengrep_osx_arm64",
+      "sha256": "0f5bc3dec09d995c61331a4017b856ede508f90d95b018d95f1dc6166be89fdd"
+    },
+    "darwin-amd64": {
+      "url": "https://github.com/opengrep/opengrep/releases/download/v1.30.0/opengrep_osx_x86",
+      "sha256": "650772a849a2986880982b7dea0371f96a75d354de95f94e8c1a2e6f8f6262d1"
+    }
+  },
+  "bin": "opengrep"
+}
+Resolved binary: /tmp/slopguard-data-GH-65-c/tools/opengrep/current/opengrep
+1.30.0
+35779bdd72e92129c8df2a77f0c55e8c08356801ea92591ef32108d6b28d564c  /tmp/slopguard-data-GH-65-c/tools/opengrep/current/opengrep

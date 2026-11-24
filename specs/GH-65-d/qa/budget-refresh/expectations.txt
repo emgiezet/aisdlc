@@ -1,0 +1,10 @@
+Fresh QA against approved GH-65-d spec at 74fba77546f6ab1ded4e668fc35fbe2fbf6e910b.
+Spec-first observations required before implementation review:
+UC-9: each of the four named JVM/Go/Node rule IDs reports at least one result in its own matching bad AP fixture, using the full rules directory and a copied fixture tree with pinned OpenGrep.
+UC-10: the same four IDs report zero results anywhere under good/; all earlier C#/Rust/Ruby contracts remain passing.
+Non-functional: actual unsafe bad samples, actual safe good samples, no annotation suppression; failed scans and invalid/error JSON fail the gate.
+Budget source: specs/GH-65-d/spec.md:27, 340 added lines / 13 files / 2 modules.
+Current PR base: fix/gh65-3-ruby. Exact measurement command: git diff --numstat origin/fix/gh65-3-ruby...HEAD -- . ':!specs'
+Measured: 337 added lines, 18 deleted lines, 13 non-spec files, 1 module (plugins/slop-guard). All within approved budget.
+Runtime recipe: CLAUDE_PLUGIN_ROOT=$PWD/plugins/slop-guard; CLAUDE_PLUGIN_DATA=/home/mgz/.local/share/slop-guard; CLAUDE_PLUGIN_OPTION_TOOL_SOURCE=plugin-only; source plugins/slop-guard/lib/tools.sh; resolve_tool opengrep; copy full fixture tree to mktemp; run scan --json --disable-nosem --no-rewrite-rule-ids --config $CLAUDE_PLUGIN_ROOT/rules/opengrep <copied-tree>; preserve filtered results and stderr; remove copied tree.
+Runtime observed: exit 0, OpenGrep 1.30.0, errors []; Go 12 / Jackson 1 / XML 2 / Node 9 results, zero good-directory target results.
