@@ -1,0 +1,13 @@
+2	0	plugins/slop-guard/CHANGELOG.md
+44	0	plugins/slop-guard/rules/opengrep/go.yaml
+45	1	plugins/slop-guard/rules/opengrep/node.yaml
+45	0	plugins/slop-guard/tests/fixtures/go/bad/AP-GO-PERF-001-return-expr.go
+33	0	plugins/slop-guard/tests/fixtures/go/bad/AP-GO-PERF-001-return-zero.go
+28	0	plugins/slop-guard/tests/fixtures/go/bad/AP-GO-PERF-001-return.go
+22	0	plugins/slop-guard/tests/fixtures/go/bad/AP-GO-PERF-001-zero.go
+17	7	plugins/slop-guard/tests/fixtures/java/good/AP-JVM-SEC-005.java
+15	10	plugins/slop-guard/tests/fixtures/java/good/AP-JVM-SEC-007.java
+26	0	plugins/slop-guard/tests/fixtures/node/bad/AP-NODE-SEC-001-handler.js
+26	0	plugins/slop-guard/tests/fixtures/node/bad/AP-NODE-SEC-001-keys.js
+11	0	plugins/slop-guard/tests/fixtures/node/good/AP-NODE-SEC-001.js
+23	0	plugins/slop-guard/tests/integration/opengrep.sh

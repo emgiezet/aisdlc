@@ -1,0 +1,658 @@
+aisdlc runner selftest (stub claude and stub omp, no API calls)
+
+every requested phase runs, in order (GH-52 UC-2)
+  ok    status is done
+  ok    implement ran
+  ok    qa ran too (stdin not swallowed)
+  ok    GH-52 UC-2: qa result present
+  ok    qa report collected
+  ok    diff collected
+  ok    verify ran and passed
+
+a phase that never ran is a failure, not a success
+  ok    0-turn phase marked failed
+
+the message-array output shape is read like the bare result object
+  ok    array output: task completes
+  ok    array output: turns read from the result element
+  ok    array output: cost accumulated
+
+a blocked implementation keeps its evidence
+  ok    status is failed
+  ok    worktree kept for inspection
+  ok    BLOCKED.md present
+  ok    error mentions BLOCKED.md
+  ok    retry re-queues and clears the worktree
+
+GH-52: implement that changes nothing is caught before qa runs
+  ok    GH-52 UC-1: status failed
+  ok    GH-52 UC-1: qa.json absent
+  ok    GH-52 UC-1: exact no-change diagnostic
+  ok    GH-52 UC-1: empty implementation failure archived
+  ok    GH-52 UC-3: agent-config-only diff empty
+
+a phase that leaves the task branch stops the task
+  ok    implement on its own branch: status failed
+  ok    error names the task branch and the branch the agent switched to
+  ok    qa never ran on the stray branch
+  ok    worktree kept as the agent left it, its commits intact
+  ok    a later phase detaching HEAD is caught too
+
+the spec gate refuses before spending anything
+  ok    add refuses a draft spec
+  ok    worktree gate refuses it even with --force
+  ok    model was never invoked
+
+the target repo never looks dirty
+  ok    .aisdlc/ excluded from git
+
+parallel workers drain the queue exactly once
+  ok    all 4 tasks done, none run twice
+  ok    queue drained
+
+the queue tells hooks there is nobody to ask
+  ok    invoke_claude exports AISDLC_HEADLESS
+
+review phase runs after ship with the PR number
+  ok    review.log exists
+  ok    review prompt contains PR number 7
+
+--no-pr strips ship and review
+  ok    --no-pr task done
+  ok    ship phase absent
+  ok    review phase absent
+
+add --issue claims once and refuses twice
+  ok    first add --issue 42 succeeds
+  ok    issue has in-progress label
+  ok    claim comment appended
+  ok    second add --issue 42 refused: already claimed
+
+bugfix spec passes the gate only while the issue is labelled bug
+  ok    bugfix spec passes gate with bug label
+  ok    bugfix spec refused without bug label
+
+artifacts_exist scorer uses real score() from run.sh
+  ok    absent artifact: score() records a failure
+  ok    present artifact: score() records a pass
+
+claim failure: die and create no task
+  ok    add --issue fails when claim fails
+  ok    no task created after failed claim
+
+issue released after ship, prs.jsonl created
+  ok    issue released with 'handed off to PR #7'
+  ok    prs.jsonl created after PR claim
+  ok    one PR record for #7, not a duplicate
+  ok    PR lock released with APPROVED after review
+
+issue released aborted when a phase fails
+  ok    issue released with aborted: when a phase fails
+
+cancel gives a queued issue claim back; retry takes it again
+  ok    cancel released the issue claim
+  ok    retry re-queued the cancelled issue task
+  ok    retry re-claimed the issue
+
+pull picks the oldest approved issue nobody holds and this repo has not built
+  ok    pull --dry-run selects #7 and only #7
+  ok    pull --dry-run queued nothing
+  ok    pull queued #7
+  ok    pull created a GH-7 issue task
+  ok    pull claimed #7
+  ok    second pull finds nothing — a built issue is never pulled again
+  ok    still one task after the second pull
+
+loop --once drains the queue even when pull finds nothing
+  ok    loop --once ran the queued GH-7 task to done
+  ok    loop released the issue after the run
+  ok    loop refuses a non-numeric --interval
+
+GH-51 UC-1: scope-check: all changed files in scope → PASS
+  ok    scope PASS: task done
+  ok    scope PASS: scope-report.md collected
+  ok    scope PASS: verdict is PASS
+  ok    scope PASS: scope_verdict in task.json
+
+GH-51 UC-2: scope-check: undeclared changed file → GAPS, chain continues
+  ok    scope GAPS: task still done (GAPS does not stop the chain)
+  ok    scope GAPS: verdict is GAPS
+  ok    scope GAPS: undeclared files listed in report
+  ok    GH-51 UC-2: scope GAPS: specs/SBX-1/qa-report.md not present in report (excluded by _branch_changes)
+  ok    scope GAPS: scope_verdict in task.json
+
+scope-check: own spec-dir artefacts are excluded from diff → PASS (regression)
+  ok    scope own-spec-dir: verdict is PASS (artefacts excluded from diff)
+  ok    scope own-spec-dir: no undeclared entry — own spec-dir artefacts are excluded from diff
+
+GH-51 UC-3: scope-check: repo-wide prohibition hit → BLOCKED, chain stops before ship
+  ok    scope BLOCKED: task failed
+  ok    scope BLOCKED: verdict is BLOCKED
+  ok    scope BLOCKED: ship phase never ran
+  ok    scope BLOCKED: out-of-bounds file listed in report
+
+_branch_changes: own-specdir excluded, sibling visible, root bookkeeping excluded (GH-51 UC-4)
+  ok    GH-51 UC-4: _branch_changes: pkg/stub.go visible
+  ok    GH-51 UC-4: _branch_changes: specs/SBX-2/spec.md visible
+  ok    GH-51 UC-4: _branch_changes: src/specs/SBX-1/file.go visible
+  ok    GH-51 UC-4: _branch_changes: specs/SBX-1/qa-report.md excluded (own specdir)
+  ok    GH-51 UC-4: _branch_changes: AGENTS.md excluded (root bookkeeping)
+  ok    GH-51 UC-4: _branch_changes: CLAUDE.md excluded (root bookkeeping)
+  ok    GH-51 UC-4: _branch_changes: AGENTS.md.bak visible (not excluded)
+  ok    GH-51 UC-4: _branch_changes: CLAUDE.md.ts visible (not excluded)
+  ok    GH-51 UC-4: _branch_changes: custom.specs/SBX-1/qa.md excluded (metachar-safe literal prefix)
+  ok    GH-51 UC-4: _branch_changes custom specdir: sibling specs/SBX-2/spec.md still visible
+
+GH-51 UC-1 boundary: bookkeeping-only changes still enforce the size ceiling
+  ok    GH-51 UC-1: bookkeeping-only branch blocked by size ceiling
+
+GH-54 UC-1: verbatim In: beats Out: cross-reference → PASS
+  ok    GH-54 UC-1: scope_verdict PASS
+  ok    GH-54 UC-1: report PASS
+  ok    GH-54 UC-1: task done
+
+GH-54 UC-2: directory-pattern In: does not exempt from Out: → BLOCKED
+  ok    GH-54 UC-2: scope_verdict BLOCKED (dir-pattern does not exempt)
+
+GH-54 UC-3: glob In: (* ? [...]) does not exempt from Out: → BLOCKED
+  ok    GH-54 UC-3 (pkg/*.go): BLOCKED (glob In: does not exempt)
+  ok    GH-54 UC-3 (pkg/stub.?o): BLOCKED (glob In: does not exempt)
+  ok    GH-54 UC-3 (pkg/stu[b].go): BLOCKED (glob In: does not exempt)
+
+GH-54 UC-4: verbatim In: skips spec-Out but repo-wide prohibited wins → BLOCKED
+  ok    GH-54 UC-4: scope_verdict BLOCKED (prohibited overrides verbatim In:)
+  ok    GH-54 UC-4: row shows **out of bounds** (prohibited)
+
+GH-54 UC-5: Context: mention only does not exempt from Out: → BLOCKED
+  ok    GH-54 UC-5: scope_verdict BLOCKED (Context: does not exempt)
+
+GH-54 UC-6: verbatim In: beats Out: for one file; undeclared second → GAPS
+  ok    GH-54 UC-6: scope_verdict GAPS
+  ok    GH-54 UC-6: undeclared listed
+  ok    GH-54 UC-6: task done (GAPS does not stop pipeline)
+
+structure UC-1: CC 8 -> 14 in a Go file → ## Structure, new hotspot, GAPS
+  ok    UC-1: verdict is GAPS (structure finding promotes PASS)
+  ok    UC-1: ## Structure section present in scope-report.md
+  ok    UC-1: CC 8 -> 14 listed in ## Structure
+  ok    UC-1: new hotspot finding present
+  ok    UC-1: Largest CC increase line present
+
+structure UC-3: lizard not on PATH → skipped: not installed, no finding
+  ok    UC-3: ## Structure section present (skipped message)
+  ok    UC-3: section says 'not installed'
+  ok    UC-3: no findings when lizard absent
+  ok    UC-3: scope-check returns 0 (phase continues)
+
+structure UC-4: only .md files changed → no ## Structure section
+  ok    UC-4: no ## Structure section when only .md files changed
+
+billing=subscription: null cost, no --max-budget-usd in args
+  ok    billing=subscription: task done
+  ok    billing=subscription: cost_usd is null
+  ok    billing=subscription: --max-budget-usd absent from invoke
+  ok    billing=subscription: mode logged in phase log
+  ok    billing=subscription: 0-turn phase still a hard failure
+
+billing=api (default): numeric cost, --max-budget-usd present
+  ok    billing=api: task done
+  ok    billing=api: cost_usd is numeric (0.1)
+  ok    billing=api: --max-budget-usd present in invoke
+
+model_roles absent: no models key, log headers unchanged (UC-1)
+  ok    UC-1: model=sonnet in task.json
+  ok    UC-1: no models key when model_roles absent
+  ok    UC-1: implement.log header shows sonnet
+
+model_roles full: models key maps every phase (UC-2)
+  ok    UC-2: models key present
+  ok    UC-2: scope-check → haiku (smol role)
+  ok    UC-2: ship → haiku (smol role)
+  ok    UC-2: review → opus (slow role)
+  ok    UC-2: implement → sonnet (default role falls back)
+  ok    UC-2: qa → sonnet (default role falls back)
+
+model_roles: run_phase routes each phase to its model (UC-3)
+  ok    UC-3: ship.log header shows haiku
+  ok    UC-3: review.log header shows opus
+  ok    UC-3: implement.log header shows sonnet
+
+model_roles partial: missing roles fall back to task model (UC-4)
+  ok    UC-4: models key present with partial config
+  ok    UC-4: scope-check → haiku (smol configured)
+  ok    UC-4: implement → sonnet (default role not in config, falls back)
+  ok    UC-4: qa → sonnet (default role not in config, falls back)
+  ok    UC-4: task completes without error on partial config
+
+model_roles snapshot: config edit after add does not affect queued task (UC-5)
+  ok    UC-5: ship uses snapshotted haiku, not changed-model
+  ok    UC-5: review uses snapshotted opus, not another-model
+
+aisdlc help documents model_roles (UC-6)
+  ok    UC-6: help mentions model_roles
+  ok    UC-6: help mentions smol role
+  ok    UC-6: help mentions slow role
+  ok    UC-6: help shows smol phases (scope-check, ship)
+
+PR claim lock survives a gh build where `gh pr edit` fails (SDLC-012)
+  ok    claim succeeds while gh pr edit fails
+  ok    claim applied label and assignee
+  ok    claim never calls gh pr edit
+  ok    release removed the in-progress label
+  ok    pull over github: oldest unassigned, not in-progress, first
+  ok    pull over github asks for the approval label on the wire
+
+verify is the last gate before ship, and it reads git, not reports
+  ok    no verify commands is a FAIL, not a skip
+  ok    ship never ran
+  ok    the error says what to configure
+  ok    a failing verification command fails verify
+  ok    the failure names the command
+  ok    ship never ran
+  ok    a UC with no test naming it fails verify
+  ok    the report names the untested UC
+  ok    a switched-off test fails verify
+  ok    an uncommitted change fails verify — the PR would not contain it
+  ok    the report names the uncommitted file
+  ok    ship never ran
+  ok    a deleted test file fails verify
+  ok    the report names the deleted file
+  ok    a deletion retired on the base passes verify
+  ok    the report still names the retired file
+  ok    a retirement the branch wrote for itself fails verify
+  ok    ship never ran
+
+the omp runtime runs the same pipeline
+  ok    runtime recorded at queue time
+  ok    status is done
+  ok    implement ran through omp as /sdlc:implement
+  ok    qa ran through omp as /sdlc:qa
+  ok    ship ran through omp as /sdlc:ship
+  ok    review ran through omp as /sdlc:review
+  ok    the raw event stream is kept
+  ok    turns counted from turn_end events
+  ok    cost summed from turn usage
+  ok    --plugin-dir loads this checkout's plugin
+  ok    --plugin-dir loads the guard plugin beside it
+  ok    no approval prompt can stall the phase
+  ok    the phase runs with AISDLC_HEADLESS=1
+  ok    no spend cap is claimed
+
+a symlinked runner resolves its plugin roots before loading the guard
+  ok    symlinked runner completes guarded phase
+  ok    symlinked runner loads the real guard root
+
+an installed Claude guard keeps its configured plugin data
+  ok    phase uses installed guard
+  ok    installed guard is not shadowed by an inline copy
+
+independent guard path overrides the bundled sibling
+  ok    external guard preserves queued phase
+  ok    omp loads the independent guard
+  ok    bundled guard not loaded with external override
+  ok    Claude phase uses independent guard
+  ok    Claude loads the independent guard
+  ok    Claude does not load the bundled guard with an override
+  ok    missing Claude guard fails the task
+  ok    Claude model does not run without the guard
+  ok    missing override fails the task
+  ok    no model phase runs with missing override
+
+omp forwards an unknown command to the model; the runner must not accept that
+  ok    an unexpanded command fails the phase
+  ok    nothing runs after it
+  ok    the log says the command was not expanded
+  ok    a phase with no command file fails
+  ok    omp was never invoked for it
+
+an omp phase that edits the policy layer fails
+  ok    editing .claude/ fails the task
+  ok    the log names the policy edit
+
+the runtime is validated and resolved like every other default
+  ok    an unknown runtime is refused
+  ok    config.json sets the runtime
+  ok    run refuses when a queued task's runtime is missing
+  ok    the task stays queued
+
+sessions: claude records phase sessions (UC-1)
+  ok    UC-1: two entries
+  ok    UC-1: phase and runtime
+  ok    UC-1: session_id from implement.json
+  ok    UC-1: ISO started
+  ok    UC-1: ISO ended
+  ok    UC-1: qa session_id
+  ok    UC-1: qa phase and runtime
+
+sessions: transcript encodes worktree path (UC-2)
+  ok    UC-2: transcript encodes /. to -
+
+sessions: omp records session from sessions/ (UC-3)
+  ok    UC-3: session .jsonl written
+  ok    UC-3: session_id and transcript
+  ok    UC-3: runtime is omp
+
+sessions: runtime_version from --version (UC-4)
+  ok    UC-4: runtime_version correct
+  ok    UC-4: --version called once for two-phase task
+
+sessions: missing session_id records null (UC-5)
+  ok    UC-5: null session_id and transcript
+  ok    UC-5: entry present
+  ok    UC-5: outcome unchanged
+
+GH-53: depends-on enforcement at add and run time
+  ok    GH-53 UC-1: add exits non-zero
+  ok    GH-53 UC-1: output names DEP-a
+  ok    GH-53 UC-2: add --force exits 0
+  ok    GH-53 UC-2: WARNING in output
+  ok    GH-53 UC-2: status refused
+  ok    GH-53 UC-2: error names DEP-a
+  ok    GH-53 UC-2: no implement.log in task dir
+  ok    GH-53 UC-3: add exits non-zero on FAIL report
+  ok    GH-53 UC-3: output names DEP-a
+  ok    GH-53 UC-4: add exits non-zero
+  ok    GH-53 UC-4: output names DEP-b
+  ok    GH-53 UC-4: output omits DEP-a
+  ok    GH-53 UC-5: add exits 0
+  ok    GH-53 UC-5: status done
+  ok    GH-53 UC-5: implement.log present in task dir
+
+GH-60: local tracker symlink — ship writes to repo tracker, not worktree
+
+GH-60 UC-1: symlink created and readlink resolves to repo tracker
+  ok    GH-60 UC-1: symlink exists and readlink resolves to /tmp/aisdlc-selftest.GUB1l5/gh60-uc1/.aisdlc/tracker
+
+GH-60 UC-2,3: localpr writes prs.jsonl, inbox lists PR, clean preserves exact record contents
+  ok    GH-60 UC-2: aisdlc inbox lists PR local#1
+  ok    GH-60 UC-3: prs.jsonl record contents correct before clean
+  ok    GH-60 UC-3: worktree removed after clean
+  ok    GH-60 UC-3: prs.jsonl exact record contents retained at repo tracker after clean
+
+GH-60 UC-4: tracker dir absent → created by runner and symlinked
+  ok    GH-60 UC-4: /tmp/aisdlc-selftest.GUB1l5/gh60-uc4/.aisdlc/tracker/ created by runner
+  ok    GH-60 UC-4: absent tracker dir created and symlinked correctly
+
+GH-60 UC-5: symlink failure → task failed, error set, worktree retained
+  ok    GH-60 UC-5: task status is failed
+  ok    GH-60 UC-5: tracker-link failure archived
+  ok    GH-60 UC-5: .error field mentions symlink failure
+  ok    GH-60 UC-5: worktree directory retained after symlink failure
+  ok    GH-60 UC-5: run.log records symlink failure
+  ok    GH-60 UC-5: implement phase never invoked
+
+GH-60 UC-6: github tracker → no symlink in worktree
+  ok    GH-60 UC-6: no symlink or tracker dir created in worktree for github tracker
+
+archive: done task writes archive dir, manifest, task.json, phases, spec (UC-6)
+  ok    UC-6: task done
+  ok    UC-6: archive dir created
+  ok    UC-6: manifest.json present
+  ok    UC-6: task.json present
+  ok    UC-6: phases/implement.log present
+  ok    UC-6: spec/spec.md present
+  ok    UC-6: spec/qa-report.md present
+  ok    UC-6: sha256sum of every file matches manifest.files
+  ok    UC-6: manifest has required fields (policy_fingerprint, aisdlc_version, archived_at, runtime_version, sessions, attempts)
+
+archive: index.jsonl gains exactly one line with id, status, path (UC-7)
+  ok    UC-7: index.jsonl created
+  ok    UC-7: exactly one line
+  ok    UC-7: index has id, status done, correct path
+
+archive: anthropic key in phase log is redacted; live log unchanged (UC-8)
+  ok    UC-8: task done
+  ok    UC-8: archived log has [REDACTED:anthropic-key]
+  ok    UC-8: live log unchanged (key still present)
+  ok    UC-8: manifest.redactions[anthropic-key] >= 1
+
+archive: failed task archived with status failed and BLOCKED.md (UC-9)
+  ok    UC-9: task failed
+  ok    UC-9: archive dir created for failed task
+  ok    UC-9: manifest status is failed
+  ok    UC-9: spec/BLOCKED.md in archive
+  ok    UC-9: spec/spec.md in archive (worktree spec/ reports present)
+
+archive: refused task archives BLOCKED.md before worktree removal (UC-10)
+  ok    UC-10: task refused
+  ok    UC-10: archive dir for refused task
+  ok    UC-10: spec/BLOCKED.md copied before worktree removal
+
+archive: clean --all leaves archive byte-identical (UC-11)
+  ok    UC-11: index.jsonl unchanged after clean --all
+  ok    UC-11: archive files unchanged after clean --all
+
+archive: AISDLC_ARCHIVE=off creates no archive and no index (UC-12)
+  ok    UC-12: task completes
+  ok    UC-12: no archive dir created with AISDLC_ARCHIVE=off
+  ok    UC-12: no index.jsonl entry for task with AISDLC_ARCHIVE=off
+
+archive: retry creates <id>.<attempts> dir; first archive unchanged (UC-13)
+  ok    UC-13: retried task reaches done
+  ok    UC-13: second archive dir <id>.2 created
+  ok    UC-13: first archive dir unchanged after retry
+  ok    UC-13: two index.jsonl entries for the id
+
+archive: unwritable root is non-fatal — task still reaches done
+  ok    non-fatal archive: task done despite unwritable archive root
+  ok    non-fatal archive: failure logged to run.log
+
+archive: cancelled task creates archive dir and index entry (non-functional)
+  ok    archive/cancel: task status is cancelled
+  ok    archive/cancel: archive dir created for cancelled task
+  ok    archive/cancel: manifest status is cancelled
+  ok    archive/cancel: index.jsonl entry with status cancelled
+
+archive: retry after cancellation before first execution is append-only (UC-13)
+  ok    UC-13: attempt zero archive survives first execution
+  ok    UC-13: first execution gets separate archive
+
+archive: missing seed spec is archived as failed (UC-9)
+  ok    UC-9: seed_spec failure archived
+
+archive: all built-in redaction forms and publication failures (UC-8)
+  ok    UC-8: PEM and bare secret assignments redacted and counted
+  ok    UC-8: transform failure publishes no destination
+  ok    UC-8: raw staging file is private
+  ok    UC-8: manifest uses redacted metadata
+  ok    UC-8: archive failure publishes nothing and preserves task outcome
+
+GH-40 UC-1: absent and null readiness_min are no-ops
+  ok    UC-1 absent: add succeeds
+  ok    UC-1 absent: no readiness_score
+  ok    UC-1 null: add succeeds
+
+GH-40 UC-2/3: below threshold blocks; --force bypasses with score
+  ok    UC-2: exits non-zero (60 < 80)
+  ok    UC-2: queue empty
+  ok    UC-2: readiness.md created
+  ok    UC-2: gap in readiness.md
+  ok    UC-3: --force exits zero
+  ok    UC-3: warning printed
+  ok    UC-3: warning names score
+  ok    UC-3: task queued
+  ok    UC-3: readiness_score:60
+
+GH-40 UC-4/5: above threshold queues; status shows READY
+  ok    UC-4: add succeeds (85 >= 80)
+  ok    UC-4: readiness_score:85
+  ok    UC-4: no readiness.md on pass
+  ok    UC-5: READY column in header
+  ok    UC-5: score 85 in status
+
+GH-40 UC-6: non-JSON fails closed; --force queues without score
+  ok    UC-6: parse failure exits non-zero
+  ok    UC-6: queue empty
+  ok    UC-6: --force queues despite parse failure
+  ok    UC-6: no readiness_score after parse failure
+
+GH-40 UC-7: --issue route skips readiness
+  ok    UC-7: --issue skips readiness
+  ok    UC-7: no readiness.md for --issue
+
+GH-40: fail-closed boundaries (fraction, non-string gap, process rc, error envelope)
+  ok    fraction: 85.5 rejected
+  ok    fraction: queue empty
+  ok    nonstring gap: [7] rejected
+  ok    nonstring gap: queue empty
+  ok    failed-process: rc=1 rejected
+  ok    failed-process: queue empty
+  ok    error-envelope: is_error:true rejected
+  ok    error-envelope: queue empty
+
+GH-40: omp runtime — readiness check via omp stub
+  ok    omp: add succeeds (82 >= 80)
+  ok    omp: readiness_score:82
+
+GH-38: max-open-prs and max-run-usd run-admission caps
+  ok    GH-38 UC-1: no task popped when open PRs=cap=2
+  ok    GH-38 UC-4a: status names max-open-prs cap
+  ok    GH-38 UC-1b: unavailable PR count exits non-zero
+  ok    GH-38 UC-2: exactly 2 tasks done before spend cap
+  ok    GH-38 UC-4b: status names max-run-usd cap with spend
+  ok    GH-38 reg-accum: spend accumulator > $0 (jq arithmetic regression)
+  ok    GH-38 reg-stale: uncapped run after count-unavailable exits 0
+  ok    GH-38 reg-stale: no stale stop-reason from prior run
+  ok    GH-38 UC-3: null config defaults → queue drains fully
+  ok    GH-38 UC-3: no cap message or PR-count lookup with null defaults
+  ok    GH-38 UC-3b: config key(2) overrides env(3) — cap fires
+  ok    GH-38 UC-5: subscription task completes despite spend cap
+  ok    GH-38 UC-5: warns that spend cap is ignored
+  ok    GH-38 UC-5: subscription null cost shown as n/a (not coerced to $0)
+  ok    GH-38 UC-6: env cap counts labelled PRs across GitHub pages; nothing popped
+  ok    GH-38 UC-1: failed GitHub count stops non-zero without popping
+  ok    GH-38 UC-7: both tasks were in flight when the PR count reached the cap
+  ok    GH-38 UC-7: both in-flight tasks completed (done=2)
+  ok    GH-38 UC-7: exactly 1 task queued — cap blocked task 3 after in-flight ship
+  ok    GH-38 UC-8: non-numeric max-open-prs exits non-zero
+  ok    GH-38 UC-8: no task popped on invalid cap value
+  ok    GH-38 retry-delta: both done (delta cost only; regression: cumulative would cap at 1)
+
+archive: claude transcript copied and redacted into sessions/ (UC-14)
+  ok    UC-14: task done
+  ok    UC-14: at least one transcript copied:true
+  ok    UC-14: sk-ant key absent from archived transcript (redacted)
+  ok    UC-14: archived transcript sha256 matches manifest.files
+
+archive: omp transcript copied into sessions/omp-* (UC-15)
+  ok    UC-15: omp task done
+  ok    UC-15: sessions/omp-* file present
+  ok    UC-15: manifest.transcripts has copied:true
+  ok    UC-15: every sessions/*.jsonl file is copied, not only the newest
+
+archive: missing transcript → copied:false, reason:not found (UC-16)
+  ok    UC-16: task done (non-fatal missing transcript)
+  ok    UC-16: missing transcript recorded with copied:false, reason:not found
+
+archive: archive_transcripts:off → sessions/ absent, transcripts="disabled" (UC-17)
+  ok    UC-17: task done
+  ok    UC-17: no sessions/ subdirectory when archive_transcripts:off
+  ok    UC-17: manifest.transcripts is the string "disabled"
+  ok    UC-17: task.json and manifest.json present with archive_transcripts:off
+  ok    UC-17: AISDLC_ARCHIVE_TRANSCRIPTS=off also sets transcripts=disabled
+
+archive: unreadable transcript → copied:false, reason:unreadable (UC-18)
+  ok    UC-18: task done (archive_task returns 0)
+  ok    UC-18: manifest.transcripts has reason:unreadable
+  ok    UC-18: archive dir and other files present
+
+archive: profile Archive:off disables archiving (UC-43)
+  ok    UC-43: task completes with Archive:off
+  ok    UC-43: no archive dir created with profile Archive:off
+
+aisdlc archive ls: two tasks, filter by repo/status/since (UC-19, UC-20)
+  ok    UC-19: archive ls shows exactly two rows
+  ok    UC-19: output contains status done
+  ok    UC-20: --status done returns both done tasks
+  ok    UC-20: --status failed returns no rows
+  ok    UC-20: --since future returns no rows
+  ok    UC-20: --repo <slug> returns 1 row for first repo
+
+aisdlc archive show: two attempts; unknown id (UC-21, UC-22)
+  ok    UC-21: show <id> with two attempts shows two headers
+  ok    UC-21: show output contains manifest JSON
+  ok    UC-22: show unknown id exits non-zero
+  ok    UC-22: show unknown id prints not found to stderr
+
+aisdlc archive grep: finds in phases/ but not spec/ (UC-23)
+  ok    UC-23: grep finds pattern in phases/implement.log
+  ok    UC-23: grep does not search spec/ files
+
+aisdlc archive prune: removes 2d-old task, retains 0d-old (UC-24)
+  ok    UC-24: 2d-old task directory removed by prune
+  ok    UC-24: old task absent from index.jsonl
+  ok    UC-24: 0d-old task directory retained
+  ok    UC-24: new task present in index.jsonl
+  ok    UC-24: second prune is a no-op (index unchanged)
+  ok    UC-24: pruning the only entry deletes it and empties index.jsonl
+
+aisdlc archive prune: shared-path entries — dir retained, both index entries kept (UC-38)
+  ok    UC-38: shared-path dir retained (not removed)
+  ok    UC-38: prune warns about shared-path retention
+  ok    UC-38: both shared-path entries retained in index (parsed)
+
+aisdlc archive prune: symlink root; root-itself, outside, inner-sym retained; relative root (UC-40)
+  ok    UC-40: valid old descendant removed via symlink root
+  ok    UC-40: root-itself entry retained in index
+  ok    UC-40: out-of-root entry retained in index
+  ok    UC-40: owned outside sentinel dir not removed by prune
+  ok    UC-40: inner symlink resolving outside root retained in index
+  ok    UC-40: outer symlink target dir not removed
+  ok    UC-40: old entry removed when prune given relative root path
+
+manifest.phases: full run — exact sequence and session_id attribution (UC-31)
+  ok    UC-31: task done
+  ok    UC-31: exact phase sequence; session_id on claude phases, null on native
+  ok    UC-31: all verdicts PASS
+  ok    UC-31: all four phases have started and ended timestamps
+
+manifest.model exact equality; models null (UC-36)
+  ok    UC-36: manifest.model equals task .model (sonnet)
+  ok    UC-36: manifest.models is null (no model_roles)
+
+manifest.phases: implement FAIL — run_phase failure and GH-52 empty-diff (UC-32)
+  ok    UC-32: task failed (BLOCKED.md)
+  ok    UC-32: exactly [implement:FAIL] in phases (BLOCKED.md path)
+  ok    UC-32: GH-52 empty-diff: exactly [implement:FAIL] (model-success, runner-rejected)
+
+manifest.phases: null for legacy task without phase_log (UC-35)
+  ok    UC-35: legacy record (cancel) archived with manifest.phases null
+  ok    UC-35: first archive files untouched after legacy cancel
+
+manifest.model and models exact equality with model_roles (UC-37)
+  ok    UC-37: manifest.model equals base model sonnet
+  ok    UC-37: manifest.models has exact per-phase model_roles entries
+
+manifest.phases: scope-check BLOCKED — correct Out: fixture (UC-33)
+  ok    UC-33: task failed (scope-check BLOCKED)
+  ok    UC-33: scope-check BLOCKED with session_id null and started/ended timestamps
+  ok    UC-33: implement and qa have PASS (ran before scope-check)
+  ok    UC-33: verify absent after scope-check BLOCKED
+
+manifest.phases: verify FAIL (UC-34)
+  ok    UC-34: task failed (verify FAIL)
+  ok    UC-34: verify entry has verdict FAIL
+  ok    UC-34: verify session_id null, started/ended non-null
+
+ship Change map contract (GH-41) and archive subcommand fixes
+  ok    GH-41 UC-4: ship.md example mermaid has ≥2 nodes and ≥1 edge
+  ok    GH-41 UC-5: 12-node cap is stated in ship.md
+  ok    GH-41 UC-6: README ship row mentions the visual Change map
+  ok    GH-41 UC-2: undeclared path WARNs, declared path stays silent
+  ok    GH-43-d: show t-1.2 prints only the second attempt
+  ok    GH-43-d: bare show t-1 still prints both attempts
+  ok    GH-43-d: grep prints a shared-path directory once
+  ok    GH-43-d: prune --older-than abc exits non-zero
+
+GH-40 data-only invocation and threshold; GH-39 local base ops; GH-38 run guard
+  ok    GH-40: claude data-only disables tools and MCP
+  ok    GH-40: omp data-only disables tools and extensions
+  ok    GH-40: readiness_check invokes claude with data_only=true
+  ok    GH-40: non-integer readiness_min refuses with a clear reason
+  ok    GH-39 UC-9: clean branch reports MERGEABLE
+  ok    GH-39 UC-9: diff lists the branch change against the stored base
+  ok    GH-39 UC-9: real base/head conflict reports CONFLICTING
+  ok    GH-39 UC-9: missing base ref fails closed on both operations
+  ok    GH-38: second concurrent run refused, first run's caps preserved
+
+441 passed, 0 failed

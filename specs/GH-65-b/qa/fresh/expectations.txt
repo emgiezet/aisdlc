@@ -1,0 +1,8 @@
+Spec-first observations (2026-11-23):
+UC-5: Real pinned OpenGrep scanning copied fixtures with full rules must hit each of unsafe-block, raw-pointer-deref, mem-transmute, from-utf8-unchecked, command-injection on its own numbered bad Rust fixture.
+UC-6: The same five rule IDs must produce zero hits anywhere under good/; inherited C# contracts must pass.
+Non-functional: retain pinned binary, copied fixture scan and JSON/error fail-closed guard; real unsafe examples and appropriate safe alternatives; unchanged IDs/catalogue/pins/generated skills.
+Current PR base: main; implementation head e89f4a8.
+Command: git diff --numstat origin/main...HEAD -- . ':!specs'
+Measured: 122 added lines, 14 files, 1 module (plugins/slop-guard).
+Approved: 270 added lines, 14 files, 2 modules. All within budget.

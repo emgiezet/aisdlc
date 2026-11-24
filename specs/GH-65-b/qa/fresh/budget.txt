@@ -1,0 +1,17 @@
+Current base: main
+Command: git diff --numstat origin/main...HEAD -- . :!specs
+2	0	plugins/slop-guard/CHANGELOG.md
+13	8	plugins/slop-guard/rules/opengrep/rust.yaml
+8	0	plugins/slop-guard/tests/fixtures/rust/bad/AP-RS-SEC-001-string.rs
+2	2	plugins/slop-guard/tests/fixtures/rust/bad/AP-RS-SEC-001.rs
+6	2	plugins/slop-guard/tests/fixtures/rust/bad/AP-RS-SEC-005.rs
+6	2	plugins/slop-guard/tests/fixtures/rust/bad/AP-RS-SEC-006.rs
+4	2	plugins/slop-guard/tests/fixtures/rust/bad/AP-RS-SEC-007.rs
+6	2	plugins/slop-guard/tests/fixtures/rust/bad/AP-RS-SEC-008.rs
+16	4	plugins/slop-guard/tests/fixtures/rust/good/AP-RS-SEC-001.rs
+4	2	plugins/slop-guard/tests/fixtures/rust/good/AP-RS-SEC-005.rs
+4	2	plugins/slop-guard/tests/fixtures/rust/good/AP-RS-SEC-006.rs
+4	2	plugins/slop-guard/tests/fixtures/rust/good/AP-RS-SEC-007.rs
+15	2	plugins/slop-guard/tests/fixtures/rust/good/AP-RS-SEC-008.rs
+32	0	plugins/slop-guard/tests/integration/opengrep.sh
+TOTAL: 122 added lines; 14 files; 1 module (plugins/slop-guard)

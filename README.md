@@ -74,13 +74,15 @@ For an immediate `slopguard` shell command, run
 `CLAUDE_PLUGIN_OPTION_ALLOW_NETWORK=true slopguard deps-check` to query registries;
 without that flag, dependency checks make no network requests.
 
-Requires `git` ≥ 2.31, `jq`, `flock`, the `claude` CLI (for the queue runner). `gh` only for the
-`github` tracker; without one `/sdlc:init` selects the file-backed `local` provider.
+Requires `git` ≥ 2.31, `jq`, `flock`, and `omp` or `claude` for the queue runner. `gh` is only
+for the `github` tracker; without it `/sdlc:init` selects the file-backed `local` provider.
 
 ### 🔐 Credentials for the queue runner
 
-`aisdlc run` shells out to `claude -p` — or to `omp -p` for a task queued with `--runtime omp`
-(also `"runtime": "omp"` in `.aisdlc/config.json`, or `AISDLC_RUNTIME`). It sets no credentials
+`aisdlc run` shells out to `omp -p` or `claude -p`. By default (`runtime: auto`) `aisdlc add`
+picks the first one installed, omp before claude, and stores it on the task; pin one with
+`--runtime omp|claude`, `"runtime"` in `.aisdlc/config.json`, or `AISDLC_RUNTIME` — `claude` for
+a CI stage, for example. It sets no credentials
 of its own — whatever authenticates that CLI authenticates the queue. An API key is one option of four, not a requirement:
 
 | Option | How | Billed against |
@@ -117,7 +119,7 @@ Then ship something (Claude Code syntax shown; substitute `$spec`/`$implement` o
 ```
 /sdlc:spec ABC-123            → specs/ABC-123/spec.md, status: draft
    ↓ you read it, flip status: approved, commit         ← the only approval point
-aisdlc add ABC-123 && aisdlc run    ← queue runner is Claude-only
+aisdlc add ABC-123 && aisdlc run    ← queue runner: omp or Claude Code, auto-detected
 ```
 
 ## 🔄 Update
@@ -533,12 +535,12 @@ plugin options dialog.
 
 ### Prevention skills
 
-Alongside the runtime checks, Slop Guard loads language-specific prevention skills that put the
-rules in the agent's context before it writes any code. Each skill covers the highest-impact
-anti-patterns for one stack: blockers first, then performance, then maintainability — one line
-each, with the safe alternative.
+Slop Guard ships language-specific prevention skills with the highest-impact anti-patterns:
+blockers first, then performance, then maintainability. Hosts discover these skills by their
+portable descriptions, not by path globs. Independently, the `pre-write` hook adds first-edit
+guidance for supported languages.
 
-| Skill | Loads when editing |
+| Skill | Relevant files or work |
 |---|---|
 | `php-antipatterns` | `*.php`, `*.blade.php` |
 | `go-antipatterns` | `*.go` |
@@ -548,7 +550,7 @@ each, with the safe alternative.
 | `sql-antipatterns` | `*.sql` |
 | `iac-antipatterns` | `*.tf`, `*.yaml`, `*.yml`, `Dockerfile` (IaC context) |
 | `auth-antipatterns` | auth, login, session, token, password and OAuth paths — AP-AUTH-001 through AP-AUTH-011 |
-| `agent-discipline` | always — AP-AGENT-001 through AP-AGENT-009 |
+| `agent-discipline` | General agent work |
 
 `auth-antipatterns` is the one catalogue that is not a language: token entropy, reset-token storage
 and TTL, password hashing, session rotation and invalidation, JWT verification, re-authentication
@@ -609,6 +611,9 @@ make eval-dry       # skill trigger sets, structural check only
 make harness-eval MODEL=haiku [SCENARIO=go-endpoint]   # the real thing; costs money
 make tool-integration              # real-binary parser tests; needs pinned toolchain (CI); skips per tool otherwise
 ```
+
+Local Slop Guard catalogue validation (`make validate`) requires Python 3 with PyYAML 6.0.3.
+Set `PYTHON` to the Python executable with that dependency installed if it is not `python3`.
 
 `make selftest` is the one to run after touching `bin/aisdlc`. It exists because a real run once
 found that `claude` consumes stdin, which silently ate the queue's phase list — the kind of defect

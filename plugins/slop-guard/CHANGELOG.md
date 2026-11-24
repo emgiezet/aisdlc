@@ -7,14 +7,16 @@ All notable changes to Slop Guard will be documented in this file.
   - `tools/node/{package.json,package-lock.json}`: eslint-plugin-react-hooks 7.1.1,
     eslint-plugin-security 4.2.1 and eslint-plugin-n 18.5.0; lock regenerated with
     scripts disabled and strict peer dependency resolution. Node now requires
-    `^20.19.0 || ^22.13.0 || >=24`, matching eslint-plugin-n 18 (CI uses Node 22).
+    `^22.18.0 || >=24`: eslint-plugin-n 18 needs `^20.19.0 || ^22.13.0 || >=24` and the
+    unchanged `@spacemansh/anti-slop` 0.3.0 needs `>=22.18.0`, so Node 20, Node 22
+    before 22.18 and Node 23 fail strict installs (CI uses Node 22).
   - `tools/tools.lock.json` and the npm bundle: ESLint and @eslint/js 9.39.5,
     the newest eligible 9.x release, accepted by every plugin's peer range.
   - **Why only three majors?** eslint-plugin-react 7.37.5 supports ESLint only
     through `^9.7`; typescript-eslint 8.72.1 supports TypeScript `>=4.8.4 <6.1.0`.
     ESLint 10 and TypeScript 7 therefore stay out. regexp 3 is blocked by transitive
     jsdoc-type-pratt-parser 9.x requiring Node `^22.22.2 || >=24.15.0`; that excludes
-    supported Node 20 and early Node 22/24, so regexp remains 2.10.0.
+    supported Node 22.18–22.22.1 and 24.0–24.14, so regexp remains 2.10.0.
     Psalm 7.0.0–7.0.4 were published Nov 2–6, inside the seven-day hold, so Psalm
     remains 6.16.1. Psalm 7's PHP requirement includes `~8.3.16`, compatible with CI.
     No baseline config migration is required for the three adopted plugins.
@@ -23,6 +25,23 @@ All notable changes to Slop Guard will be documented in this file.
     filesystem, template-require and RegExp calls; n updates deprecated API data.
   - The regenerated npm lock applies the seven-day publication hold to transitive
     dependencies too, with cutoff `2026-10-30T09:56:41Z`.
+- **Every slop-guard skill loads in omp** (2026-10-26)
+  - `scripts/gen-skills`: JSON-quote descriptions with jq (valid YAML strings, colons, quotes and backslashes preserved) and emit only `name` and `description` — no `paths`, no `user-invocable`. `skill_paths` and the `rules/stacks.json` dependency are gone. The thirteen catalogue skills are regenerated.
+  - `skills/secure-review/SKILL.md`, `skills/deslop/SKILL.md`: frontmatter reduced to `name` + `description`; the body tells the model to delegate to `agents/security-reviewer.md` / `agents/deslop.md`. The reviewer's read-only restriction stays where it is enforced, the agent's `disallowedTools`.
+  - `evals/skill-frontmatter.py`: runs the real generator in a temporary directory and checks generated and shipped skills against omp's skill rules — valid YAML, only the agentskills.io keys (`name`, `description`, `license`, `allowed-tools`, `metadata`, `compatibility`), lowercase name matching its directory, description ≤ 1024 characters, string-typed optional fields.
+  - `tests/catalog_test.sh`: §9 runs the eval; §15 no longer pins `context: fork`. `.github/workflows/validate.yml` installs the already toolchain-pinned `PyYAML==6.0.3` for this gate.
+  - `docs/slop-guard-spec.md` §3.3, §8.8, §8.9, `docs/research/skill-and-command-conventions.md`, `.claude/playbooks/slopguard-rule.md`: the skill contract is portable frontmatter only.
+  - **Why.** The root `plugin.json` makes omp treat slop-guard as a portable agent-plugins.org package, and omp then loads `skills/` strictly: invalid YAML or any key outside the agentskills.io set drops the skill with `Unknown skill`. Every one of the fifteen skills failed — the unquoted `rules: ` broke `agent-discipline`'s YAML, and all fifteen carried Claude Code-only keys. Neither host can be pointed at a separate copy: omp reads only `<root>/skills` for a portable plugin, and Claude Code always scans `skills/` (a manifest `skills` path adds, never replaces). So the shared files use the portable set, and Claude Code gives up four things: language skills load from their description instead of `paths` globs (the `pre-write` first-edit context still names the blockers for PHP, Go, Python, JS/TS and IaC); skills appear in the `/` menu; `deslop` and `secure-review` start in the session and delegate rather than forking; and `secure-review` relies on its agent's `disallowedTools` rather than a skill-level restriction. Run the eval with `python3 plugins/slop-guard/evals/skill-frontmatter.py`; set `PYTHON` when the catalogue suite needs a different Python with PyYAML installed.
+- **GH-65 React and Laravel repairs:** `rules/opengrep/{react,php-laravel}.yaml` and TypeScript URL fixtures distinguish validated URLs from shadowed sanitizer calls and recognize Laravel mass assignment and unbounded retrieval.
+  **Why.** Safe URL validation must stay quiet without allowing local sanitizer-name shadows to bypass the rule.
+- **GH-65 fixture contract enforcement:** `tests/integration/opengrep.sh` discovers every configured OpenGrep rule, requires an own-AP bad hit and zero good-fixture hits, and retains language-group and adversarial regression assertions (UC-1–UC-14). Missing tools skip only offline; failed scans and invalid JSON fail the integration gate.
+  **Why.** Fixture presence and successful ad-hoc scans do not enforce the approved regression contract.
+- **GH-65 Go, Node and JVM repairs:** Go timeout and Node prototype-pollution rules retain unsafe return and request-key cases while permitting configured clients and `Object.keys(req.body)` copies into null-prototype targets; Go/Node bad variants and Java good fixtures exercise these contracts.
+  **Why.** Equivalent unsafe construction shapes escaped detection, while safe alternatives matched broad patterns. The generic dynamic-key assignment branch was replaced with request-key copy patterns to avoid flagging unrelated assignments. `tests/integration/opengrep.sh` enforces UC-9/UC-10: all four runtime IDs must detect their own bad fixture and remain silent across every good fixture, preserving C#/Rust/Ruby assertions.
+- **GH-65 Ruby fixture repairs:** `tests/fixtures/ruby/` replaces marker stubs with real unsafe APIs and safe parameterized, escaped or constrained alternatives.
+  **Why.** Fixture presence alone did not demonstrate that the existing rules detect their intended bad operations. `tests/integration/opengrep.sh` now enforces Ruby UC-7/UC-8: each repaired ID must detect its bad fixture and remain silent across all good fixtures, alongside the C# and Rust contracts.
+- **GH-65 Rust fixture repairs:** `rules/opengrep/rust.yaml` recognizes documented unsafe blocks and raw-pointer dereferences; `tests/fixtures/rust/` exercises unsafe operations, transmute, UTF-8 validation and process arguments with safe counterparts and a string-content adversarial case. `tests/integration/opengrep.sh` enforces Rust UC-5/UC-6 alongside the C# contracts.
+  **Why.** Stub fixtures and broad unsafe-block matches concealed missed detections and false positives. SAFETY annotations immediately above a block or inside it document the same invariant.
 - **GH-65 C# fixture repairs:** `rules/opengrep/csharp.yaml` distinguishes literal process names and disabled XML resolvers; `tests/fixtures/csharp/` exercises unsafe APIs and safe counterparts, including direct assignments and resolver re-enablement.
   **Why.** Placeholder fixtures could not prove detection, and broad patterns flagged safe code. `tests/integration/opengrep.sh` now scans copied fixtures with the full pinned ruleset, enforcing C# per-rule bad hits and silence across all good fixtures; failed or malformed scans fail the gate. The XXE syntactic rule recognizes same-scope `var`/`XmlDocument` declarations followed by `LoadXml`, not field assignments, target-typed `new`, or `Load(stream)`.
 - **Refresh minor/patch analyzer pins** (2026-11-06)

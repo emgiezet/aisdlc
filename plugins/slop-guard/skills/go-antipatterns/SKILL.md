@@ -1,8 +1,6 @@
 ---
 name: go-antipatterns
-description: Forbidden Go patterns — SQL injection, shell injection, missing timeouts, resource leaks, goroutine leaks, and error handling issues. Applies when editing Go files.
-paths: ["**/*.go"]
-user-invocable: false
+description: "Forbidden Go patterns — SQL injection, shell injection, missing timeouts, resource leaks, goroutine leaks, and error handling issues. Applies when editing Go files."
 ---
 
 # Go anti-patterns — do not write these

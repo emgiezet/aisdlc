@@ -1,15 +1,13 @@
 ---
 name: secure-review
 description: "Security review subagent: reads session findings and the AP-* catalogue, produces a structured security assessment. Cannot write or edit files — a reviewer that can edit is not a reviewer. Invoke with /secure-review."
-agent: security-reviewer
-context: fork
-user-invocable: true
-disallowedTools: [Write, Edit, MultiEdit]
 ---
 
 # Security review — /secure-review
 
-Invokes the `security-reviewer` subagent in a forked context.
+Delegate the review to the `security-reviewer` subagent with your subagent tool; do not review
+inline. That agent's definition disallows Write, Edit and MultiEdit. Without a subagent tool,
+review in this context under the same rule: read only, no file changes.
 
 The reviewer reads the current session findings and the AP-* catalogue;
 it does **not** modify any files.

@@ -1,0 +1,2 @@
+PR #81 head 014f6e7064fe2fac279cefc0f8f904ba4d2c8a60 has successful validate and runner-and-fixture checks (see ci-head.json).
+Attempted `gh run view 42201880083 --job 127838883324 --log`; it returned exit 0 but no log bytes. Therefore no CI test counts are claimed; check status and URL only are available.

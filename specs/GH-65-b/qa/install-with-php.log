@@ -1,0 +1,31 @@
+slopguard doctor — plugin: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard  data: /tmp/slopguard-data-GH-65-b
+scope: all pinned tools
+
+  betterleaks  source: plugin  version: betterleaks version 1.8.1  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/.gitleaks.toml  mode: overlay
+  checkov  source: plugin  version: 3.3.16  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/.checkov.yaml  mode: overlay
+  eslint-stack  source: plugin  version: v9.35.0  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/eslint.config.mjs  mode: overlay
+  golangci-lint  source: plugin  version: golangci-lint has version 2.13.2 built with go1.27.0 from 27774aaf on 2026-08-27T23:01:12Z  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/.golangci.yml  mode: overlay
+  hadolint  source: plugin  version: Haskell Dockerfile Linter 2.14.0  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/.hadolint.yaml  mode: overlay
+  jq  source: plugin  version: jq-1.8.2  [ok]  config: none  mode: overlay
+  jscpd  source: plugin  version: jscpd 5.3.2  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/.jscpd.json  mode: overlay
+  kube-linter  source: plugin  version: 0.8.3  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/.kube-linter.yaml  mode: overlay
+  opengrep  source: plugin  version: 1.30.0  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/rules/opengrep  mode: overlay
+  phpstan  source: missing  lockfile: 2.2.13  [NOT FOUND]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/phpstan.neon  mode: overlay
+    → installing...
+slopguard: downloading phpstan 2.2.13...
+slopguard: installed phpstan 2.2.13 at /tmp/slopguard-data-GH-65-b/tools/phpstan/2.2.13
+    → installed phpstan 2.2.13
+  psalm  source: missing  lockfile: 6.16.1  [NOT FOUND]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/psalm.xml  mode: overlay
+    → installing...
+slopguard: downloading psalm 6.16.1...
+slopguard: installed psalm 6.16.1 at /tmp/slopguard-data-GH-65-b/tools/psalm/6.16.1
+    → installed psalm 6.16.1
+  ruff  source: plugin  version: ruff 0.16.6  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/ruff.toml  mode: overlay
+  shellcheck  source: plugin  version: ShellCheck - shell script analysis tool  [ok]  config: none  mode: overlay
+  tflint  source: plugin  version: TFLint version 0.64.0  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/.tflint.hcl  mode: overlay
+  zizmor  source: plugin  version: zizmor 1.30.1  [ok]  config: /home/mgz/workspace/private/aisdlc/.worktrees/qa-GH-65-b/plugins/slop-guard/configs/baseline/zizmor.yml  mode: overlay
+
+Extensions (./.slopguard):
+  (no .slopguard/ directory)
+
+All tools present and version-matched.
