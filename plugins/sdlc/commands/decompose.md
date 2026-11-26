@@ -12,8 +12,10 @@ merged and reverted on their own.
 `$ARGUMENTS` is a ticket id, or a path to a spec, brief or architecture document.
 
 Read `.claude/sdlc.md` for `Specs live in:` and the `## Change budget` section. The budget is
-three numbers plus a ceiling; the defaults, when the profile says nothing, are 400 added lines,
-15 files, 3 modules, and a hard ceiling of 3000 added lines.
+three numbers plus a ceiling; the defaults, when the profile says nothing, are 8000 added lines,
+100 touched files, 3 modules, and a hard ceiling of 12000 added lines. Tests and fixtures count:
+size a whole feature with its tests as one coherent scope, never by splitting tests off or
+excluding them to hit a number.
 
 ---
 

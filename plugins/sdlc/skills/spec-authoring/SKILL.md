@@ -82,8 +82,8 @@ pull request may not — a slice a reviewer cannot hold is a slice that gets app
 |---|---|---|
 | Use cases | > ~8 | more than one reviewable outcome |
 | Stacks | > 2 | two review audiences, two CI matrices |
-| Added lines (estimate) | > the repo's `Added lines` budget (default 400) | defect finding degrades past ~400 reviewed lines (SmartBear/Cisco) |
-| Files | > the `Files` budget (default 15) | review attention falls ~8.7% per extra file; latent-bug risk is lowest near 10 (arXiv 2609.22610, 330k PRs) |
+| Added lines (estimate) | > the repo's `Added lines` budget (default 8000, tests included) | a budget for one coherent, fully tested feature, not a review-sitting size; defect finding degrades past ~400 reviewed lines (SmartBear/Cisco), so review a large PR in small passes |
+| Files | > the `Files` budget (default 100, a budget not a hard ceiling) | review attention falls ~8.7% per extra file; latent-bug risk is lowest near 10 (arXiv 2609.22610, 330k PRs) |
 | Modules (first two path segments) | > the `Modules` budget (default 3) | cross-subsystem co-changes are the defect-prone ones (D'Ambros 2009) — a design signal, not a size one |
 | Fan-out | many modules, few lines each | shotgun surgery: extract the seam as its own slice, then move one caller group per slice |
 | Ordering | a row that cannot be tested until another row ships | that row belongs to a later slice |
@@ -91,7 +91,7 @@ pull request may not — a slice a reviewer cannot hold is a slice that gets app
 Estimate honestly: paths named in `## Context` plus their call sites, compared with the three
 most similar past commits (`git log -- <dir>`, then `git show --numstat`). Record the result as
 a `Change budget:` line under `## Scope`; `scope-check` enforces it on the branch and the queue
-stops before ship past the repo's hard ceiling (default 3000 added lines).
+stops before ship past the repo's hard ceiling (default 12000 added lines). Do not split tests from the code they cover or exclude them to hit a number; split only along a coherent seam.
 
 **Split into `specs/<TICKET>-a/`, `-b/`, …** — walking skeleton first, each independently
 shippable, each keeping the product working. `/sdlc:decompose` does this mechanically, picks

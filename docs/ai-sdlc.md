@@ -98,8 +98,8 @@ a cliff with size. The numbers behind the defaults:
 | Modules | Co-changes spanning different subsystems produce more defects than co-changes inside one | [D'Ambros, Lanza, Robbes, WCRE 2009](https://www.inf.usi.ch/lanza/PUBS/P/DAmb2009e.pdf); change entropy: [Hassan, ICSE 2009](https://dl.acm.org/doi/10.1109/ICSE.2009.5070510) |
 | Merge latency | 500+ line PRs average 9 days to merge; 50-line PRs merge ~40% faster and are reverted 15% less than 250-line ones | [Graphite](https://graphite.com/blog/the-ideal-pr-is-50-lines-long) (vendor telemetry, methodology disclosed) |
 
-So the harness budgets the change instead of hoping: **400 added lines, 15 files, 3 modules**, with
-a hard ceiling of **3000 added lines** past which `scope-check` returns `BLOCKED` and the queue
+So the harness budgets the change instead of hoping: **8000 added lines, 100 files, 3 modules**, with
+a hard ceiling of **12000 added lines** past which `scope-check` returns `BLOCKED` and the queue
 stops before ship. Deleted lines, generated output, vendored trees, lock files (`package-lock.json`,
 `yarn.lock`, `poetry.lock`, `uv.lock`, and similar) and the specs directory never count — removing
 code is not a large change to review.
@@ -112,7 +112,15 @@ separate slice for anything mechanical. A 300-file rename is reviewable by patte
 rename mixed with logic is not, which is why a spec may declare its own wider `Change budget:`
 and why a mechanical slice never carries behaviour.
 
-Two numbers deliberately disagree with the research. The 3000-line ceiling is far above what any
+The research above is about a single review sitting (around 400 lines); it is not evidence that an
+8000-line PR can be reviewed in one. The defaults instead leave room for a whole feature with its
+tests, fixtures and corpus cases, which all count: do not split tests off or exclude them to hit a
+number, and review large PRs in small passes. Over 8000 lines or 100 files is a `GAPS` finding
+(the file count is a budget, not a hard ceiling); strictly above 12000 added lines is `BLOCKED`.
+Projects that set their own budget in `.claude/sdlc.md` or a spec's `Change budget:` keep it;
+changing the built-in defaults never rewrites an existing profile.
+
+Two numbers deliberately disagree with the research. The 12000-line ceiling is far above what any
 source would defend as reviewable — it is the outer bound on damage, not a target. And the file
 and module budgets produce `GAPS`, not `BLOCKED`: no primary source justifies blocking on module
 count alone, so it starts a decomposition conversation instead of stopping the run.

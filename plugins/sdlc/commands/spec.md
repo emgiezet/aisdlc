@@ -98,7 +98,7 @@ against the three most similar past commits (`git log` then `git show --numstat`
 not decoration: `scope-check` enforces it on the branch before ship.
 
 **Then size the spec [GATE].** If the estimate breaks any budget number in `.claude/sdlc.md`
-(defaults: 400 added lines, 15 files, 3 modules), or the change spreads thinly across more
+(defaults: 8000 added lines, 100 files, 3 modules; tests count), or the change spreads thinly across more
 modules than the budget allows, **run `/sdlc:decompose <TICKET>` and write its slices instead
 of this one spec.** Same for more than ~8 use cases or more than two stacks. Report what the
 estimate was and which seam the decomposition used. One spec is one queue task is one pull

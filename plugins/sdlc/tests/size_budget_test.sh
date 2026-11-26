@@ -239,6 +239,159 @@ esac
 rm -rf "$_sc_wt"
 
 # --------------------------------------------------------------------------- #
+# Built-in change budget (8000 added lines, 100 files, 3 modules, hard ceiling 12000), spec
+# and profile precedence, all through the real run_scope_check on a real git branch.
+# Spec In: src/ declares every changed file, so only size can move the verdict.
+# --------------------------------------------------------------------------- #
+
+_SBN_ROOT="$(mktemp -d)"
+
+# _sbn <name> <spec budget line or ""> <profile ## Change budget body or ""> <added lines> <files> <modules>
+# Lines are spread evenly over <files> files in <modules> directories src/m0..src/mN.
+# Sets _SBN_VERDICT (task.json scope_verdict), _SBN_RC (run_scope_check status), _SBN_RPT (report path).
+_sbn() {
+    local name="$1" spec_line="$2" profile_body="$3" total="$4" nfiles="$5" nmods="$6"
+    local wt="$_SBN_ROOT/$name" base i
+    mkdir -p "$wt/specs/SBN" "$wt/.claude"
+    git -C "$wt" init -q
+    git -C "$wt" config user.email "test@test"
+    git -C "$wt" config user.name "test"
+    {
+        printf '## Scope\n\n'
+        if [ -n "$spec_line" ]; then printf 'Change budget: %s\n\n' "$spec_line"; fi
+        # shellcheck disable=SC2016  # the backticks are literal markdown the scope parser reads
+        printf 'In:\n- `src/`\n'
+    } > "$wt/specs/SBN/spec.md"
+    if [ -n "$profile_body" ]; then
+        printf '## Change budget\n\n%s\n' "$profile_body" > "$wt/.claude/sdlc.md"
+    fi
+    git -C "$wt" add -A
+    git -C "$wt" commit -q -m "base"
+    base="$(git -C "$wt" rev-parse HEAD)"
+    for ((i = 0; i < nmods; i++)); do mkdir -p "$wt/src/m$i"; done
+    awk -v total="$total" -v n="$nfiles" -v m="$nmods" -v root="$wt" 'BEGIN {
+        b = int(total / n); r = total % n
+        for (i = 0; i < n; i++) {
+            c = b + (i < r ? 1 : 0); p = root "/src/m" (i % m) "/f" i ".txt"
+            for (l = 1; l <= c; l++) print "line " l > p
+            close(p)
+        }
+    }'
+    git -C "$wt" add -A
+    git -C "$wt" commit -q -m "branch: $total lines, $nfiles files, $nmods modules"
+    mkdir -p "$wt/.aisdlc/tasks/$name"
+    printf '{}' > "$wt/.aisdlc/tasks/$name/task.json"
+    run_scope_check "$wt" "$name" "$wt" "SBN" "specs" "$base" > /dev/null 2>&1
+    _SBN_RC=$?
+    _SBN_VERDICT="$(jq -r '.scope_verdict' "$wt/.aisdlc/tasks/$name/task.json")"
+    _SBN_RPT="$wt/specs/SBN/scope-report.md"
+}
+
+# _sbn_expect <label> <PASS|GAPS|BLOCKED> [finding substring ...]
+# Only BLOCKED makes run_scope_check return non-zero; every finding must be in the report.
+_sbn_expect() {
+    local label="$1" want="$2" want_rc=0 pat; shift 2
+    [ "$want" = "BLOCKED" ] && want_rc=1
+    if [ "$_SBN_VERDICT" != "$want" ] || [ "$_SBN_RC" -ne "$want_rc" ]; then
+        bad "$label" "expected $want rc=$want_rc, got '$_SBN_VERDICT' rc=$_SBN_RC"
+        return
+    fi
+    for pat in "$@"; do
+        if ! grep -qF -- "$pat" "$_SBN_RPT"; then
+            bad "$label" "verdict $want but report lacks '$pat'"
+            return
+        fi
+    done
+    ok "$label"
+}
+
+# Hand-sized regression-sized branches: no finding at all in the report.
+_sbn_clean() {
+    if grep -q '^### Findings' "$_SBN_RPT"; then
+        bad "$1" "report has findings: $(sed -n '/^### Findings/,$p' "$_SBN_RPT" | tr '\n' ' ')"
+    else
+        ok "$1"
+    fi
+}
+
+# --- built-in default, lines: exactly at the limit and one past ---
+_sbn dl-at "" "" 8000 1 1
+_sbn_expect "built-in budget: exactly 8000 added lines is PASS" PASS
+_sbn dl-over "" "" 8001 1 1
+_sbn_expect "built-in budget: 8001 added lines is GAPS" GAPS "over budget: 8001 added lines > 8000"
+
+# --- built-in default, files ---
+_sbn df-at "" "" 100 100 1
+_sbn_expect "built-in budget: exactly 100 files is PASS" PASS
+_sbn df-over "" "" 101 101 1
+_sbn_expect "built-in budget: 101 files is GAPS" GAPS "over budget: 101 files touched > 100"
+
+# --- hard ceiling: exactly at it, one past, and no spec or tolerance can raise it ---
+_sbn hc-at "20000 added lines" "" 12000 1 1
+_sbn_expect "ceiling: exactly 12000 added lines is accepted under a larger spec budget" PASS
+_sbn hc-over "20000 added lines" "" 12001 1 1
+_sbn_expect "ceiling: 12001 added lines is BLOCKED even though the spec budget allows 20000" \
+    BLOCKED "hard ceiling: 12001 added lines > 12000"
+_sbn hc-tol-at "" $'- **Tolerance:** 100%' 12000 1 1
+_sbn_expect "ceiling: tolerance 100% raises the soft limit, 12000 lines is still accepted" PASS
+_sbn hc-tol-over "" $'- **Tolerance:** 100%' 12001 1 1
+_sbn_expect "ceiling: tolerance cannot raise the built-in ceiling, 12001 is BLOCKED" \
+    BLOCKED "hard ceiling: 12001 added lines > 12000"
+
+# --- explicit profile hard ceiling (the old 3000) is still honored ---
+_sbn pc-at "" $'- **Added lines:** 20000\n- **Hard ceiling:** 3000' 3000 1 1
+_sbn_expect "explicit profile ceiling 3000: exactly 3000 added lines is accepted" PASS
+_sbn pc-over "" $'- **Added lines:** 20000\n- **Hard ceiling:** 3000' 3001 1 1
+_sbn_expect "explicit profile ceiling 3000: 3001 added lines is BLOCKED, not raised to the built-in" \
+    BLOCKED "hard ceiling: 3001 added lines > 3000"
+
+# --- explicit smaller spec budget (the old 400/15/3) is still honored ---
+_sbn sl-at "400 added lines, 15 files, 3 modules" "" 400 15 3
+_sbn_expect "explicit spec budget: 400 added lines, 15 files, 3 modules is PASS" PASS
+_sbn sl-over "400 added lines, 15 files, 3 modules" "" 401 15 3
+_sbn_expect "explicit spec budget: 401 added lines is GAPS despite the larger built-in" \
+    GAPS "over budget: 401 added lines > 400"
+_sbn sf-over "400 added lines, 15 files, 3 modules" "" 16 16 1
+_sbn_expect "explicit spec budget: 16 files is GAPS despite the larger built-in" \
+    GAPS "over budget: 16 files touched > 15"
+
+# --- explicit smaller profile budget is still honored when the spec is silent ---
+_sbn prl-at "" $'- **Added lines:** 400' 400 1 1
+_sbn_expect "explicit profile budget: exactly 400 added lines is PASS" PASS
+_sbn prl-over "" $'- **Added lines:** 400' 401 1 1
+_sbn_expect "explicit profile budget: 401 added lines is GAPS despite the larger built-in" \
+    GAPS "over budget: 401 added lines > 400"
+_sbn prf-over "" $'- **Files:** 15' 16 16 1
+_sbn_expect "explicit profile budget: 16 files is GAPS despite the larger built-in" \
+    GAPS "over budget: 16 files touched > 15"
+
+# --- precedence: spec beats profile beats built-in, in both directions ---
+_sbn sp-tight "400 added lines" $'- **Added lines:** 9000' 401 1 1
+_sbn_expect "precedence: a spec budget of 400 beats a looser profile" \
+    GAPS "over budget: 401 added lines > 400"
+_sbn sp-loose "9000 added lines" $'- **Added lines:** 400' 8500 1 1
+_sbn_expect "precedence: a spec budget of 9000 beats a tighter profile and the 8000 built-in" PASS
+
+# --- coherent regression-sized branches fit the line and file budget ---
+# They span five modules, so the spec states that explicitly; the built-in 3 is not widened.
+_sbn co-5195 "5 modules" "" 5195 74 5
+_sbn_expect "coherent change: 5195 added lines, 74 files, 5 declared modules is PASS" PASS
+_sbn_clean "coherent change: 5195/74 produces no findings"
+_sbn co-6500 "5 modules" "" 6500 50 5
+_sbn_expect "coherent change: 6500 added lines, 50 files, 5 declared modules is PASS" PASS
+_sbn_clean "coherent change: 6500/50 produces no findings"
+_sbn co-mods "" "" 5195 74 5
+_sbn_expect "coherent change: the same branch without a module budget stays GAPS on modules (default 3)" \
+    GAPS "over budget: 5 modules touched > 3"
+if grep -qE 'added lines >|files touched >' "$_SBN_RPT"; then
+    bad "coherent change: only modules are over" "line or file findings in: $(grep 'over budget' "$_SBN_RPT" | tr '\n' ' ')"
+else
+    ok "coherent change: the 5195 lines and 74 files themselves fit the built-in budget"
+fi
+
+rm -rf "$_SBN_ROOT"
+
+# --------------------------------------------------------------------------- #
 # budget_value — spec beats profile beats built-in default
 # --------------------------------------------------------------------------- #
 

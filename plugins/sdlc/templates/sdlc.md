@@ -67,16 +67,16 @@ says so in `scope-report.md`. A spec may set its own `Change budget:` line under
 that wins, which is how a mechanical codemod gets a wider budget than a behaviour change.
 Deleted lines, generated output, vendored trees, lock files and the specs directory never count.
 
-- **Added lines:** 400
-  <!-- defect finding degrades past ~400 reviewed lines (SmartBear/Cisco); Google's own
+- **Added lines:** 8000
+  <!-- sized for one coherent feature with its tests (tests count); the research cited is about a single review sitting, so review large PRs in small passes. Defect finding degrades past ~400 reviewed lines (SmartBear/Cisco); Google's own
        guidance calls 100 reasonable and 1000 too large -->
-- **Files:** 15
-  <!-- review attention drops ~8.7% per extra file; lowest latent-bug rate around 10 files
+- **Files:** 100
+  <!-- a budget (GAPS), not a hard ceiling. Review attention drops ~8.7% per extra file; lowest latent-bug rate around 10 files
        (arXiv 2609.22610, 330k PRs) -->
 - **Modules:** 3
   <!-- a module is the first two path segments, e.g. services/billing. Cross-subsystem
        co-changes are the defect-prone ones (D'Ambros 2009) -->
-- **Hard ceiling:** 3000
+- **Hard ceiling:** 12000
   <!-- past this scope-check returns BLOCKED and the queue stops before ship: nobody reviews
        a diff this wide, so it goes back through /sdlc:decompose -->
 - **Tolerance:** 0%

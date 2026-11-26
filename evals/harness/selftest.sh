@@ -768,13 +768,79 @@ R="$WORK/gh51-uc5"; fresh_repo "$R"
 "$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
 AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
 _WT5="$(task_field "$R" .worktree)"; _ID5="$(ls "$R"/.aisdlc/tasks/ | head -1)"
-printf '%s\n' {1..3001} > "$_WT5/AGENTS.md"
-git -C "$_WT5" add AGENTS.md && git -C "$_WT5" commit -q -m "bookkeeping"
+# At the hard ceiling the lower soft budget still gives GAPS; only one past it is BLOCKED.
+seq 1 12000 > "$_WT5/AGENTS.md"
+git -C "$_WT5" add AGENTS.md && git -C "$_WT5" commit -q -m "bookkeeping: 12000 lines"
+"$AISDLC" scope-check "$_ID5" --repo "$R" >/dev/null 2>&1; _SIZE_RC=$?
+[ "$_SIZE_RC" -eq 0 ] && [ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
+    && ok "GH-51 UC-1: exactly at the built-in ceiling (12000) remains a nonblocking soft-budget GAPS" \
+    || bad "GH-51 UC-1 size boundary at ceiling" "rc=$_SIZE_RC verdict=$(task_field "$R" .scope_verdict)"
+grep -qF 'over budget: 12000 added lines > 8000' "$_WT5/specs/SBX-1/scope-report.md" 2>/dev/null \
+    && ok "GH-51 UC-1: exactly-at-ceiling GAPS names the lower soft budget" \
+    || bad "GH-51 UC-1 soft budget at ceiling" "no 12000 > 8000 finding in scope-report.md"
+seq 1 12001 > "$_WT5/AGENTS.md"
+git -C "$_WT5" add AGENTS.md && git -C "$_WT5" commit -q -m "bookkeeping: 12001 lines"
 "$AISDLC" scope-check "$_ID5" --repo "$R" >/dev/null 2>&1; _SIZE_RC=$?
 [ "$_SIZE_RC" -eq 1 ] && [ "$(task_field "$R" .scope_verdict)" = "BLOCKED" ] \
-    && ok "GH-51 UC-1: bookkeeping-only branch blocked by size ceiling" \
+    && ok "GH-51 UC-1: bookkeeping-only branch past the built-in ceiling (12001) blocked by size ceiling" \
     || bad "GH-51 UC-1 size boundary" "rc=$_SIZE_RC verdict=$(task_field "$R" .scope_verdict)"
+grep -q 'hard ceiling: 12001 added lines > 12000' "$_WT5/specs/SBX-1/scope-report.md" 2>/dev/null \
+    && ok "GH-51 UC-1: ceiling refusal names the built-in 12000 limit in the scope report" \
+    || bad "GH-51 UC-1 ceiling finding" "no 'hard ceiling: 12001 added lines > 12000' in scope-report.md"
 unset R _WT5 _ID5 _SIZE_RC
+
+# --------------------------------------------------------------------------- #
+# Built-in change budget through the native scope-check: 8000 added lines, 100 files, no
+# spec or profile override. Everything is declared in scope, so only size can move the verdict.
+# --------------------------------------------------------------------------- #
+
+printf '\nbuilt-in change budget: 8000 added lines is accepted, 8001 is GAPS (soft breach, chain not stopped)\n'
+R="$WORK/budget-lines"
+fresh_repo_scope "$R" $'- `pkg/`' "" ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_WTB="$(task_field "$R" .worktree)"; _IDB="$(ls "$R"/.aisdlc/tasks/ | head -1)"
+mkdir -p "$_WTB/pkg/m"
+seq 1 8000 > "$_WTB/pkg/m/big.txt"
+git -C "$_WTB" add pkg && git -C "$_WTB" commit -q -m "feat: 8000 lines"
+"$AISDLC" scope-check "$_IDB" --repo "$R" >/dev/null 2>&1; _BRC=$?
+[ "$_BRC" -eq 0 ] && [ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
+    && ok "built-in budget: exactly 8000 added lines is PASS" \
+    || bad "built-in budget 8000 lines" "rc=$_BRC verdict=$(task_field "$R" .scope_verdict)"
+seq 1 8001 > "$_WTB/pkg/m/big.txt"
+git -C "$_WTB" add pkg && git -C "$_WTB" commit -q -m "feat: 8001 lines"
+"$AISDLC" scope-check "$_IDB" --repo "$R" >/dev/null 2>&1; _BRC=$?
+[ "$_BRC" -eq 0 ] && [ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
+    && ok "built-in budget: 8001 added lines is GAPS and does not stop the chain" \
+    || bad "built-in budget 8001 lines" "rc=$_BRC verdict=$(task_field "$R" .scope_verdict)"
+grep -q 'over budget: 8001 added lines > 8000' "$_WTB/specs/SBX-1/scope-report.md" 2>/dev/null \
+    && ok "built-in budget: report names the 8000 added-line limit" \
+    || bad "built-in budget lines finding" "no 'over budget: 8001 added lines > 8000' in scope-report.md"
+unset R _WTB _IDB _BRC
+
+printf '\nbuilt-in change budget: 100 files is accepted, 101 is GAPS\n'
+R="$WORK/budget-files"
+fresh_repo_scope "$R" $'- `pkg/`' "" ""
+"$AISDLC" add SBX-1 --repo "$R" --no-pr >/dev/null 2>&1
+AISDLC_STUB=noop "$AISDLC" run --repo "$R" --once >/dev/null 2>&1
+_WTB="$(task_field "$R" .worktree)"; _IDB="$(ls "$R"/.aisdlc/tasks/ | head -1)"
+mkdir -p "$_WTB/pkg/m"
+for _i in $(seq 1 100); do printf 'x\n' > "$_WTB/pkg/m/f$_i.txt"; done
+git -C "$_WTB" add pkg && git -C "$_WTB" commit -q -m "feat: 100 files"
+"$AISDLC" scope-check "$_IDB" --repo "$R" >/dev/null 2>&1; _BRC=$?
+[ "$_BRC" -eq 0 ] && [ "$(task_field "$R" .scope_verdict)" = "PASS" ] \
+    && ok "built-in budget: exactly 100 files is PASS" \
+    || bad "built-in budget 100 files" "rc=$_BRC verdict=$(task_field "$R" .scope_verdict)"
+printf 'x\n' > "$_WTB/pkg/m/f101.txt"
+git -C "$_WTB" add pkg && git -C "$_WTB" commit -q -m "feat: 101 files"
+"$AISDLC" scope-check "$_IDB" --repo "$R" >/dev/null 2>&1; _BRC=$?
+[ "$_BRC" -eq 0 ] && [ "$(task_field "$R" .scope_verdict)" = "GAPS" ] \
+    && ok "built-in budget: 101 files is GAPS" \
+    || bad "built-in budget 101 files" "rc=$_BRC verdict=$(task_field "$R" .scope_verdict)"
+grep -q 'over budget: 101 files touched > 100' "$_WTB/specs/SBX-1/scope-report.md" 2>/dev/null \
+    && ok "built-in budget: report names the 100 file limit" \
+    || bad "built-in budget files finding" "no 'over budget: 101 files touched > 100' in scope-report.md"
+unset R _WTB _IDB _BRC _i
 
 # --------------------------------------------------------------------------- #
 # GH-54: verbatim In: exempts from spec-Out; globs/dirs/Context: do not
