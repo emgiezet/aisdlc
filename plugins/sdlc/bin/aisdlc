@@ -54,14 +54,18 @@ check_runtime() {
 
 # Change budget: the review surface one task may add before scope-check says so. Overridable
 # per spec (`Change budget:` under ## Scope) and per repo (## Change budget in .claude/sdlc.md).
-# Defaults follow the review evidence: defect finding degrades past ~400 reviewed lines
-# (SmartBear/Cisco), review attention drops ~8.7% per extra file (arXiv 2609.22610, optimum
-# ~10 files), cross-subsystem co-changes are the defect-prone ones (D'Ambros 2009). The ceiling
-# is where decomposition stops being advice: past it scope-check refuses to hand the branch on.
-BUILTIN_BUDGET_ADDED="400"
-BUILTIN_BUDGET_FILES="15"
+# The line and file defaults cap one complete, coherent task: production code, its tests and
+# fixtures together, since tests and fixtures count. They are not a per-sitting review target.
+# Review-effectiveness research is about how much one reviewer can inspect in a single pass
+# (defect finding degrades past ~400 lines per session, SmartBear/Cisco; attention drops
+# ~8.7% per extra file, arXiv 2609.22610, optimum ~10 files), so a large PR still needs one
+# coherent scope and a sequence of smaller review passes. The module default stays tight:
+# cross-subsystem co-changes are the defect-prone ones (D'Ambros 2009). The ceiling is where
+# decomposition stops being advice: past it scope-check refuses to hand the branch on.
+BUILTIN_BUDGET_ADDED="8000"
+BUILTIN_BUDGET_FILES="100"
 BUILTIN_BUDGET_MODULES="3"
-BUILTIN_BUDGET_CEILING="3000"
+BUILTIN_BUDGET_CEILING="12000"
 BUILTIN_STRUCT_EROSION_MAX="0.05"
 BUILTIN_STRUCT_HOTSPOT_MAX="0"
 
